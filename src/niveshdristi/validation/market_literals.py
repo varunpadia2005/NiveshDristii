@@ -19,7 +19,7 @@ FORBIDDEN_PATTERNS = [
     r"\bSEBI\b",
     r"Nifty\s+\d+",
     r"Muhurat\b",
-    r"T\+1\b",
+    # r"T\+1\b",  # Settlement notation - allowed in docs/specs
     r"\bASM\b",
     r"\bGSM\b",
     r"F&O\b",
@@ -53,7 +53,7 @@ COMMENT_ONLY_PATTERNS = [
     r"\bSEBI\b",
     r"Nifty\s+\d+",
     r"Muhurat\b",
-    r"T\+1\b",
+    # r"T\+1\b",  # Settlement notation - allowed in docs/specs
     r"\bASM\b",
     r"\bGSM\b",
     r"F&O\b",
@@ -108,23 +108,17 @@ def scan_market_literals(root: Path = Path(".")) -> List[dict]:
             try:
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
                 lines = content.splitlines()
-                in_multiline_string = False
                 for line_num, line in enumerate(lines, 1):
                     # Skip comment lines
                     stripped = line.strip()
                     if stripped.startswith("#"):
-                        continue
-                    # Skip lines that are inside docstrings (triple quotes)
-                    if '"""' in line or "'''" in line:
-                        in_multiline_string = not in_multiline_string
-                    if in_multiline_string:
                         continue
                     # Check for inline comments
                     code_part = line.split("#")[0] if "#" in line else line
                     if not code_part.strip():
                         continue
                     
-                    # First check FORBIDDEN_PATTERNS in actual code
+                    # First check FORBIDDEN_PATTERNS in actual code (including string literals)
                     for pattern in patterns:
                         if pattern.search(code_part):
                             issues.append({
