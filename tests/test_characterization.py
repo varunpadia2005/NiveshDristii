@@ -204,10 +204,12 @@ def test_backtest_simulate():
 
     # Provide explicit config to avoid CFG dict access bug
     from niveshdristi.backtest import BacktestConfig
+    from niveshdristi.config import CostModel
     config = BacktestConfig(
         initial_capital=1_000_000,
         max_position_pct=0.10,
-        signal_delay_days=1
+        signal_delay_days=1,
+        costs=CostModel()
     )
     result = simulate(prices, signals, config=config)
 

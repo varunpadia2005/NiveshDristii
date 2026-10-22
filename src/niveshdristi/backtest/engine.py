@@ -1,20 +1,9 @@
 """Honest backtest engine: 1-day delay, full Indian cost model, Polars vectorized."""
 import polars as pl
 import numpy as np
-from dataclasses import dataclass
 from typing import Dict, List, Optional
-from niveshdristi.config import CFG
+from niveshdristi.config import CFG, BacktestConfig
 from niveshdristi.data.contracts import Trade, BacktestResult
-
-
-@dataclass
-class BacktestConfig:
-    initial_capital: float = 1_000_000
-    max_position_pct: float = 0.10
-    max_sector_pct: float = 0.30
-    max_positions: int = 20
-    cost_bps: float = 15.0  # all-in round-trip estimate
-    signal_delay_days: int = 1
 
 
 def _compute_cost_bps() -> float:
@@ -41,7 +30,7 @@ def simulate(
     config = config or BacktestConfig(
         initial_capital=CFG.backtest.initial_capital,
         max_position_pct=CFG.portfolio.max_position_pct,
-        signal_delay_days=CFG.backtest.timing.signal_delay_days,
+        signal_delay_days=CFG.backtest.signal_delay_days,
     )
 
     # Align all dates
@@ -66,7 +55,8 @@ def simulate(
     positions: Dict[str, int] = {}
     equity = []
     trades = []
-    cost_mult = 1 + config.cost_bps / 10000
+    cost_bps = config.costs.total_round_trip_bps()
+    cost_mult = 1 + cost_bps / 10000
 
     for i, dt in enumerate(dates[:-1]):
         next_dt = dates[i + 1]
@@ -110,7 +100,8 @@ def simulate(
             delta = target_shares - current_shares
             if delta != 0:
                 trade_val = abs(delta) * price
-                cost = trade_val * (config.cost_bps / 10000)
+                cost_bps = config.costs.total_round_trip_bps()
+                cost = trade_val * (cost_bps / 10000)
                 cash -= delta * price + cost
                 positions[tkr] = target_shares
                 trades.append(Trade(
