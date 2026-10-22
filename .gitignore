@@ -50,3 +50,9 @@ build/
 
 # Ruff
 .ruff_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Quarantine (cleanup)
+_quarantine/
