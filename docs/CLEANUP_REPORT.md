@@ -183,4 +183,72 @@ tests/fixtures/indicators_output.parquet  # Deleted
 
 ---
 
-*Cleanup complete. Ready for Phase 1 upon approval.*
+## 12. Git Sync
+
+### Branches Pushed
+| Branch | Commit | Remote | Status |
+|--------|--------|--------|--------|
+| `cleanup/tidy` | `a2a047b` | `origin/cleanup/tidy` | ✅ Pushed |
+| `rebuild/v2` | `82f76d8` | `origin/rebuild/v2` | ✅ Pushed |
+
+### Remote URL
+```
+https://github.com/varunpadia2005/NiveshDristii.git
+```
+
+### Commits on `cleanup/tidy` (ahead of `rebuild/v2`)
+| Hash | Message |
+|------|---------|
+| `a2a047b` | chore: update gitignore for Streamlit secrets and quarantine folder |
+| `4b0b224` | cleanup: remove cache artifacts, add plotly/requests deps, update README |
+
+### Pull Request
+**gh CLI not available** — create PR manually at:
+```
+https://github.com/varunpadia2005/NiveshDristii/pull/new/cleanup/tidy
+```
+
+**PR Title:** `chore: cleanup cache artifacts, fix deps, update gitignore`
+
+**PR Description:**
+```
+## Summary
+Pre-Phase 1 cleanup per docs/CLEANUP_PLAN.md
+
+## Changes
+- Removed pure cache/build artifacts: .mypy_cache/, .pytest_cache/, .ruff_cache/, src/niveshdristi.egg-info/, all __pycache__/
+- Removed cached market data: cache/prices/ (22 parquet files, 650 KB)
+- Removed test output artifacts: tests/fixtures/backtest_*.parquet, indicators_output.parquet
+- Added missing dependencies: plotly>=5.22, requests>=2.31
+- Updated .gitignore: added .streamlit/secrets.toml, _quarantine/
+- Updated README.md project structure diagram
+
+## Verification
+- All 16 tests pass (10 characterization + 6 import tests)
+- Streamlit and FastAPI entry points load OK
+- No secrets in tracked files (confirmed by secret scan)
+- No large tracked files (> 5 MB)
+
+## Files Excluded by .gitignore
+- .env (contains real OPENROUTER_API_KEY and POSTGRES_PASSWORD — local only)
+- cache/ (regenerated Parquet data)
+- __pycache__/, *.pyc
+- .mypy_cache/, .pytest_cache/, .ruff_cache/
+- src/niveshdristi.egg-info/
+- _quarantine/ (for future cleanup)
+
+## Next
+After review, merge into rebuild/v2 and proceed to Phase 1.
+```
+
+### Secret Scan Results
+| Scan | Result |
+|------|--------|
+| Tracked files (git ls-files + pattern search) | ✅ No hardcoded secrets — only env var references |
+| Git history (git log -p -S "sk-or-v1") | ✅ No actual API keys in history |
+| Large files (> 5 MB) | ✅ None tracked |
+| .env file | ✅ In .gitignore, not tracked |
+
+---
+
+*Cleanup complete and synced to remote. Ready for Phase 1 upon PR approval.*
