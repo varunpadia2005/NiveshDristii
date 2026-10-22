@@ -124,9 +124,14 @@ niveshdristi/
 │   ├── api/                 # FastAPI endpoints
 │   └── app/                 # Streamlit UI
 ├── tests/
-├── cache/                   # Parquet (gitignored)
-├── migrations/              # Alembic
-└── prompts/                 # Versioned prompts
+│   ├── fixtures/            # Characterization test fixtures (committed)
+│   └── test_*.py            # Import + characterization tests
+├── docs/                    # AUDIT.md, CHANGES.md, CLEANUP_PLAN.md, DISCLAIMER.md, PROGRESS.md, VERIFY.md
+├── cache/                   # Parquet cache (gitignored, regenerated on demand)
+├── migrations/              # Alembic (placeholder)
+├── prompts/                 # Versioned prompts (placeholder)
+├── scripts/                 # CLI entry points (placeholder)
+└── _quarantine/             # Quarantined files during cleanup (gitignored)
 ```
 
 ## Disclaimer
