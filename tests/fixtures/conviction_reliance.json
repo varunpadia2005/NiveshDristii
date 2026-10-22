@@ -1,0 +1,20 @@
+{
+  "score": 75,
+  "components": {
+    "technical": 72,
+    "fundamental": 100,
+    "regime": 80,
+    "ml": 50
+  },
+  "capped_by_guardrails": false,
+  "details": {
+    "weights": {
+      "technical": 0.3,
+      "fundamental": 0.25,
+      "regime": 0.2,
+      "ml": 0.25
+    },
+    "raw_score": 74.6,
+    "guardrail_cap": 100
+  }
+}
