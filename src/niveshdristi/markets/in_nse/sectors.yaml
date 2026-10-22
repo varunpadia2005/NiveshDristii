@@ -1,0 +1,120 @@
+# IN_NSE Sector Taxonomy
+# Maps NSE sector indices to sectors and constituent tickers
+# Source: NSE Indices (verify annually)
+# Format: sector_name: {index_symbol, description, nse_sector_code}
+
+sectors:
+  - name: "Financial Services"
+    index_symbol: "NIFTYFIN"
+    description: "Banks, NBFCs, Insurance, Financial Services"
+    nse_code: "FIN"
+    sub_sectors: ["Banks", "NBFC", "Insurance", "Housing Finance"]
+
+  - name: "Information Technology"
+    index_symbol: "NIFTYIT"
+    description: "IT Services, Software Products, Consulting"
+    nse_code: "IT"
+    sub_sectors: ["IT Services", "Software Products"]
+
+  - name: "Oil, Gas & Consumable Fuels"
+    index_symbol: "NIFTYENERGY"
+    description: "Oil Exploration, Refining, Gas, Coal"
+    nse_code: "ENERGY"
+    sub_sectors: ["Oil & Gas", "Refining", "Coal"]
+
+  - name: "Automobile & Auto Components"
+    index_symbol: "NIFTYAUTO"
+    description: "Auto OEMs, Auto Ancillaries, Tyres"
+    nse_code: "AUTO"
+    sub_sectors: ["Auto OEM", "Auto Ancillary", "Tyres"]
+
+  - name: "Pharmaceuticals & Biotechnology"
+    index_symbol: "NIFTYPHARMA"
+    description: "Pharma, Biotech, Healthcare Services"
+    nse_code: "PHARMA"
+    sub_sectors: ["Pharmaceuticals", "Biotechnology", "Healthcare"]
+
+  - name: "Fast Moving Consumer Goods"
+    index_symbol: "NIFTYFMCG"
+    description: "FMCG, Personal Care, Household Products"
+    nse_code: "FMCG"
+    sub_sectors: ["FMCG", "Personal Care", "Beverages"]
+
+  - name: "Metals & Mining"
+    index_symbol: "NIFTYMETAL"
+    description: "Steel, Aluminium, Copper, Mining"
+    nse_code: "METAL"
+    sub_sectors: ["Steel", "Aluminium", "Copper", "Mining"]
+
+  - name: "Construction & Infrastructure"
+    index_symbol: "NIFTYINFRA"
+    description: "Construction, Cement, Engineering, Infra"
+    nse_code: "INFRA"
+    sub_sectors: ["Construction", "Cement", "Engineering", "Infrastructure"]
+
+  - name: "Consumer Durables"
+    index_symbol: "NIFTYCONSDUR"
+    description: "Consumer Durables, Electrical Equipment"
+    nse_code: "CONSDUR"
+    sub_sectors: ["Consumer Durables", "Electrical Equipment"]
+
+  - name: "Chemicals"
+    index_symbol: "NIFTYCHEM"
+    description: "Basic Chemicals, Specialty Chemicals, Fertilizers"
+    nse_code: "CHEM"
+    sub_sectors: ["Basic Chemicals", "Specialty Chemicals", "Fertilizers"]
+
+  - name: "Telecommunications"
+    index_symbol: "NIFTYTELECOM"
+    description: "Telecom Services, Telecom Equipment"
+    nse_code: "TELECOM"
+    sub_sectors: ["Telecom Services", "Telecom Equipment"]
+
+  - name: "Power"
+    index_symbol: "NIFTYPOWER"
+    description: "Power Generation, Transmission, Distribution"
+    nse_code: "POWER"
+    sub_sectors: ["Power Generation", "Transmission"]
+
+  - name: "Real Estate"
+    index_symbol: "NIFTYREALTY"
+    description: "Real Estate Development, REITs"
+    nse_code: "REALTY"
+    sub_sectors: ["Real Estate", "REITs"]
+
+  - name: "Healthcare Services"
+    index_symbol: "NIFTYHEALTH"
+    description: "Hospitals, Diagnostics, Healthcare Services"
+    nse_code: "HEALTH"
+    sub_sectors: ["Hospitals", "Diagnostics"]
+
+  - name: "Media & Entertainment"
+    index_symbol: "NIFTYMEDIA"
+    description: "Media, Entertainment, Printing"
+    nse_code: "MEDIA"
+    sub_sectors: ["Media", "Entertainment"]
+
+# GICS Mapping (for global compatibility)
+# Each sector maps to GICS Level 1 (Sector) and Level 2 (Industry Group)
+gics_mapping:
+  "Financial Services": {sector: 40, industry_group: 4010}  # Financials
+  "Information Technology": {sector: 45, industry_group: 4510}  # IT
+  "Oil, Gas & Consumable Fuels": {sector: 10, industry_group: 1010}  # Energy
+  "Automobile & Auto Components": {sector: 25, industry_group: 2510}  # Cons. Discretionary
+  "Pharmaceuticals & Biotechnology": {sector: 35, industry_group: 3510}  # Health Care
+  "Fast Moving Consumer Goods": {sector: 30, industry_group: 3010}  # Cons. Staples
+  "Metals & Mining": {sector: 15, industry_group: 1510}  # Materials
+  "Construction & Infrastructure": {sector: 20, industry_group: 2010}  # Industrials
+  "Consumer Durables": {sector: 25, industry_group: 2520}  # Cons. Discretionary
+  "Chemicals": {sector: 15, industry_group: 1510}  # Materials
+  "Telecommunications": {sector: 50, industry_group: 5010}  # Comm. Services
+  "Power": {sector: 55, industry_group: 5510}  # Utilities
+  "Real Estate": {sector: 60, industry_group: 6010}  # Real Estate
+  "Healthcare Services": {sector: 35, industry_group: 3510}  # Health Care
+  "Media & Entertainment": {sector: 50, industry_group: 5020}  # Comm. Services
+
+# Notes:
+# - Sector indices may not all be available on yfinance
+# - Use niftyindices.com for official index data
+# - Sector assignments can change; verify annually
+# - GICS mapping is approximate; NSE sectors don't map 1:1 to GICS

@@ -1,0 +1,18 @@
+# IN_NSE F&O Ban List
+# Stocks in F&O ban period cannot have new positions in derivatives
+# Source: NSE daily F&O ban list (updated daily)
+# Criteria: Open interest > 95% of market-wide position limit (MWPL)
+
+# Update frequency: Daily (published after market close)
+# Source: NSE website -> Market Data -> F&O -> Ban List
+# Format: List of symbols (without .NS suffix)
+
+fno_ban_list: []
+
+# Notes:
+# - Stocks enter ban when OI > 95% MWPL
+# - Exit ban when OI < 80% MWPL
+# - During ban: no new positions allowed, only offsetting/closing trades
+# - Can still trade in cash segment (unless also in ASM/GSM)
+# - Use as signal to avoid or reduce exposure in cash segment too
+# - VERIFY daily against NSE circular before trading
