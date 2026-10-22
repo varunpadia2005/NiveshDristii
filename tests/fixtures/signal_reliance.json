@@ -1,0 +1,18 @@
+{
+  "ticker": "RELIANCE",
+  "date": "2024-05-17",
+  "trend_score": 1.0,
+  "momentum_score": 0.5,
+  "volatility_score": -0.399,
+  "volume_score": 0.0,
+  "composite": 0.44,
+  "components": {
+    "trend": 1.0,
+    "momentum": 0.5,
+    "volatility": -0.399,
+    "volume": 0.0
+  },
+  "reasons": [
+    "Price above 200-day EMA"
+  ]
+}

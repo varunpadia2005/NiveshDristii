@@ -1,0 +1,21 @@
+Summary: {{ ticker }} shows a {{ "bullish" if signal.composite > 0.2 else "bearish" if signal.composite < -0.2 else "neutral" }} technical profile (composite: {{ "%.2f"|format(signal.composite) }}).
+{% if fundamentals.pe_ratio %}P/E: {{ "%.1f"|format(fundamentals.pe_ratio) }}.{% endif %}
+{% if fundamentals.roe %}ROE: {{ "%.1f"|format(fundamentals.roe * 100) }}%.{% endif %}
+{% if fundamentals.debt_to_equity %}D/E: {{ "%.2f"|format(fundamentals.debt_to_equity) }}.{% endif %}
+Market regime: {{ regime.market_state }} (VIX: {{ "%.1f"|format(regime.vix_level) }}).
+
+Bull Case:
+{% for item in bull_case %}- {{ item }}
+{% endfor %}
+
+Bear Case:
+{% for item in bear_case %}- {{ item }}
+{% endfor %}
+
+Risks:
+{% for item in risks %}- {{ item }}
+{% endfor %}
+
+Would Change View:
+{% for item in would_change_view %}- {{ item }}
+{% endfor %}

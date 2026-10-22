@@ -1,0 +1,15 @@
+{
+  "market_state": "bull",
+  "vix_level": 14.5,
+  "sector_quadrants": {
+    "IT": "Leading",
+    "Bank": "Weakening",
+    "Auto": "Improving",
+    "Pharma": "Lagging",
+    "FMCG": "Leading",
+    "Metal": "Improving",
+    "Energy": "Leading",
+    "Infra": "Weakening"
+  },
+  "state_probs": {}
+}
