@@ -1,0 +1,24 @@
+# Nifty 10 Universe (Small Default for Quick Testing)
+# Subset of Nifty 50 — large cap, liquid names
+
+name: "nifty10"
+market_id: "IN_NSE"
+description: "Top 10 Nifty 50 constituents by market cap (for quick testing)"
+source: "nifty10"
+last_updated: "2024-01-01"
+
+tickers:
+  - "RELIANCE"
+  - "TCS"
+  - "HDFCBANK"
+  - "ICICIBANK"
+  - "INFY"
+  - "HINDUNILVR"
+  - "ITC"
+  - "SBIN"
+  - "BHARTIARTL"
+  - "KOTAKBANK"
+
+# Notes:
+# - For quick testing and CI
+# - Not representative of full market

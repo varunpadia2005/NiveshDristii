@@ -1,0 +1,30 @@
+# Core Investment Mandate
+# Constraints and objectives — NO tickers here (tickers live in universes/)
+
+name: "core"
+description: "Core long-only equity mandate for Indian market (NSE)"
+market_id: "IN_NSE"
+
+# Position limits
+max_position_pct: 0.10      # Max 10% per position
+max_sector_pct: 0.30        # Max 30% per sector
+max_positions: 20           # Max 20 positions
+min_cash_pct: 0.02          # Min 2% cash
+
+# Benchmark & risk
+benchmark: "^NSEI"          # Nifty 50 (use TRI in backtest)
+risk_free_rate: 0.07        # 7% annual (approx 10Y G-sec)
+
+# Rebalancing
+rebalance_frequency: "monthly"  # "daily", "weekly", "monthly", "quarterly"
+
+# Sector filters (optional)
+allowed_sectors: null       # null = all sectors allowed
+excluded_sectors: null      # null = no sectors excluded
+
+# Custom constraints
+custom_constraints:
+  min_market_cap_crores: 1000      # Min 1000 Cr market cap
+  min_adv_crores: 5                # Min 5 Cr average daily volume
+  exclude_asm_gsm: true            # Exclude surveillance stocks
+  exclude_fno_ban: true            # Exclude F&O ban stocks

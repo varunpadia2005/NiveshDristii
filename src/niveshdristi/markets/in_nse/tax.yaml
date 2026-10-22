@@ -1,0 +1,42 @@
+# IN_NSE Capital Gains Tax Model
+# Rates marked # VERIFY must be confirmed against latest Finance Act
+# Current rates per Finance Act 2024 (effective April 1, 2024)
+
+enabled: true
+
+# Holding period threshold (days)
+short_term_threshold_days: 365  # 12 months # VERIFY
+
+# Short-term capital gains (STCG) - listed equity
+short_term_rate: 0.20  # 20% # VERIFY: Finance Act 2024
+
+# Long-term capital gains (LTCG) - listed equity
+long_term_rate: 0.125  # 12.5% # VERIFY: Finance Act 2024
+
+# Annual LTCG exemption (in INR)
+long_term_exemption: 125000  # 1.25 lakh # VERIFY: Finance Act 2024
+
+# Loss set-off and carry forward
+loss_setoff_years: 8  # # VERIFY: Income Tax Act
+
+# Loss set-off rules:
+# - STCL can offset STCG and LTCG
+# - LTCL can only offset LTCG
+# - Unutilized losses can be carried forward for 8 assessment years
+
+# Indexation benefit
+indexation_benefit: false  # Removed for listed equity # VERIFY: Finance Act 2024
+
+# Surcharge (applicable based on total income)
+# - 10% for income > 50L
+# - 15% for income > 1Cr
+# - 25% for income > 2Cr
+# - 37% for income > 5Cr
+# Health & Education Cess: 4% on tax + surcharge
+
+# Notes:
+# - Rates changed significantly in Finance Act 2024 (Budget July 2024)
+# - Previous STCG was 15%, LTCG was 10% with 1L exemption
+# - Verify against latest Finance Act before production use
+# - For NRI/FII: different rates may apply (DTAA benefits)
+# - Tax is on NET gains (gains minus losses) per financial year

@@ -1,0 +1,38 @@
+# IN_NSE Transaction Cost Model
+# ALL VALUES ARE FRACTIONS (e.g., 0.001 = 10 bps = 0.1%)
+# Rates marked # VERIFY must be confirmed against current SEBI/NSE circulars and Finance Act
+
+# Brokerage (per order, in INR)
+brokerage_per_order: 20.0  # # VERIFY: Typical discount broker; varies by broker
+
+# Securities Transaction Tax (STT)
+# Delivery: charged on both buy and sell
+stt_delivery_buy_pct: 0.001   # 0.1% # VERIFY
+stt_delivery_sell_pct: 0.001  # 0.1% # VERIFY
+# Intraday: only on sell side
+stt_intraday_sell_pct: 0.00025  # 0.025% # VERIFY
+
+# Exchange Transaction Charges (NSE)
+exchange_charges_pct: 0.0000345  # 0.00345% # VERIFY: NSE circular
+
+# SEBI Turnover Fee
+sebi_fees_pct: 0.000001  # 0.0001% # VERIFY: SEBI circular
+
+# Stamp Duty (on buy side, uniform across states)
+stamp_duty_buy_pct: 0.00015  # 0.015% # VERIFY: Indian Stamp Act / State rules
+
+# GST (on brokerage + exchange charges + SEBI fee)
+gst_pct: 0.18  # 18% # VERIFY: GST Council
+
+# Slippage / Market Impact (base, in basis points)
+slippage_bps: 5.0  # # VERIFY: Depends on liquidity, order size
+
+# Depository Participant (DP) Charge (per scrip on sell, in INR)
+dp_charge_per_scrip: 13.5  # # VERIFY: CDSL/NSDL; varies by DP
+
+# Notes:
+# - Rates change with Finance Acts, SEBI circulars, NSE circulars
+# - Brokerage varies by broker (full-service vs discount)
+# - STT rates differ for equity delivery, intraday, F&O
+# - Stamp duty is state-specific but currently uniform for exchange trades
+# - GST applies to brokerage + exchange charges + SEBI fee (not STT, stamp duty)

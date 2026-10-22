@@ -21,7 +21,11 @@ dependencies = [
     "lightgbm>=4.3",
     "optuna>=3.6",
     "numpy>=1.26",
-    "pandas>=2.2",  # for yfinance compatibility
+    "pandas>=2.2",
+    "plotly>=5.22",
+    "requests>=2.31",
+    "typer>=0.9",
+    "rich>=13.0",
 ]
 
 [project.optional-dependencies]
@@ -34,13 +38,6 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
 ]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.2"
-pytest-asyncio = "^0.23"
-ruff = "^0.5"
-black = "^24.4"
-mypy = "^1.10"
 
 [tool.ruff]
 line-length = 100

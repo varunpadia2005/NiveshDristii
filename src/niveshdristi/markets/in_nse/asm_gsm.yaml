@@ -1,0 +1,29 @@
+# IN_NSE ASM/GSM (Additional/General Surveillance Measures) Lists
+# Source: NSE circulars (updated periodically)
+# Stocks under surveillance have trading restrictions (price bands, margin, etc.)
+# Use this to exclude from universe or apply additional risk gates
+
+# ASM (Additional Surveillance Measures) - Stage-wise
+asm_stage_1: []  # Stage 1: Price band 5%, margin 100%
+asm_stage_2: []  # Stage 2: Price band 2.5%, margin 100%
+asm_stage_3: []  # Stage 3: Price band 2.5%, margin 100%, trade-for-trade
+asm_stage_4: []  # Stage 4: Price band 2.5%, margin 200%, trade-for-trade
+
+# GSM (Graded Surveillance Measures) - Stage-wise
+gsm_stage_0: []  # Stage 0: Price band 5%, margin 100%
+gsm_stage_1: []  # Stage 1: Price band 2.5%, margin 100%
+gsm_stage_2: []  # Stage 2: Price band 2.5%, margin 100%, trade-for-trade
+gsm_stage_3: []  # Stage 3: Price band 2.5%, margin 200%, trade-for-trade
+gsm_stage_4: []  # Stage 4: Price band 2.5%, margin 250%, trade-for-trade
+gsm_stage_5: []  # Stage 5: Price band 2.5%, margin 300%, trade-for-trade
+gsm_stage_6: []  # Stage 6: Price band 2.5%, margin 300%, trade-for-trade, once a week
+
+# Update frequency: Weekly (NSE updates every Monday)
+# Source: NSE website -> Market Data -> Surveillance -> ASM/GSM
+# Format: List of symbols (without .NS suffix)
+
+# Notes:
+# - These lists change frequently; automate refresh from NSE circulars
+# - Apply as hard exclusions in risk gates (no trading allowed)
+# - Or apply stricter position/ADV limits if trading is allowed
+# - VERIFY current lists against NSE before each rebalance

@@ -1,0 +1,45 @@
+# Signal-Based Strategy
+# Blends multiple alpha models with weighted averaging
+
+name: "signal_based"
+description: "Blend of TA ensemble, fundamental guardrails, sector rotation, and regime"
+market_id: "IN_NSE"
+
+# Models to blend (each with weight and optional params)
+models:
+  - model_id: "ta_ensemble"
+    weight: 0.40
+    params:
+      regime_aware: true
+
+  - model_id: "fundamental_guardrails"
+    weight: 0.25
+    params: {}
+
+  - model_id: "sector_rotation"
+    weight: 0.20
+    params: {}
+
+  - model_id: "price_range"
+    weight: 0.15
+    params: {}
+
+# Blending policy
+blend_policy: "weighted_avg"  # "weighted_avg", "equal_weight", "max_conviction"
+
+# Capital allocation (fraction of total capital)
+capital_slice: 1.0
+
+# Rebalancing (overrides mandate if specified)
+rebalance_frequency: "monthly"
+
+# Risk overrides (optional)
+risk_overrides:
+  max_position_pct: 0.08    # Stricter than mandate
+  max_sector_pct: 0.25
+  max_positions: 15
+
+# Notes:
+# - Model weights sum to 1.0
+# - Each model must be registered in the model registry
+# - Capital slice allows multi-strategy portfolios
