@@ -346,3 +346,42 @@ class TestSignalConvictionEdgeCases:
         )
         assert s.instrument.symbol == "RELIANCE"
         assert s.instrument.market_id == "IN_NSE"
+
+class TestAlphaModelSeamProtocol:
+    """ADDED in P3-S1: the (ctx, inputs) predict signature. Additive only —
+    the older one-argument stub above still satisfies the runtime protocol
+    check because runtime_checkable verifies method presence, not signatures."""
+
+    def test_model_with_inputs_signature_satisfies_protocol(self):
+        """A predict(ctx, inputs) implementation satisfies AlphaModel."""
+        from datetime import timezone
+
+        from niveshdristi.core.alpha import AsOfContext, ModelRegistryEntry
+        from niveshdristi.marketdata.context import build_model_inputs
+
+        class SeamModel:
+            model_id = "seam_model"
+
+            def predict(self, ctx, inputs):
+                assert inputs.as_of <= ctx.as_of.date()
+                return []
+
+            def registry_entry(self):
+                return ModelRegistryEntry(
+                    model_id=self.model_id,
+                    horizon_days=5,
+                    required_data=("prices",),
+                    pit_safe=True,
+                    data_status="live",
+                    description="Seam conformance stub",
+                )
+
+        model = SeamModel()
+        assert isinstance(model, AlphaModel)
+        ctx = AsOfContext(
+            as_of=datetime.now(timezone.utc),
+            universe=(),
+            market_id="IN_NSE",
+        )
+        inputs = build_model_inputs(as_of=ctx.as_of, prices={})
+        assert model.predict(ctx, inputs) == []
