@@ -264,3 +264,77 @@ class TestParquetCache:
         cache.prices("M", "X", *args, fetch, live_max_age=zero_age)
         cache.prices("M", "X", *args, fetch, live_max_age=zero_age)
         assert len(calls) == 3  # 1 as_of fetch + 2 live fetches
+
+
+class TestProviderChain:
+    """Ordered fallback + retry with fakes; typed error when all fail."""
+
+    @staticmethod
+    def _chain(prim, sec):
+        from niveshdristi.marketdata.chain import ChainedDataClient
+        from niveshdristi.marketdata.registry import ProviderRegistry
+
+        reg = ProviderRegistry()
+        reg.register_factory("prim", lambda: prim)
+        reg.register_factory("sec", lambda: sec)
+        reg.set_chain("M", "prices", ["prim", "sec"])
+        return ChainedDataClient(
+            reg, "M", "prices", retries=2, retry_delay=0, sleeper=lambda s: None
+        )
+
+    @staticmethod
+    def _provider(name, behavior):
+        """behavior: 'ok' | 'fail' | 'unsupported' | 'flaky' (fails once)."""
+
+        class P(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            @property
+            def provider_name(self):
+                return name
+
+            def prices(self, symbol, start, end, *, as_of=None):
+                self.calls += 1
+                if behavior == "ok" or (behavior == "flaky" and self.calls > 1):
+                    empty = pl.DataFrame({"date": [], "close": []})
+                    return PriceSeries(symbol=symbol, market_id="M", raw=empty, adjusted=empty)
+                if behavior == "unsupported":
+                    raise NotImplementedError("no prices here")
+                raise RuntimeError("boom")
+
+        return P()
+
+    def test_primary_fails_fallback_answers(self):
+        prim = self._provider("prim", "fail")
+        chained = self._chain(prim, self._provider("sec", "ok"))
+        ps = chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
+        assert ps.symbol == "X"
+        assert prim.calls == 2  # retried once before falling back
+
+    def test_primary_unsupported_fallback_answers(self):
+        chained = self._chain(self._provider("prim", "unsupported"), self._provider("sec", "ok"))
+        ps = chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
+        assert ps.symbol == "X"
+
+    def test_flaky_primary_recovered_by_retry(self):
+        prim = self._provider("prim", "flaky")
+        chained = self._chain(prim, self._provider("sec", "ok"))
+        chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
+        assert prim.calls == 2
+
+    def test_all_fail_typed_error_not_empty_frame(self):
+        from niveshdristi.core.errors import ProviderError
+
+        chained = self._chain(self._provider("prim", "fail"), self._provider("sec", "unsupported"))
+        with pytest.raises(ProviderError, match="all providers failed"):
+            chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
+
+    def test_empty_chain_is_typed_error(self):
+        from niveshdristi.core.errors import ProviderError
+        from niveshdristi.marketdata.chain import ChainedDataClient
+        from niveshdristi.marketdata.registry import ProviderRegistry
+
+        chained = ChainedDataClient(ProviderRegistry(), "M", "prices")
+        with pytest.raises(ProviderError, match="no provider chain"):
+            chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
