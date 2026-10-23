@@ -53,6 +53,9 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 
+[project.scripts]
+nd = "niveshdristi.cli.main:app"
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
