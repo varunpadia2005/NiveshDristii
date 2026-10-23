@@ -438,3 +438,81 @@ def _syn_frame_for_property() -> pl.DataFrame:
         }
     )
     return pl.concat([base, future])
+
+
+class TestPriceRangeModel:
+    """S4: evidence-only price ranges, known-answer on a hand-computable frame."""
+
+    @staticmethod
+    def _flat_frame(n: int = 30) -> pl.DataFrame:
+        """Constant OHLC: close=100, high=102, low=98 -> hand-computable."""
+        from datetime import timedelta
+
+        dates = [(date(2026, 9, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame(
+            {
+                "date": dates,
+                "high": [102.0] * n,
+                "low": [98.0] * n,
+                "close": [100.0] * n,
+            }
+        )
+
+    def test_known_answer(self):
+        """Hand-computed: TR = high-low = 102-98 = 4 every bar -> ATR = 4;
+        support=98, resistance=102; entry zone (100-2, 100+2); stop=100-2*4=92."""
+        from niveshdristi.alpha.quant.price_range import compute_price_evidence
+
+        ev = compute_price_evidence(self._flat_frame())
+        assert ev == {
+            "support": 98.0,
+            "resistance": 102.0,
+            "atr": 4.0,
+            "entry_zone_low": 98.0,
+            "entry_zone_high": 102.0,
+            "stop_zone": 92.0,
+        }
+
+    def test_signal_is_evidence_only(self):
+        """Conviction exactly 0.0; thesis says evidence-only; evidence present."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.price_range import PriceRangeModel
+        from niveshdristi.core.alpha import AsOfContext
+
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN002": self._flat_frame()})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = PriceRangeModel().predict(ctx, inputs)
+        assert len(signals) == 1
+        s = signals[0]
+        assert s.conviction == 0.0
+        assert "EVIDENCE-ONLY" in s.thesis
+        assert set(s.evidence) == {
+            "support", "resistance", "atr", "entry_zone_low", "entry_zone_high", "stop_zone",
+        }
+
+    def test_no_look_ahead_property(self):
+        """Appended wild future rows must not change the evidence at as_of=T."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.price_range import PriceRangeModel
+        from niveshdristi.core.alpha import AsOfContext
+
+        base = self._flat_frame(28)
+        future = pl.DataFrame(
+            {"date": ["2026-12-31"], "high": [9999.0], "low": [-9999.0], "close": [9999.0]}
+        )
+        full = pl.concat([base, future])
+
+        as_of = datetime(2026, 9, 28, 15, 0, tzinfo=UTC)
+        truncated = build_model_inputs(
+            as_of=as_of, prices={"SYN002": base.filter(pl.col("date") <= "2026-09-28")}
+        )
+        via_handle = build_from_full_frames(as_of=as_of, prices={"SYN002": full})
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        model = PriceRangeModel()
+        a = [(s.instrument.symbol, s.evidence) for s in model.predict(ctx, truncated)]
+        b = [(s.instrument.symbol, s.evidence) for s in model.predict(ctx, via_handle)]
+        assert a == b
