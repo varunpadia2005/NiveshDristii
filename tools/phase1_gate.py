@@ -17,15 +17,25 @@ def run(cmd: list[str], cwd: Path | None = None, capture: bool = True, env: dict
 
 
 def info(id_: str, detail: str) -> None:
-    print(f"INFO {id_} {detail}")
+    _print_safe(f"INFO {id_} {detail}")
 
 
 def pass_(id_: str, detail: str) -> None:
-    print(f"PASS {id_} {detail}")
+    _print_safe(f"PASS {id_} {detail}")
 
 
 def fail(id_: str, detail: str) -> None:
-    print(f"FAIL {id_} {detail}")
+    _print_safe(f"FAIL {id_} {detail}")
+
+
+def _print_safe(msg: str) -> None:
+    """Print message safely handling unicode on Windows."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        # Replace unencodable characters
+        safe_msg = msg.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
+        print(safe_msg)
 
 
 def main() -> int:
@@ -189,33 +199,41 @@ def main() -> int:
     
     # G06: pytest results
     print("\n=== G06: Pytest results ===")
-    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no", "-v"], cwd=repo_root)
-    if result.returncode in (0, 5):  # 5 = no tests collected
-        # Parse pytest output for counts
-        passed = failed = errors = xfailed = skipped = 0
-        for line in result.stdout.split("\n"):
-            if "passed" in line and "failed" in line and "error" in line:
-                # Typical format: "110 passed, 1 xfailed, 2 warnings in 4.30s"
-                parts = line.split()
-                for i, part in enumerate(parts):
-                    if part == "passed" and i > 0:
-                        passed = int(parts[i-1])
-                    elif part == "failed" and i > 0:
-                        failed = int(parts[i-1])
-                    elif part == "error" and i > 0:
-                        errors = int(parts[i-1])
-                    elif part == "xfailed" and i > 0:
-                        xfailed = int(parts[i-1])
-                    elif part == "skipped" and i > 0:
-                        skipped = int(parts[i-1])
-        
-        if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110:
-            pass_("G06", f"passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
-        else:
-            fail("G06", f"passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
-            fails += 1
+    # Use --collect-only to get exact counts
+    result = run([sys.executable, "-m", "pytest", "--collect-only", "-q"], cwd=repo_root)
+    if result.returncode == 0:
+        collected = len([l for l in result.stdout.split("\n") if "::test_" in l])
     else:
-        fail("G06", f"pytest exited with code {result.returncode}")
+        collected = 0
+    
+    # Run actual tests to get pass/fail/xfail counts
+    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no"], cwd=repo_root)
+    passed = failed = errors = xfailed = skipped = 0
+    for line in result.stdout.split("\n"):
+        if "passed" in line and ("failed" in line or "xfailed" in line or "skipped" in line or "warnings" in line):
+            # Typical format: "110 passed, 1 xfailed, 2 warnings in 4.30s"
+            import re
+            passed_m = re.search(r"(\d+)\s+passed", line)
+            failed_m = re.search(r"(\d+)\s+failed", line)
+            error_m = re.search(r"(\d+)\s+error", line)
+            xfailed_m = re.search(r"(\d+)\s+xfailed", line)
+            skipped_m = re.search(r"(\d+)\s+skipped", line)
+            if passed_m:
+                passed = int(passed_m.group(1))
+            if failed_m:
+                failed = int(failed_m.group(1))
+            if error_m:
+                errors = int(error_m.group(1))
+            if xfailed_m:
+                xfailed = int(xfailed_m.group(1))
+            if skipped_m:
+                skipped = int(skipped_m.group(1))
+            break
+    
+    if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110 and collected >= 111:
+        pass_("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
+    else:
+        fail("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
         fails += 1
     
     # G07: No utcnow warnings

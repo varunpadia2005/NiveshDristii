@@ -3,8 +3,8 @@ import hashlib
 import os
 import sys
 
-# Add current directory to path for niveshdristi import
-sys.path.insert(0, os.getcwd())
+# PYTHONPATH must point to the src directory of the tree being tested
+# Run from the tree root with: PYTHONPATH=src python tools/dump_config.py
 
 from niveshdristi.config import CFG
 
