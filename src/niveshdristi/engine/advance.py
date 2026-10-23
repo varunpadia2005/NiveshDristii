@@ -73,10 +73,3 @@ def mark_to_market(
     """Mark positions to market, return (total_equity, position_values)."""
     # TODO: Implement
     return fund_state.cash, {}
-
-
-if __name__ == "__main__":
-    # Quick smoke test
-    from niveshdristi.markets.in_nse.profile import IN_NSE_PROFILE
-    print(f"Market profile loaded: {IN_NSE_PROFILE.market_id}")
-    print(f"Cost model round-trip: {IN_NSE_PROFILE.cost_model.total_round_trip_bps():.1f} bps")

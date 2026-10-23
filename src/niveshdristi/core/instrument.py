@@ -14,8 +14,8 @@ class Instrument(BaseModel):
 
     Attributes:
         symbol: Human-readable symbol (e.g., "RELIANCE", "AAPL")
-        exchange: Exchange code (e.g., "NSE", "NYSE", "NASDAQ")
-        market_id: Canonical market identifier (e.g., "IN_NSE", "US_NYSE")
+        exchange: Exchange identifier (an ISO 10383 MIC code)
+        market_id: Canonical market identifier (key into the markets registry)
         currency: ISO 4217 currency code (e.g., "INR", "USD")
         isin: International Securities Identification Number (stable across symbol changes)
         sector: Sector classification (market-specific taxonomy)
