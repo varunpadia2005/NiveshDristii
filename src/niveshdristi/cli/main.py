@@ -1,10 +1,10 @@
 """`nd` CLI — Typer-based command line interface."""
 
 from __future__ import annotations
-from datetime import date
-from pathlib import Path
-from typing import Optional
+
 import json
+from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -12,15 +12,13 @@ from rich.table import Table
 
 from niveshdristi.config import (
     load_config,
-    get_config,
 )
 from niveshdristi.config_loader import (
-    load_mandate,
-    load_universe,
-    load_strategy,
     load_layered_config,
+    load_mandate,
+    load_strategy,
+    load_universe,
 )
-from niveshdristi.core.errors import ConfigurationError
 
 app = typer.Typer(
     name="nd",
@@ -38,7 +36,7 @@ console = Console()
 
 def _common_options(
     ctx: typer.Context,
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
+    config_file: Path | None = typer.Option(None, "--config", "-c", help="Config file path"),
     json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
 ):
     ctx.ensure_object(dict)
@@ -65,7 +63,7 @@ def _output(data: dict, json_output: bool) -> None:
 @app.callback()
 def main_callback(
     ctx: typer.Context,
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
+    config_file: Path | None = typer.Option(None, "--config", "-c", help="Config file path"),
     json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
 ):
     _common_options(ctx, config_file, json_output)
@@ -104,8 +102,8 @@ app.add_typer(data_app, name="data")
 def data_fetch(
     ctx: typer.Context,
     tickers: list[str] = typer.Argument(..., help="Tickers to fetch"),
-    start: Optional[str] = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: Optional[str] = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
@@ -138,7 +136,7 @@ app.add_typer(signals_app, name="signals")
 def signals_generate(
     ctx: typer.Context,
     ticker: str = typer.Argument(..., help="Ticker symbol"),
-    as_of: Optional[str] = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
+    as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
     """Generate signals for a ticker."""
     console.print(f"[yellow]Not implemented yet[/yellow]: generate signal for {ticker}")
@@ -159,8 +157,8 @@ def backtest_run(
     mandate: str = typer.Option("core", "--mandate", "-m", help="Mandate name"),
     universe: str = typer.Option("nifty50", "--universe", "-u", help="Universe name"),
     strategy: str = typer.Option("signal_based", "--strategy", "-s", help="Strategy name"),
-    start: Optional[str] = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: Optional[str] = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
 ):
     """Run backtest."""
     console.print(f"[yellow]Not implemented yet[/yellow]: backtest {mandate}/{universe}/{strategy}")
@@ -191,7 +189,7 @@ def paper_create(
 def paper_tick(
     ctx: typer.Context,
     fund_id: str = typer.Argument(..., help="Fund ID"),
-    as_of: Optional[str] = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
+    as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
     """Execute one paper trading tick."""
     console.print(f"[yellow]Not implemented yet[/yellow]: tick fund {fund_id}")
@@ -236,15 +234,13 @@ def paper_resume(
 def validate(ctx: typer.Context):
     """Run validation checks."""
     import warnings
-    import yaml
-    from niveshdristi.config import load_config, Settings
-    from niveshdristi.config_loader import (
-        load_mandate, load_universe, load_strategy,
-    )
-    from niveshdristi.markets import IN_NSE_PROFILE
-    from niveshdristi.core.errors import ConfigurationError
 
-    results = {"checks": []}
+    import yaml
+
+    from niveshdristi.config import Settings
+    from niveshdristi.markets import IN_NSE_PROFILE
+
+    results: dict[str, Any] = {"checks": []}
 
     # Check 0: Config file has no unknown keys
     config_file = ctx.obj.get("config_file")

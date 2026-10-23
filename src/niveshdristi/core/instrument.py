@@ -1,8 +1,8 @@
 """Instrument — market-agnostic security identifier."""
 
 from __future__ import annotations
+
 from datetime import date
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
@@ -31,12 +31,12 @@ class Instrument(BaseModel):
     exchange: str = Field(..., min_length=1)
     market_id: str = Field(..., min_length=1)
     currency: str = Field(..., min_length=1)
-    isin: Optional[str] = None
-    sector: Optional[str] = None
+    isin: str | None = None
+    sector: str | None = None
     lot_size: int = Field(default=1, ge=1)
     tick_size: float = Field(default=0.01, gt=0)
-    listed_date: Optional[date] = None
-    delisted_date: Optional[date] = None
+    listed_date: date | None = None
+    delisted_date: date | None = None
 
     @field_validator("symbol", "exchange", "market_id", "currency", mode="before")
     @classmethod

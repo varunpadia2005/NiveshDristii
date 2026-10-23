@@ -1,15 +1,12 @@
 """Engine `advance()` — single session step shared by backtest and paper."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
-from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.decision import Decision, Fill
-from niveshdristi.core.session import SessionRecord, PositionSnapshot
-from niveshdristi.core.errors import ExecutionError
-from niveshdristi.markets.registry import MarketProfile, get_registry
+from niveshdristi.core.session import SessionRecord
 
 
 @dataclass
@@ -18,7 +15,7 @@ class FundState:
     cash: float
     positions: dict[str, int]  # symbol -> shares
     session_id: int
-    last_session_date: Optional[date] = None
+    last_session_date: date | None = None
 
 
 def advance(

@@ -1,16 +1,16 @@
 """SessionRecord — immutable record of one trading session for ledger/audit."""
 
 from __future__ import annotations
-from datetime import date, datetime, timezone
-from typing import Optional
-from hashlib import sha256
+
 import json
+from datetime import UTC, date, datetime
+from hashlib import sha256
 
 from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
-from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.decision import Decision, Fill
+from niveshdristi.core.instrument import Instrument
 
 
 class PositionSnapshot(BaseModel):
@@ -51,12 +51,12 @@ class SessionRecord(BaseModel):
     previous_hash: str
     decisions: tuple[Decision, ...] = ()
     fills: tuple[Fill, ...] = ()
-    positions_after: tuple["PositionSnapshot", ...] = ()
+    positions_after: tuple[PositionSnapshot, ...] = ()
     cash_after: float = 0.0
     equity_after: float = 0.0
     risk_metrics: dict[str, float] = {}
     events: tuple[str, ...] = ()
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def compute_hash(self) -> str:
         """Compute SHA256 hash of this record (excluding the hash itself)."""
@@ -78,7 +78,7 @@ class SessionRecord(BaseModel):
         serialized = json.dumps(data, sort_keys=True, default=str)
         return sha256(serialized.encode()).hexdigest()
 
-    def verify_chain(self, previous_record: Optional["SessionRecord"]) -> bool:
+    def verify_chain(self, previous_record: SessionRecord | None) -> bool:
         """Verify this record correctly links to the previous one."""
         if previous_record is None:
             return self.previous_hash == "0" * 64
@@ -89,10 +89,10 @@ class SessionRecord(BaseModel):
         cls,
         initial_cash: float,
         session_date: date,
-        initial_positions: tuple["PositionSnapshot", ...] = (),
-    ) -> "SessionRecord":
+        initial_positions: tuple[PositionSnapshot, ...] = (),
+    ) -> SessionRecord:
         """Create the genesis (session 0) record."""
-        equity = initial_cash + sum(p.market_value for p in initial_positions)
+        initial_cash + sum(p.market_value for p in initial_positions)
         return cls(
             session_id=0,
             session_date=session_date,
@@ -106,7 +106,7 @@ class SessionRecord(BaseModel):
 def create_genesis_record(
     initial_cash: float,
     session_date: date,
-    initial_positions: tuple["PositionSnapshot", ...] = (),
-) -> "SessionRecord":
+    initial_positions: tuple[PositionSnapshot, ...] = (),
+) -> SessionRecord:
     """Create the genesis (session 0) record (module-level function for backwards compatibility)."""
     return SessionRecord.create_genesis_record(initial_cash, session_date, initial_positions)

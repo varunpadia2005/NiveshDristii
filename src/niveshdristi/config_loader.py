@@ -6,13 +6,14 @@ New-code scaffolding (not in Phase 0):
 """
 
 from __future__ import annotations
+
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING, get_args
-import os
+from typing import TYPE_CHECKING, Any
+
 import yaml
-from pydantic import Field, field_validator
-from pydantic.config import ConfigDict
+from pydantic import Field
 
 from niveshdristi.core.errors import ConfigurationError
 
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 # Config loader helpers
 # ============================================================
 
-def _find_config_file() -> Optional[Path]:
+def _find_config_file() -> Path | None:
     """Find config.yaml in standard locations."""
     candidates = [
         Path("config.yaml"),
@@ -55,9 +56,9 @@ def _merge_configs(base: dict, override: dict) -> dict:
 
 
 def load_layered_config(
-    user_config_path: Optional[str | Path] = None,
-    env: Optional[dict[str, str]] = None,
-    defaults_path: Optional[str | Path] = None,
+    user_config_path: str | Path | None = None,
+    env: dict[str, str] | None = None,
+    defaults_path: str | Path | None = None,
 ) -> dict:
     """
     Load configuration with precedence:
@@ -73,10 +74,10 @@ def load_layered_config(
     Returns:
         Merged configuration dict ready for Settings(**config)
     """
-    env = env or os.environ
+    dict(env or os.environ)
 
     # Layer 1: Defaults (lowest precedence)
-    raw = {}
+    raw: dict[str, Any] = {}
 
     # Layer 2: Packaged defaults
     defaults_path = Path(defaults_path) if defaults_path else Path("config.yaml")
@@ -99,20 +100,21 @@ def load_layered_config(
     # Layer 4: Environment overrides (highest)
     # Handled by pydantic_settings automatically via Settings model_config
     # But we also apply flat env vars here for backward compatibility
-    if "DATABASE_URL" in env:
-        raw.setdefault("data", {}).setdefault("cache", {})["pg_dsn"] = env["DATABASE_URL"]
-    if "OPENROUTER_API_KEY" in env:
-        raw.setdefault("genai", {})["api_key"] = env["OPENROUTER_API_KEY"]
+    dict(os.environ)
+    if "DATABASE_URL" in os.environ:
+        raw.setdefault("data", {}).setdefault("cache", {})["pg_dsn"] = os.environ["DATABASE_URL"]
+    if "OPENROUTER_API_KEY" in os.environ:
+        raw.setdefault("genai", {})["api_key"] = os.environ["OPENROUTER_API_KEY"]
 
     return raw
 
 
 def load_config(
-    user_config_path: Optional[str | Path] = None,
-    mandates_dir: Optional[str | Path] = None,
-    universes_dir: Optional[str | Path] = None,
-    strategies_dir: Optional[str | Path] = None,
-) -> "Settings":
+    user_config_path: str | Path | None = None,
+    mandates_dir: str | Path | None = None,
+    universes_dir: str | Path | None = None,
+    strategies_dir: str | Path | None = None,
+) -> Settings:
     """
     Load configuration with precedence:
     1. Environment variables (highest)
@@ -122,43 +124,6 @@ def load_config(
     raw = load_layered_config(user_config_path=user_config_path)
     from niveshdristi.config import Settings
     return Settings(**raw)
-
-
-def _find_config_file() -> Optional[Path]:
-    """Find config.yaml in standard locations."""
-    candidates = [
-        Path("config.yaml"),
-        Path("config/config.yaml"),
-        Path.home() / ".config" / "niveshdristi" / "config.yaml",
-        Path("/etc/niveshdristi/config.yaml"),
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
-
-def _merge_configs(base: dict, override: dict) -> dict:
-    """Deep merge two config dicts."""
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _merge_configs(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def _load_yaml(path: Path) -> dict:
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _validate_no_unknown_keys(data: dict, allowed_keys: set[str], context: str) -> None:
-    """Raise ConfigurationError if data contains keys not in allowed_keys."""
-    unknown = set(data.keys()) - allowed_keys
-    if unknown:
-        raise ConfigurationError(f"{context}: unknown keys: {sorted(unknown)}")
 
 
 # ============================================================
@@ -181,8 +146,8 @@ class Mandate:
     benchmark: str
     risk_free_rate: float
     rebalance_frequency: str
-    allowed_sectors: Optional[list[str]] = None
-    excluded_sectors: Optional[list[str]] = None
+    allowed_sectors: list[str] | None = None
+    excluded_sectors: list[str] | None = None
     custom_constraints: dict = Field(default_factory=dict)
 
     def __post_init__(self):
@@ -201,8 +166,8 @@ class Universe:
     tickers: list[str]
     description: str = ""
     source: str = "manual"  # "nifty50", "nifty100", "nifty500", "custom"
-    last_updated: Optional[str] = None
-    as_of: Optional[str] = None
+    last_updated: str | None = None
+    as_of: str | None = None
     approximate: bool = False
 
 
@@ -228,7 +193,7 @@ class Strategy:
             raise ValueError("Strategy must have at least one model")
 
 
-def load_mandate(name: str, mandates_dir: Optional[Path] = None) -> "Mandate":
+def load_mandate(name: str, mandates_dir: Path | None = None) -> Mandate:
     """Load mandate from YAML file."""
     base = mandates_dir or Path("mandates")
     path = base / f"{name}.yaml"
@@ -243,7 +208,7 @@ def load_mandate(name: str, mandates_dir: Optional[Path] = None) -> "Mandate":
     return Mandate(**data)
 
 
-def load_universe(name: str, universes_dir: Optional[Path] = None) -> "Universe":
+def load_universe(name: str, universes_dir: Path | None = None) -> Universe:
     """Load universe from YAML file."""
     base = universes_dir or Path("universes")
     path = base / f"{name}.yaml"
@@ -255,7 +220,7 @@ def load_universe(name: str, universes_dir: Optional[Path] = None) -> "Universe"
         "as_of", "approximate"
     }, f"Universe {name}")
     universe = Universe(**data)
-    
+
     # Warn if ticker count doesn't match nominal size
     nominal_counts = {
         "nifty10": 10,
@@ -271,11 +236,11 @@ def load_universe(name: str, universes_dir: Optional[Path] = None) -> "Universe"
             UserWarning,
             stacklevel=2
         )
-    
-    return Universe(**data)
+
+    return universe
 
 
-def load_strategy(name: str, strategies_dir: Optional[Path] = None) -> "Strategy":
+def load_strategy(name: str, strategies_dir: Path | None = None) -> Strategy:
     """Load strategy from YAML file."""
     base = strategies_dir or Path("strategies")
     path = base / f"{name}.yaml"
@@ -289,6 +254,8 @@ def load_strategy(name: str, strategies_dir: Optional[Path] = None) -> "Strategy
     return Strategy(**data)
 
 
-def _load_yaml(path: Path) -> dict:
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+def _validate_no_unknown_keys(data: dict, allowed_keys: set[str], context: str) -> None:
+    """Raise ConfigurationError if data contains keys not in allowed_keys."""
+    unknown = set(data.keys()) - allowed_keys
+    if unknown:
+        raise ConfigurationError(f"{context}: unknown keys: {sorted(unknown)}")

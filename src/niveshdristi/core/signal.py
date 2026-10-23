@@ -1,6 +1,7 @@
 """Signal — alpha model output with conviction, thesis, and evidence."""
 
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
@@ -67,5 +68,10 @@ class Signal(BaseModel):
         return self.conviction
 
     def __str__(self) -> str:
-        direction = "LONG" if self.conviction > 0 else "SHORT" if self.conviction < 0 else "NEUTRAL"
-        return f"Signal({self.instrument.symbol}, {direction}, conviction={self.conviction:.2f}, horizon={self.horizon_days}d)"
+        direction = (
+            "LONG" if self.conviction > 0 else "SHORT" if self.conviction < 0 else "NEUTRAL"
+        )
+        return (
+            f"Signal({self.instrument.symbol}, {direction}, "
+            f"conviction={self.conviction:.2f}, horizon={self.horizon_days}d)"
+        )

@@ -1,23 +1,22 @@
 """Decision, Order, Fill — portfolio construction and execution primitives."""
 
 from __future__ import annotations
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional
+
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.config import ConfigDict
 
 from niveshdristi.core.instrument import Instrument
-from niveshdristi.core.signal import Signal
 
 
-class OrderSide(str, Enum):
+class OrderSide(StrEnum):
     BUY = "buy"
     SELL = "sell"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     MARKET = "market"
     LIMIT = "limit"
 
@@ -50,15 +49,15 @@ class Decision(BaseModel):
     target_shares: int
     current_shares: int
     delta_shares: int
-    side: Optional[OrderSide] = None
+    side: OrderSide | None = None
     reason: str = Field(..., min_length=1)
     signal_contributions: dict[str, float] = {}
     risk_gate_clamp: bool = False
     clamp_reasons: tuple[str, ...] = ()
-    as_of: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    as_of: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
-    def _derive_side(self) -> "Decision":
+    def _derive_side(self) -> Decision:
         if self.delta_shares == 0:
             object.__setattr__(self, "side", None)
         elif self.delta_shares > 0 and self.side != OrderSide.BUY:
@@ -94,14 +93,14 @@ class Order(BaseModel):
     side: OrderSide
     quantity: int = Field(..., gt=0)
     order_type: OrderType = OrderType.MARKET
-    limit_price: Optional[float] = None
+    limit_price: float | None = None
     time_in_force: str = "day"
-    decision_id: Optional[str] = None
-    placed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    decision_id: str | None = None
+    placed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     client_order_id: str = ""
 
     @model_validator(mode="after")
-    def _validate_limit_price(self) -> "Order":
+    def _validate_limit_price(self) -> Order:
         if self.order_type == OrderType.LIMIT and self.limit_price is None:
             raise ValueError("limit_price required for LIMIT orders")
         if self.limit_price is not None and self.limit_price <= 0:
@@ -134,10 +133,10 @@ class Fill(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    order: "Order"
+    order: Order
     filled_quantity: int = Field(..., gt=0)
     fill_price: float = Field(..., gt=0)
-    fill_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    fill_time: datetime = Field(default_factory=lambda: datetime.now(UTC))
     commission: float = Field(default=0.0, ge=0)
     fees: float = Field(default=0.0, ge=0)
     slippage_bps: float = 0.0
@@ -145,7 +144,7 @@ class Fill(BaseModel):
     broker_fill_id: str = ""
 
     @model_validator(mode="after")
-    def _validate_fill(self) -> "Fill":
+    def _validate_fill(self) -> Fill:
         if self.filled_quantity > self.order.quantity:
             raise ValueError("filled_quantity cannot exceed order.quantity")
         return self

@@ -1,6 +1,7 @@
 """AlphaModel protocol — the contract for all signal generators."""
 
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -36,7 +37,8 @@ class ModelRegistryEntry(BaseModel):
     Attributes:
         model_id: Unique identifier
         horizon_days: Default signal horizon
-        required_data: List of data types needed (e.g., "prices", "fundamentals", "corporate_actions")
+        required_data: List of data types needed (e.g., "prices", "fundamentals",
+            "corporate_actions")
         pit_safe: True if model guarantees point-in-time safety (no look-ahead)
         data_status: "live" | "stub" | "unavailable" — for models awaiting data sources
         description: Human-readable description of the model's approach
@@ -65,7 +67,8 @@ class AlphaModel(Protocol):
 
     @property
     def model_id(self) -> str:
-        """Unique identifier for this model (e.g., 'ta_ensemble', 'momentum_cs', 'promoter_pledge')."""
+        """Unique identifier for this model (e.g., 'ta_ensemble',
+        'momentum_cs', 'promoter_pledge')."""
         ...
 
     def predict(self, ctx: AsOfContext) -> list[Signal]:
