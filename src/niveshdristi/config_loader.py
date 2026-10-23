@@ -214,6 +214,7 @@ class Strategy:
     blend_policy: str = "weighted_avg"  # "weighted_avg", "equal_weight", "max_conviction"
     capital_slice: float = 1.0  # Fraction of total capital
     rebalance_frequency: str = "monthly"
+    risk_overrides: dict = Field(default_factory=dict)
 
     def __post_init__(self):
         if self.rebalance_frequency not in _REBALANCE_FREQUENCIES:

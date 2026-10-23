@@ -18,6 +18,7 @@ from niveshdristi.config_loader import (
     load_mandate,
     load_universe,
     load_strategy,
+    load_layered_config,
 )
 from niveshdristi.core.errors import ConfigurationError
 
@@ -81,11 +82,14 @@ def config(
     validate: bool = typer.Option(False, "--validate", help="Validate config"),
 ):
     """Manage configuration."""
-    cfg = load_config(ctx.obj.get("config_file"))
+    config_file = ctx.obj.get("config_file")
+    raw = load_layered_config(user_config_path=config_file)
+    from niveshdristi.config import Settings
+    cfg = Settings(**raw)
     if show:
         _output(cfg.model_dump(), ctx.obj["json_output"])
     if validate:
-        console.print("[green]✓[/green] Config valid")
+        _output({"valid": True, "message": "Config schema valid"}, ctx.obj["json_output"])
 
 
 # ============================================================
@@ -229,21 +233,107 @@ def paper_resume(
 # ============================================================
 
 @app.command()
-def validate(
-    ctx: typer.Context,
-    market_literals: bool = typer.Option(True, "--market-literals/--no-market-literals", help="Check for market-specific literals in core/engine"),
-):
+def validate(ctx: typer.Context):
     """Run validation checks."""
+    from niveshdristi.config import load_config
+    from niveshdristi.config_loader import (
+        load_mandate, load_universe, load_strategy,
+    )
+    from niveshdristi.markets import IN_NSE_PROFILE
+    from niveshdristi.core.errors import ConfigurationError
+
     results = {"checks": []}
 
-    if market_literals:
-        from niveshdristi.validation.market_literals import scan_market_literals
-        issues = scan_market_literals()
+    # Check 1: IN_NSE profile loads and is valid
+    try:
+        profile = IN_NSE_PROFILE
+        assert profile.market_id == "IN_NSE"
+        assert profile.shorting_allowed is False
+        assert profile.settlement.days == 1
         results["checks"].append({
-            "name": "market_literals_in_core_engine",
-            "passed": len(issues) == 0,
-            "issues": issues,
+            "name": "in_nse_profile",
+            "passed": True,
+            "message": "IN_NSE profile loads and has expected values",
         })
+    except Exception as e:
+        results["checks"].append({
+            "name": "in_nse_profile",
+            "passed": False,
+            "error": str(e),
+        })
+
+    # Check 2: Example mandate
+    try:
+        mandate = load_mandate("core", mandates_dir=Path("mandates"))
+        assert mandate.name == "core"
+        assert mandate.market_id == "IN_NSE"
+        results["checks"].append({
+            "name": "mandate_core",
+            "passed": True,
+            "message": "Core mandate loads and validates",
+        })
+    except Exception as e:
+        results["checks"].append({
+            "name": "mandate_core",
+            "passed": False,
+            "error": str(e),
+        })
+
+    # Check 3: Example universes
+    for name in ["nifty10", "nifty50", "nifty100"]:
+        try:
+            universe = load_universe(name, universes_dir=Path("universes"))
+            assert universe.name == name
+            assert len(universe.tickers) > 0
+            results["checks"].append({
+                "name": f"universe_{name}",
+                "passed": True,
+                "message": f"Universe {name} loads with {len(universe.tickers)} tickers",
+            })
+        except Exception as e:
+            results["checks"].append({
+                "name": f"universe_{name}",
+                "passed": False,
+                "error": str(e),
+            })
+
+    # Check 4: Example strategy
+    try:
+        strategy = load_strategy("signal_based", strategies_dir=Path("strategies"))
+        assert strategy.name == "signal_based"
+        assert len(strategy.models) > 0
+        results["checks"].append({
+            "name": "strategy_signal_based",
+            "passed": True,
+            "message": f"Strategy signal_based loads with {len(strategy.models)} models",
+        })
+    except Exception as e:
+        results["checks"].append({
+            "name": "strategy_signal_based",
+            "passed": False,
+            "error": str(e),
+        })
+
+    # Check 5: Config schema validation
+    try:
+        load_config()
+        results["checks"].append({
+            "name": "config_schema",
+            "passed": True,
+            "message": "Config schema validates with defaults",
+        })
+    except Exception as e:
+        results["checks"].append({
+            "name": "config_schema",
+            "passed": False,
+            "error": str(e),
+        })
+
+    results["summary"] = {
+        "total": len(results["checks"]),
+        "passed": sum(1 for c in results["checks"] if c.get("passed")),
+        "failed": sum(1 for c in results["checks"] if not c.get("passed")),
+    }
 
     _output(results, ctx.obj["json_output"])
 
