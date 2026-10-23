@@ -1,7 +1,7 @@
 """SessionRecord — immutable record of one trading session for ledger/audit."""
 
 from __future__ import annotations
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 from hashlib import sha256
 import json
@@ -56,7 +56,7 @@ class SessionRecord(BaseModel):
     equity_after: float = 0.0
     risk_metrics: dict[str, float] = {}
     events: tuple[str, ...] = ()
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def compute_hash(self) -> str:
         """Compute SHA256 hash of this record (excluding the hash itself)."""

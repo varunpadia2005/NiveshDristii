@@ -1,7 +1,7 @@
 """Decision, Order, Fill — portfolio construction and execution primitives."""
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -55,7 +55,7 @@ class Decision(BaseModel):
     signal_contributions: dict[str, float] = {}
     risk_gate_clamp: bool = False
     clamp_reasons: tuple[str, ...] = ()
-    as_of: datetime = Field(default_factory=datetime.utcnow)
+    as_of: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def _derive_side(self) -> "Decision":
@@ -97,7 +97,7 @@ class Order(BaseModel):
     limit_price: Optional[float] = None
     time_in_force: str = "day"
     decision_id: Optional[str] = None
-    placed_at: datetime = Field(default_factory=datetime.utcnow)
+    placed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     client_order_id: str = ""
 
     @model_validator(mode="after")
@@ -137,7 +137,7 @@ class Fill(BaseModel):
     order: "Order"
     filled_quantity: int = Field(..., gt=0)
     fill_price: float = Field(..., gt=0)
-    fill_time: datetime = Field(default_factory=datetime.utcnow)
+    fill_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     commission: float = Field(default=0.0, ge=0)
     fees: float = Field(default=0.0, ge=0)
     slippage_bps: float = 0.0
