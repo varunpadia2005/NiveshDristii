@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -41,13 +43,19 @@ def _print_safe(msg: str) -> None:
 def main() -> int:
     repo_root = Path(__file__).parent.parent
     phase0_root = Path(sys.argv[sys.argv.index("--phase0") + 1]) if "--phase0" in sys.argv else None
-    
+
+    # Zero-write policy: child processes must not write bytecode inside either tree
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Marker for the end-of-gate zero-writes check (G18)
+    gate_marker = time.time()
+
     # Load .env file to ensure DATABASE_URL and other vars are in environment
     from dotenv import load_dotenv
     load_dotenv(repo_root / ".env")
-    
+
     fails = 0
-    
+    shared_pytest: subprocess.CompletedProcess | None = None
+
     # G01: git status --porcelain is empty, both before and after pytest run
     print("\n=== G01: Clean git status ===")
     result = run(["git", "status", "--porcelain"], cwd=repo_root)
@@ -56,10 +64,17 @@ def main() -> int:
         fails += 1
     else:
         pass_("G01", "git status clean before pytest")
-    
-    # Run pytest
-    run([sys.executable, "-m", "pytest", "-q"], cwd=repo_root, capture=False)
-    
+
+    # Single shared pytest run: G01 (bracket), G06 (counts), G07 (utcnow) all
+    # consume this one run. -p no:cacheprovider keeps .pytest_cache unwritten.
+    print("\n=== Shared pytest run ===")
+    info("PYTEST", "pytest runs: 1")
+    shared_pytest = run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider"], cwd=repo_root, capture=True
+    )
+    tail = [l for l in shared_pytest.stdout.splitlines() if l.strip()][-1:]
+    info("PYTEST", tail[0] if tail else f"exit={shared_pytest.returncode}")
+
     result = run(["git", "status", "--porcelain"], cwd=repo_root)
     if result.stdout.strip():
         fail("G01", f"git status not clean after pytest:\n{result.stdout}")
@@ -201,22 +216,17 @@ def main() -> int:
     else:
         info("G05", "Skipped (no phase0 path)")
     
-    # G06: pytest results
+    # G06: pytest results (derived from the single shared run)
     print("\n=== G06: Pytest results ===")
-    # Use --collect-only to get exact counts
-    result = run([sys.executable, "-m", "pytest", "--collect-only", "-q"], cwd=repo_root)
-    if result.returncode == 0:
-        collected = len([l for l in result.stdout.split("\n") if "::test_" in l])
-    else:
-        collected = 0
-    
-    # Run actual tests to get pass/fail/xfail counts
-    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no"], cwd=repo_root)
+    assert shared_pytest is not None
+    import re
+    collected_m = re.search(r"collected (\d+) items?", shared_pytest.stdout)
+    collected = int(collected_m.group(1)) if collected_m else 0
+
     passed = failed = errors = xfailed = skipped = 0
-    for line in result.stdout.split("\n"):
+    for line in shared_pytest.stdout.split("\n"):
         if "passed" in line and ("failed" in line or "xfailed" in line or "skipped" in line or "warnings" in line):
             # Typical format: "110 passed, 1 xfailed, 2 warnings in 4.30s"
-            import re
             passed_m = re.search(r"(\d+)\s+passed", line)
             failed_m = re.search(r"(\d+)\s+failed", line)
             error_m = re.search(r"(\d+)\s+error", line)
@@ -233,18 +243,17 @@ def main() -> int:
             if skipped_m:
                 skipped = int(skipped_m.group(1))
             break
-    
+
     if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110 and collected >= 111:
         pass_("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
     else:
         fail("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
         fails += 1
-    
-    # G07: No utcnow warnings
+
+    # G07: No utcnow warnings (derived from the single shared run)
     print("\n=== G07: No utcnow warnings ===")
-    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no", "-W", "default"], cwd=repo_root)
     warnings = []
-    for line in result.stderr.split("\n"):
+    for line in (shared_pytest.stdout + "\n" + shared_pytest.stderr).split("\n"):
         if "utcnow" in line.lower():
             warnings.append(line.strip())
     if warnings:
@@ -337,6 +346,8 @@ def main() -> int:
     
     # G11: Typed CFG
     print("\n=== G11: Typed CFG ===")
+    # mypy cache goes to a fresh temp dir outside the repo (removed after G14)
+    mypy_cache_dir = tempfile.mkdtemp(prefix="nd_gate_mypy_")
     # Use a file-based check since mypy needs the full module context
     # Run with PYTHONPATH=src to use source tree instead of installed package
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -345,7 +356,7 @@ def main() -> int:
     try:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(repo_root / "src")
-        result = run([sys.executable, "-m", "mypy", temp_file], cwd=repo_root, env=env)
+        result = run([sys.executable, "-m", "mypy", temp_file, "--cache-dir", mypy_cache_dir], cwd=repo_root, env=env)
         if "attr-defined" in result.stdout and "does_not_exist" in result.stdout:
             pass_("G11", "Typed CFG works (attr-defined error for does_not_exist)")
         else:
@@ -401,9 +412,9 @@ def main() -> int:
     
     # G13: ruff check on new-code paths = 0 errors
     print("\n=== G13: Ruff on new code ===")
-    result = run([sys.executable, "-m", "ruff", "check", 
-                  "src/niveshdristi/core", "src/niveshdristi/markets", 
-                  "src/niveshdristi/cli", "src/niveshdristi/engine", 
+    result = run([sys.executable, "-m", "ruff", "check", "--no-cache",
+                  "src/niveshdristi/core", "src/niveshdristi/markets",
+                  "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/config_loader.py"], cwd=repo_root)
     if result.returncode == 0:
         pass_("G13", "Ruff clean on new code paths")
@@ -413,10 +424,11 @@ def main() -> int:
     
     # G14: mypy on new code paths = 0 errors, #type:ignore <= 10
     print("\n=== G14: Mypy on new code ===")
-    result = run([sys.executable, "-m", "mypy", 
-                  "src/niveshdristi/core", "src/niveshdristi/markets", 
-                  "src/niveshdristi/cli", "src/niveshdristi/engine", 
-                  "src/niveshdristi/config_loader.py", "--ignore-missing-imports"], cwd=repo_root)
+    result = run([sys.executable, "-m", "mypy",
+                  "src/niveshdristi/core", "src/niveshdristi/markets",
+                  "src/niveshdristi/cli", "src/niveshdristi/engine",
+                  "src/niveshdristi/config_loader.py", "--ignore-missing-imports",
+                  "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
         # Count type: ignore comments
         ignore_count = 0
@@ -468,7 +480,34 @@ def main() -> int:
     import mypy
     mypy_ver = getattr(mypy, "__version__", "unknown")
     info("G17", f"pytest={pytest.__version__}, mypy={mypy_ver}")
-    
+
+    # Remove the mypy temp cache dir (created before G11, used by G11+G14)
+    shutil.rmtree(mypy_cache_dir, ignore_errors=True)
+
+    # G18: Zero writes inside the repo since gate start
+    print("\n=== G18: Zero writes inside repo ===")
+    new_files = []
+    for f in repo_root.rglob("*"):
+        parts = f.parts
+        if ".git" in parts:
+            continue
+        if any(p.startswith(".venv") for p in parts):
+            continue
+        if not f.is_file():
+            continue
+        try:
+            if f.stat().st_mtime > gate_marker:
+                new_files.append(f)
+        except OSError:
+            continue
+    if new_files:
+        fail("G18", f"{len(new_files)} file(s) written inside the repo after gate start:")
+        for f in new_files[:20]:
+            info("G18", f"  {f.relative_to(repo_root)}")
+        fails += 1
+    else:
+        pass_("G18", "No files written inside the repo (excl. .git, .venv*) after gate start")
+
     print(f"\n{'='*50}")
     if fails == 0:
         print("GATE: PASS")
