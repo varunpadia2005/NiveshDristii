@@ -29,7 +29,7 @@ class Signal(BaseModel):
         metadata: Additional model-specific data (not validated for grounding)
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     instrument: Instrument
     as_of: datetime

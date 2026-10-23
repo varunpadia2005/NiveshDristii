@@ -44,7 +44,7 @@ class SessionRecord(BaseModel):
         created_at: Wall-clock timestamp when record was created
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     session_id: int
     session_date: date

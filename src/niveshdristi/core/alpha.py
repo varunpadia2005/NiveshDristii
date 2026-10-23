@@ -22,7 +22,7 @@ class AsOfContext(BaseModel):
         market_id: Market identifier (e.g., "IN_NSE") for market-specific logic.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     as_of: datetime
     universe: tuple[Instrument, ...]
