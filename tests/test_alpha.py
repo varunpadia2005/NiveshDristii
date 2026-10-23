@@ -234,3 +234,144 @@ class TestModelRegistry:
         fake_entries = [self._entry("fake_pack_model", data_status="stub")]
         reg.register_all(fake_entries)
         assert reg.entry_for("fake_pack_model").data_status == "stub"
+
+
+class TestTaEnsemblePort:
+    """PORT equality vs legacy maths (CFG pinned), regime flag, PIT property."""
+
+    @staticmethod
+    def _syn_frame(n: int = 300) -> pl.DataFrame:
+        """Synthetic frame (neutral SYN001, generated in code) with the
+        adj_* columns the legacy indicators consume."""
+        import math
+        from datetime import timedelta
+
+        closes = [100.0 + 20.0 * math.sin(i / 25.0) + i * 0.05 for i in range(n)]
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame(
+            {
+                "date": dates,
+                "adj_close": closes,
+                "adj_high": [c + 1.5 for c in closes],
+                "adj_low": [c - 1.5 for c in closes],
+                "volume": [1_000_000 + (i % 7) * 10_000 for i in range(n)],
+            }
+        )
+
+    def test_pinned_cfg_values(self):
+        """Legacy reads CFG at CALL time — pin the values the equality relies on."""
+        from niveshdristi.config import CFG
+
+        assert CFG.indicators.ema_periods == [20, 50, 200]
+        assert CFG.indicators.rsi_period == 14
+        assert CFG.signals.weights == {
+            "trend": 0.35, "momentum": 0.30, "volatility": 0.15, "volume": 0.20,
+        }
+
+    def test_wrapper_equals_direct_legacy_call(self):
+        """PORT EQUALITY: wrapper's legacy path == direct legacy invocation."""
+        from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+        from niveshdristi.indicators.technical import compute_all_indicators
+        from niveshdristi.signals.engine import generate_signal_report
+
+        df = self._syn_frame()
+        direct = generate_signal_report("SYN001", compute_all_indicators(df))
+        wrapped = TaEnsemble().legacy_report("SYN001", df)
+        assert wrapped.composite == direct.composite
+        assert wrapped.trend_score == direct.trend_score
+        assert wrapped.momentum_score == direct.momentum_score
+        assert wrapped.volatility_score == direct.volatility_score
+        assert wrapped.volume_score == direct.volume_score
+
+    def _predict_convictions(self, regime_aware: bool) -> list[float]:
+
+        from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+        from niveshdristi.core.alpha import AsOfContext
+
+        df = self._syn_frame()
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN001": df})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC),
+            universe=(),
+            market_id="TEST_MARKET",
+        )
+        return [s.conviction for s in TaEnsemble(regime_aware=regime_aware).predict(ctx, inputs)]
+
+    def test_default_off_is_legacy_composite(self):
+        """regime_aware=False: conviction == legacy composite*2-1 exactly."""
+        from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+
+        df = self._syn_frame()
+        legacy = TaEnsemble().legacy_report("SYN001", df)
+        convictions = self._predict_convictions(regime_aware=False)
+        assert convictions == [round(legacy.composite * 2.0 - 1.0, 6)]
+
+    def test_regime_aware_on_changes_blend(self):
+        """regime_aware=True: NEW re-weighting applies to the same components."""
+        from niveshdristi.alpha.quant.ta_ensemble import REGIME_WEIGHTS, TaEnsemble
+
+        df = self._syn_frame()
+        rep = TaEnsemble().legacy_report("SYN001", df)
+        scores = {
+            "trend": rep.trend_score,
+            "momentum": rep.momentum_score,
+            "volatility": rep.volatility_score,
+            "volume": rep.volume_score,
+        }
+        w = REGIME_WEIGHTS["choppy"]
+        expected = round(round(sum(w[k] * scores[k] for k in scores), 3) * 2.0 - 1.0, 6)
+        assert self._predict_convictions(regime_aware=True) == [expected]
+
+    def test_ta_ensemble_no_look_ahead(self):
+        """The ported model passes the no-look-ahead property test."""
+
+        from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+        from niveshdristi.core.alpha import AsOfContext
+
+        model = TaEnsemble()
+
+        class _Adapter:
+            """Adapts predict to the float-comparison helper."""
+
+            model_id = "ta_ensemble_adapter"
+
+            def predict(self, ctx, inputs):
+                ctx_obj = AsOfContext(
+                    as_of=datetime(2026, 10, 23, 15, 30, tzinfo=UTC),
+                    universe=(),
+                    market_id="TEST_MARKET",
+                )
+                return [s.conviction for s in model.predict(ctx_obj, inputs)]
+
+        # synthetic 30-row frame shaped for the model
+        frame = _syn_frame_for_property()
+        globals()["_SYN_PROP_FRAME"] = frame
+        try:
+            as_of = datetime(2026, 10, 23, 15, 30, tzinfo=UTC)
+            cutoff = "2026-10-23"
+            truncated = build_model_inputs(
+                as_of=as_of,
+                prices={"SYN001": frame.filter(pl.col("date") <= cutoff)},
+            )
+            via_handle = build_from_full_frames(as_of=as_of, prices={"SYN001": frame})
+            adapter = _Adapter()
+            a = adapter.predict({}, truncated)
+            b = adapter.predict({}, via_handle)
+            assert a == b
+        finally:
+            globals().pop("_SYN_PROP_FRAME", None)
+
+
+def _syn_frame_for_property() -> pl.DataFrame:
+    """300-row synthetic frame ending with two wild future rows past 2026-10-23."""
+    base = TestTaEnsemblePort._syn_frame(295)
+    future = pl.DataFrame(
+        {
+            "date": ["2026-10-26", "2026-10-27"],
+            "adj_close": [9999.0, -9999.0],
+            "adj_high": [9999.5, -9998.5],
+            "adj_low": [9998.5, -9999.5],
+            "volume": [1, 1],
+        }
+    )
+    return pl.concat([base, future])
