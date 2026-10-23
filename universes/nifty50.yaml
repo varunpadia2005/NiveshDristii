@@ -7,6 +7,8 @@ market_id: "IN_NSE"
 description: "Nifty 50 index constituents (as of 2024)"
 source: "nifty50"
 last_updated: "2024-01-01"
+as_of: "2024-01-01"
+approximate: true
 
 tickers:
   - "RELIANCE"
