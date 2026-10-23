@@ -6,7 +6,7 @@ network, (2) chains are ordered and config-driven, and (3) unknown kinds or
 providers fail loudly.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -203,3 +203,64 @@ class TestBhavcopyFileParser:
         assert d["DELIV_PER"].to_list() == [40.0]
         with pytest.raises(ProviderError, match="not found"):
             store.load_day(date(2026, 10, 22))
+
+
+class TestParquetCache:
+    """Parquet cache: deterministic keys, hit on second call, staleness, as_of."""
+
+    @staticmethod
+    def _df(n: int = 2) -> pl.DataFrame:
+        dates = [f"2026-10-2{i}" for i in range(n)]
+        return pl.DataFrame({"date": dates, "close": [100.0 + i for i in range(n)]})
+
+    def test_second_identical_call_hits_cache(self, tmp_path):
+        from niveshdristi.marketdata.cache import ParquetCache, cache_key
+
+        cache = ParquetCache(tmp_path)
+        calls = []
+
+        def fetch():
+            calls.append(1)
+            return self._df()
+
+        key = cache_key("prices", "M", "X", date(2026, 1, 1), date(2026, 1, 31))
+        r1 = cache.get_or_fetch(key, fetch)
+        r2 = cache.get_or_fetch(key, fetch)
+        assert r1.equals(r2)
+        assert len(calls) == 1  # second call was a cache hit
+        assert list(tmp_path.glob("*.parquet"))  # written under tmp_path only
+
+    def test_as_of_changes_the_key(self, tmp_path):
+        from niveshdristi.marketdata.cache import ParquetCache, cache_key
+
+        base = (date(2026, 1, 1), date(2026, 1, 31))
+        k1 = cache_key("prices", "M", "X", *base, as_of=date(2026, 2, 1))
+        k2 = cache_key("prices", "M", "X", *base, as_of=date(2026, 3, 1))
+        assert k1 != k2
+        cache = ParquetCache(tmp_path)
+        assert cache.get(k1) is None
+        assert cache.get(k2) is None
+
+    def test_as_of_pinned_entries_never_stale_live_entries_do(self, tmp_path):
+        """The immutability rule is applied by prices(): as_of-pinned reads
+        ignore live_max_age; live reads honour it."""
+        from niveshdristi.marketdata.cache import ParquetCache
+
+        cache = ParquetCache(tmp_path)
+        zero_age = timedelta(0)
+        calls = []
+
+        def fetch():
+            calls.append(1)
+            return self._df()
+
+        args = (date(2026, 1, 1), date(2026, 1, 31))
+        # as_of-pinned: second read is a hit even with live_max_age=0
+        r1 = cache.prices("M", "X", *args, fetch, as_of=date(2026, 2, 1), live_max_age=zero_age)
+        r2 = cache.prices("M", "X", *args, fetch, as_of=date(2026, 2, 1), live_max_age=zero_age)
+        assert r1.equals(r2)
+        assert len(calls) == 1
+        # live: max_age=0 means always stale -> fetch again
+        cache.prices("M", "X", *args, fetch, live_max_age=zero_age)
+        cache.prices("M", "X", *args, fetch, live_max_age=zero_age)
+        assert len(calls) == 3  # 1 as_of fetch + 2 live fetches
