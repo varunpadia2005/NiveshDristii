@@ -404,3 +404,72 @@ class TestDataQuality:
         report = check_prices(pl.DataFrame({"date": []}), "TEST")
         assert report.count("schema") == 1
         assert report.has_critical
+
+
+class TestPITStore:
+    """Point-in-time discipline: announced tomorrow -> invisible today."""
+
+    @staticmethod
+    def _store():
+        from niveshdristi.marketdata.pit import PITRecord, PITStore
+
+        store = PITStore()
+        store.put(
+            PITRecord(
+                symbol="TEST", metric="roe", value=0.18,
+                period_end=date(2026, 6, 30), announced_at=date(2026, 7, 20),
+                source="fixture",
+            )
+        )
+        store.put(
+            PITRecord(
+                symbol="TEST", metric="roe", value=0.21,
+                period_end=date(2026, 9, 30), announced_at=date(2026, 10, 25),
+                source="fixture",
+            )
+        )
+        return store
+
+    def test_result_announced_tomorrow_is_invisible_today(self):
+        """THE frozen PIT test (CHANGES C4 done-when)."""
+
+        store = self._store()
+        today = date(2026, 10, 24)
+        tomorrow = date(2026, 10, 25)
+        # Today: only the July-announced value is visible
+        rows = store.query("TEST", as_of=today, metric="roe")
+        assert [r.value for r in rows] == [0.18]
+        # Tomorrow: the new result appears
+        rows = store.query("TEST", as_of=tomorrow, metric="roe")
+        assert [r.value for r in rows] == [0.18, 0.21]
+
+    def test_latest_respects_as_of(self):
+
+        store = self._store()
+        assert store.latest("TEST", "roe", date(2026, 10, 24)).value == 0.18
+        assert store.latest("TEST", "roe", date(2026, 10, 25)).value == 0.21
+
+    def test_conservative_lag_flags_approximate(self):
+        from niveshdristi.marketdata.pit import PITRecord, PITStore
+
+        store = PITStore()
+        base = PITRecord(
+            symbol="TEST", metric="pat", value=100.0,
+            period_end=date(2026, 6, 30), announced_at=date(2026, 6, 30),  # unknown, placeholder
+            source="period_end_only",
+        )
+        store.put_with_lag(base, lag_days=60)
+        r = store.latest("TEST", "pat", date(2026, 10, 24))
+        assert r.announced_at == date(2026, 8, 29)  # period_end + 60d
+        assert r.approximate is True
+        # Before the conservative date: invisible even though period ended
+        assert store.latest("TEST", "pat", date(2026, 7, 1)) is None
+
+    def test_records_carry_required_fields(self):
+
+        store = self._store()
+        r = store.latest("TEST", "roe", date(2026, 12, 31))
+        assert (r.period_end, r.announced_at, r.source) == (
+            date(2026, 9, 30), date(2026, 10, 25), "fixture",
+        )
+        assert r.approximate is False  # off by default
