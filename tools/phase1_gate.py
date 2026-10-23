@@ -109,10 +109,10 @@ def main() -> int:
     # G04: Config equality - MD5 match
     print("\n=== G04: Config equality ===")
     if phase0_root:
-        # Run dump_config on phase0 using current repo's tool with phase0 src
+        # Run dump_config on phase0 using current repo's tool with phase0 src, cwd=phase0_root
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
-        result0 = run([sys.executable, "tools/dump_config.py"], cwd=repo_root, capture=True, env=env0)
+        result0 = run([sys.executable, "tools/dump_config.py"], cwd=phase0_root, capture=True, env=env0)
         
         # Run dump_config on current
         env1 = os.environ.copy()
@@ -298,11 +298,17 @@ def main() -> int:
     # Test on temp tree with forbidden patterns
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        # Create the scan directory structure
+        core_dir = tmp_path / "src/niveshdristi/core"
+        core_dir.mkdir(parents=True)
+        engine_dir = tmp_path / "src/niveshdristi/engine"
+        engine_dir.mkdir(parents=True)
         test_content = "NSE\nRELIANCE.NS\n\u20b9\nKolkata\nIST"
-        (tmp_path / "test.txt").write_text(test_content, encoding="utf-8")
+        (core_dir / "test.txt").write_text(test_content, encoding="utf-8")
         issues = scan_market_literals(tmp_path)
         patterns_found = set(i["pattern"] for i in issues)
-        expected = {"NSE", r"RELIANCE\.NS", "\u20b9", "Kolkata", r"\bIST\b"}
+        # These are the actual FORBIDDEN_PATTERNS that should match
+        expected = {r"\bNSE\b", r"\.NS\b", r"₹", r"Kolkata", r"\bIST\b"}
         if expected.issubset(patterns_found):
             pass_("G10", f"Temp tree reports all 5 patterns: {sorted(patterns_found)}")
         else:
@@ -311,13 +317,19 @@ def main() -> int:
     
     # G11: Typed CFG
     print("\n=== G11: Typed CFG ===")
-    code = "from niveshdristi.config import CFG; CFG.backtest.does_not_exist"
-    result = run([sys.executable, "-m", "mypy", "-c", code], cwd=repo_root)
-    if "attr-defined" in result.stdout and "does_not_exist" in result.stdout:
-        pass_("G11", "Typed CFG works (attr-defined error for does_not_exist)")
-    else:
-        fail("G11", f"Typed CFG check failed: {result.stdout}")
-        fails += 1
+    # Use a file-based check since mypy needs the full module context
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write("from niveshdristi.config import CFG\nCFG.backtest.does_not_exist\n")
+        temp_file = f.name
+    try:
+        result = run([sys.executable, "-m", "mypy", temp_file, "--ignore-missing-imports"], cwd=repo_root)
+        if "attr-defined" in result.stdout and "does_not_exist" in result.stdout:
+            pass_("G11", "Typed CFG works (attr-defined error for does_not_exist)")
+        else:
+            fail("G11", f"Typed CFG check failed: {result.stdout}")
+            fails += 1
+    finally:
+        Path(temp_file).unlink(missing_ok=True)
     
     # G12: CLI via python -m niveshdristi.cli.main
     print("\n=== G12: CLI validation ===")
@@ -327,14 +339,24 @@ def main() -> int:
     info("G12", f"nd command on PATH: {nd_on_path}")
     
     # --json validate exits 0
-    result = run([sys.executable, "-m", "niveshdristi.cli.main", "--json", "validate"], cwd=repo_root)
+    result = run([sys.executable, "-m", "niveshdristi.cli.main", "--json", "validate"], cwd=repo_root, capture=True)
     if result.returncode == 0:
         try:
-            data = json.loads(result.stdout.strip().split("\n")[-1])
-            if data.get("summary", {}).get("failed", -1) == 0:
-                pass_("G12", "--json validate exits 0 with summary.failed == 0")
+            # Extract JSON from stdout (may have warnings mixed in)
+            stdout = result.stdout
+            # Find the first { and last } to extract JSON
+            start = stdout.find("{")
+            end = stdout.rfind("}") + 1
+            if start >= 0 and end > start:
+                json_str = stdout[start:end]
+                data = json.loads(json_str)
+                if data.get("summary", {}).get("failed", -1) == 0:
+                    pass_("G12", "--json validate exits 0 with summary.failed == 0")
+                else:
+                    fail("G12", f"summary.failed != 0: {data}")
+                    fails += 1
             else:
-                fail("G12", f"summary.failed != 0: {data}")
+                fail("G12", f"No JSON output found: {stdout}")
                 fails += 1
         except Exception as e:
             fail("G12", f"Failed to parse JSON output: {e}")
@@ -421,7 +443,8 @@ def main() -> int:
     info("G17", f"python={sys.version.split()[0]}, executable={sys.executable}")
     import pytest
     import mypy
-    info("G17", f"pytest={pytest.__version__}, mypy={mypy.__version__}")
+    mypy_ver = getattr(mypy, "__version__", "unknown")
+    info("G17", f"pytest={pytest.__version__}, mypy={mypy_ver}")
     
     print(f"\n{'='*50}")
     if fails == 0:
