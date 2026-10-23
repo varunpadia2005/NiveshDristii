@@ -140,3 +140,11 @@ Earlier figures (143, 96, 100) used different flags (`--ignore-missing-imports`,
 - `CFG = get_config()` returns typed `Settings` instance (like Phase 0)
 - `BacktestConfig` keeps `costs: dict[str, float]` and `timing: dict[str, int]` as dicts (no CostModel/TimingModel)
 - New-code scaffolding moved to `src/niveshdristi/config_loader.py`
+
+### Phase 1 Config Additions (New Code Only)
+- **Layered config loader** (`src/niveshdristi/config_loader.py`): `load_layered_config()` with precedence env > user config file > packaged defaults. Accepts injected env and paths for testability. Uses `encoding="utf-8"` everywhere.
+- **Strategy.rebalance_frequency**: Added as optional field with default `"monthly"` and validated allowed set `{"daily","weekly","monthly","quarterly","annual"}`.
+- **Mandate/Universe/Strategy loaders**: Reject unknown keys with clear `ConfigurationError`.
+- **Holidays**: Added `years_covered: [2024, 2025]` to `holidays_in.yaml` (no invented dates).
+- **Sectors**: Verified 15 sectors in `sectors.yaml` with required fields, no duplicates.
+- **Encoding**: All `open()`, `read_text()`, `write_text()` calls in new code use `encoding="utf-8"`.

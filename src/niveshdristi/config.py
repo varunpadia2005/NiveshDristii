@@ -140,7 +140,7 @@ class Settings(BaseSettings):
 
 
 def load_config(path: str = "config.yaml") -> Settings:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     
     # Merge with env overrides for specific keys
