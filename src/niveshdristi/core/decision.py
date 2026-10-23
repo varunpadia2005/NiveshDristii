@@ -132,7 +132,7 @@ class Fill(BaseModel):
         broker_fill_id: Broker's fill ID
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     order: "Order"
     filled_quantity: int = Field(..., gt=0)
