@@ -235,7 +235,9 @@ def paper_resume(
 @app.command()
 def validate(ctx: typer.Context):
     """Run validation checks."""
-    from niveshdristi.config import load_config
+    import warnings
+    import yaml
+    from niveshdristi.config import load_config, Settings
     from niveshdristi.config_loader import (
         load_mandate, load_universe, load_strategy,
     )
@@ -243,6 +245,37 @@ def validate(ctx: typer.Context):
     from niveshdristi.core.errors import ConfigurationError
 
     results = {"checks": []}
+
+    # Check 0: Config file has no unknown keys
+    config_file = ctx.obj.get("config_file")
+    if config_file:
+        config_path = Path(config_file)
+    else:
+        config_path = Path("config.yaml")
+    if config_path.exists():
+        with open(config_path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        # Get known top-level keys from Settings model
+        known_keys = set(Settings.model_fields.keys())
+        unknown = set(raw.keys()) - known_keys
+        if unknown:
+            results["checks"].append({
+                "name": "config_unknown_keys",
+                "passed": False,
+                "error": f"Unknown config keys: {sorted(unknown)}",
+            })
+        else:
+            results["checks"].append({
+                "name": "config_unknown_keys",
+                "passed": True,
+                "message": "No unknown keys in config file",
+            })
+    else:
+        results["checks"].append({
+            "name": "config_unknown_keys",
+            "passed": True,
+            "message": "No config file found, skipping unknown key check",
+        })
 
     # Check 1: IN_NSE profile loads and is valid
     try:
@@ -281,21 +314,29 @@ def validate(ctx: typer.Context):
 
     # Check 3: Example universes
     for name in ["nifty10", "nifty50", "nifty100"]:
-        try:
-            universe = load_universe(name, universes_dir=Path("universes"))
-            assert universe.name == name
-            assert len(universe.tickers) > 0
-            results["checks"].append({
-                "name": f"universe_{name}",
-                "passed": True,
-                "message": f"Universe {name} loads with {len(universe.tickers)} tickers",
-            })
-        except Exception as e:
-            results["checks"].append({
-                "name": f"universe_{name}",
-                "passed": False,
-                "error": str(e),
-            })
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            try:
+                universe = load_universe(name, universes_dir=Path("universes"))
+                assert universe.name == name
+                assert len(universe.tickers) > 0
+                msg = f"Universe {name} loads with {len(universe.tickers)} tickers"
+                warns = []
+                if w:
+                    for warning in w:
+                        warns.append(str(warning.message))
+                results["checks"].append({
+                    "name": f"universe_{name}",
+                    "passed": True,
+                    "message": msg,
+                    "warnings": warns if warns else None,
+                })
+            except Exception as e:
+                results["checks"].append({
+                    "name": f"universe_{name}",
+                    "passed": False,
+                    "error": str(e),
+                })
 
     # Check 4: Example strategy
     try:
