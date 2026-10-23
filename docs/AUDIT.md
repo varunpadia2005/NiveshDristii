@@ -194,4 +194,22 @@ Fixtures to save in `tests/fixtures/`:
 
 ---
 
+## 12. Note: Duplicate Definitions from 1107a0b Merge
+
+**Discovered:** 2026-10-23 during Phase 1 minimal config fix.
+
+The Phase 0 commit (82f76d8) `src/niveshdristi/config.py` has **no duplicates**. The following duplicates were introduced by the 1107a0b merge commit:
+
+- `GuardrailRule` class defined twice
+- `_load_yaml` function defined 3 times
+- `_merge_configs` function defined 3 times
+- `_find_config_file` function defined 3 times
+
+These were removed in the Phase 1 fix (restoring typed CFG, removing dead `_ConfigProxy`). The clean config.py now matches Phase 0 structure with only:
+- `CFG = get_config()` returning typed `Settings` (not a proxy)
+- No `_ConfigProxy` classes
+- `BacktestConfig.costs` and `timing` remain dicts (no CostModel/TimingModel)
+
+---
+
 *End of Audit Report*

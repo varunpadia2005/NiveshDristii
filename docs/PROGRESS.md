@@ -96,3 +96,47 @@
 ---
 
 *Update this file after each phase completion.*
+
+---
+
+## Mypy Baseline (Honest)
+
+**Date:** 2026-10-23  
+**Commit:** After minimal config fix (restored typed CFG, removed dead `_ConfigProxy`, moved new scaffolding to `config_loader.py`)  
+**Command:** `python -m mypy src/niveshdristi` (no flags, no plugin, same Python environment)
+
+### Raw final lines
+- **Phase 0 (82f76d8):** `Found 118 errors in 26 files (checked 42 source files)`
+- **HEAD:** `Found 124 errors in 30 files (checked 60 source files)`
+
+### Breakdown by subfolder (legacy vs new separated)
+
+| Category | Subfolder | Phase 0 | HEAD | Delta | Notes |
+|----------|-----------|---------|------|-------|-------|
+| **Legacy (pre-existing)** | `api` | 2 | 2 | 0 | Pre-existing |
+| | `app` | 29 | 29 | 0 | Pre-existing |
+| | `backtest` | 24 | 24 | 0 | Pre-existing (costs dict vs CostModel) |
+| | `data` | 24 | 24 | 0 | Pre-existing |
+| | `genai` | 9 | 9 | 0 | Pre-existing |
+| | `indicators` | 2 | 2 | 0 | Pre-existing |
+| | `signals` | 5 | 5 | 0 | Pre-existing |
+| | `config.py` | 1 | 1 | 0 | env_overrides type annotation |
+| **Legacy subtotal** | | **96** | **92** | **-4** | Pre-existing |
+| **New-code (added in Phase 1)** | `cli` | 0 | 1 | +1 | New folder |
+| | `core` | 0 | 3 | +3 | New folder |
+| | `config_loader.py` | 0 | 1 | +1 | New file |
+| | `markets` | 0 | 0 | 0 | New folder (no errors) |
+| | `engine` | 0 | 0 | 0 | New folder (no errors) |
+| | `validation` | 0 | 0 | 0 | New folder (no errors) |
+| **New-code subtotal** | | **0** | **5** | **+5** | 5 new errors from new scaffolding |
+| **Total** | | **118** | **124** | **+6** | HEAD checks 18 more source files |
+
+Earlier figures (143, 96, 100) used different flags (`--ignore-missing-imports`, pydantic mypy plugin) and are superseded by this baseline.
+
+### Key Fixes Applied
+- Phase 0 config.py had **NO duplicates** (verified by `git show 82f76d8:src/niveshdristi/config.py`)
+- Duplicates (GuardrailRule, _load_yaml x3, _merge_configs x3, _find_config_file x3) came from **1107a0b merge** — recorded in `docs/AUDIT.md` §12
+- Removed both `_ConfigProxy` classes and `_NestedConfigProxy`
+- `CFG = get_config()` returns typed `Settings` instance (like Phase 0)
+- `BacktestConfig` keeps `costs: dict[str, float]` and `timing: dict[str, int]` as dicts (no CostModel/TimingModel)
+- New-code scaffolding moved to `src/niveshdristi/config_loader.py`

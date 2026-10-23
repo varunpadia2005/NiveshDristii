@@ -12,10 +12,12 @@ from rich.table import Table
 
 from niveshdristi.config import (
     load_config,
+    get_config,
+)
+from niveshdristi.config_loader import (
     load_mandate,
     load_universe,
     load_strategy,
-    get_config,
 )
 from niveshdristi.core.errors import ConfigurationError
 
