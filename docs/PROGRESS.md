@@ -161,9 +161,12 @@ happen; suite is proven on global Python 3.13.7 / pytest 9.1.1 only.
 - **S1** `3882feb` — `${VAR}` expansion (exact whole-string form) in
   config_loader; unset vars keep the literal with a warning naming only the
   variable. Proven with gate runs under default env and
-  `DATABASE_URL=postgresql://gate-dummy-2026` (G04 PASS both; pg_dsn took
+  `DATABASE_URL=<dummy>` (G04 PASS both; pg_dsn took
   the dummy value when set). A fully-unset gate run is impossible while
   .env defines DATABASE_URL — covered by unit test instead.
+  **The config MD5 is environment-dependent**: `00fb409a…` under the default
+  env, `af22c29c…` with DATABASE_URL set to a dummy. G04 compares the two
+  trees WITHIN the same run — the absolute MD5 value is not a constant.
 - **S2** `36dd886` — `src/niveshdristi/marketdata/` (name chosen because
   `niveshdristi.data` is the LEGACY package): DataClient protocol +
   PriceSeries (raw/adjusted separate, flags) + ProviderRegistry. Gate now
