@@ -42,6 +42,10 @@ def main() -> int:
     repo_root = Path(__file__).parent.parent
     phase0_root = Path(sys.argv[sys.argv.index("--phase0") + 1]) if "--phase0" in sys.argv else None
     
+    # Load .env file to ensure DATABASE_URL and other vars are in environment
+    from dotenv import load_dotenv
+    load_dotenv(repo_root / ".env")
+    
     fails = 0
     
     # G01: git status --porcelain is empty, both before and after pytest run
