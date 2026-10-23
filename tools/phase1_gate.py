@@ -99,10 +99,10 @@ def main() -> int:
     # G04: Config equality - MD5 match
     print("\n=== G04: Config equality ===")
     if phase0_root:
-        # Run dump_config on phase0
+        # Run dump_config on phase0 using current repo's tool with phase0 src
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
-        result0 = run([sys.executable, "tools/dump_config.py"], cwd=phase0_root, capture=True, env=env0)
+        result0 = run([sys.executable, "tools/dump_config.py"], cwd=repo_root, capture=True, env=env0)
         
         # Run dump_config on current
         env1 = os.environ.copy()
@@ -136,7 +136,7 @@ def main() -> int:
                 fail("G04", f"Failed to parse dump_config output: {e}")
                 fails += 1
         else:
-            fail("G04", "dump_config failed on one or both trees")
+            fail("G04", f"dump_config failed: phase0_rc={result0.returncode} phase0_err={result0.stderr} current_rc={result1.returncode} current_err={result1.stderr}")
             fails += 1
     else:
         info("G04", "Skipped (no phase0 path)")
@@ -182,21 +182,32 @@ def main() -> int:
                 fail("G05", f"Failed to parse compare_backtest output: {e}")
                 fails += 1
         else:
-            fail("G05", "compare_backtest failed on one or both trees")
+            fail("G05", f"compare_backtest failed: phase0_rc={result0.returncode} phase0_err={result0.stderr} current_rc={result1.returncode} current_err={result1.stderr}")
             fails += 1
     else:
         info("G05", "Skipped (no phase0 path)")
     
     # G06: pytest results
     print("\n=== G06: Pytest results ===")
-    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no"], cwd=repo_root)
+    result = run([sys.executable, "-m", "pytest", "-q", "--tb=no", "-v"], cwd=repo_root)
     if result.returncode in (0, 5):  # 5 = no tests collected
-        output = result.stdout
-        passed = output.count("passed")
-        failed = output.count("failed")
-        errors = output.count("error")
-        xfailed = output.count("xfailed")
-        skipped = output.count("skipped")
+        # Parse pytest output for counts
+        passed = failed = errors = xfailed = skipped = 0
+        for line in result.stdout.split("\n"):
+            if "passed" in line and "failed" in line and "error" in line:
+                # Typical format: "110 passed, 1 xfailed, 2 warnings in 4.30s"
+                parts = line.split()
+                for i, part in enumerate(parts):
+                    if part == "passed" and i > 0:
+                        passed = int(parts[i-1])
+                    elif part == "failed" and i > 0:
+                        failed = int(parts[i-1])
+                    elif part == "error" and i > 0:
+                        errors = int(parts[i-1])
+                    elif part == "xfailed" and i > 0:
+                        xfailed = int(parts[i-1])
+                    elif part == "skipped" and i > 0:
+                        skipped = int(parts[i-1])
         
         if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110:
             pass_("G06", f"passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
@@ -255,6 +266,7 @@ def main() -> int:
     # G10: Literal guard
     print("\n=== G10: Literal guard ===")
     # Run the literal guard on real core/ and engine/
+    sys.path.insert(0, str(repo_root))
     from tests.market_literals import scan_market_literals
     issues = scan_market_literals(repo_root / "src/niveshdristi/core")
     core_issues = [i for i in issues if i["file"].startswith("src/niveshdristi/core/")]
@@ -268,11 +280,11 @@ def main() -> int:
     # Test on temp tree with forbidden patterns
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        test_content = "NSE\nRELIANCE.NS\n₹\nKolkata\nIST"
+        test_content = "NSE\nRELIANCE.NS\n\u20b9\nKolkata\nIST"
         (tmp_path / "test.txt").write_text(test_content, encoding="utf-8")
         issues = scan_market_literals(tmp_path)
         patterns_found = set(i["pattern"] for i in issues)
-        expected = {"NSE", r"RELIANCE\.NS", "₹", "Kolkata", r"\bIST\b"}
+        expected = {"NSE", r"RELIANCE\.NS", "\u20b9", "Kolkata", r"\bIST\b"}
         if expected.issubset(patterns_found):
             pass_("G10", f"Temp tree reports all 5 patterns: {sorted(patterns_found)}")
         else:

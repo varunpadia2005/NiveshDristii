@@ -6,7 +6,7 @@ import sys
 # Add current directory to path for niveshdristi import
 sys.path.insert(0, os.getcwd())
 
-from niveshdristi.config import CFG, load_config, get_config
+from niveshdristi.config import CFG
 
 # Get the config file path that was read
 import yaml
