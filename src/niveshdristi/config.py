@@ -70,47 +70,10 @@ class RegimesConfig(BaseModel):
     hmm_embargo_days: int = 10
 
 
-class CostModel(BaseModel):
-    """Transaction cost model for backtesting."""
-    brokerage_per_order: float = 20.0
-    stt_delivery_sell_pct: float = 0.1
-    stt_intraday_sell_pct: float = 0.025
-    exchange_charges_pct: float = 0.00345
-    sebi_fees_pct: float = 0.0001
-    stamp_duty_buy_pct: float = 0.015
-    gst_pct: float = 18.0
-    slippage_bps: float = 5.0
-
-    def total_round_trip_bps(self, notional: float = 100000) -> float:
-        """Estimate total round-trip cost in basis points for a given notional."""
-        buy_cost = (
-            self.brokerage_per_order
-            + notional * self.exchange_charges_pct
-            + notional * self.sebi_fees_pct
-            + notional * self.stamp_duty_buy_pct
-        )
-        sell_cost = (
-            self.brokerage_per_order
-            + notional * self.exchange_charges_pct
-            + notional * self.sebi_fees_pct
-            + notional * self.stt_delivery_sell_pct
-        )
-        gst_base = (
-            notional * (self.exchange_charges_pct + self.sebi_fees_pct) * 2
-            + self.brokerage_per_order * 2
-        )
-        gst = gst_base * self.gst_pct / 100
-        total = buy_cost + sell_cost + gst + notional * self.slippage_bps / 10000
-        return (total / notional) * 10000
-
-
 class BacktestConfig(BaseModel):
-    costs: CostModel = Field(default_factory=CostModel)
-    signal_delay_days: int = 1
+    costs: dict[str, float] = Field(default_factory=dict)
+    timing_signal_delay_days: int = 1
     initial_capital: float = 1_000_000
-    max_position_pct: float = 0.10
-    max_sector_pct: float = 0.30
-    max_positions: int = 20
     risk_free_rate: float = 0.07
 
 
@@ -240,7 +203,7 @@ def load_config(
 
 
 # Global config instance (loaded lazily)
-_CFG: Settings | None = None
+_CFG: Optional[Settings] = None
 
 
 def get_config() -> Settings:
@@ -257,8 +220,58 @@ def reset_config() -> None:
     _CFG = None
 
 
-# CFG is the Settings instance directly (properly typed, like Phase 0)
-CFG = get_config()
+# Backward compatibility: old code uses `from niveshdristi.config import CFG`
+# This provides the same interface
+class _ConfigProxy:
+    """Proxy to access config via CFG.attribute style."""
+    def __getattr__(self, name: str):
+        cfg = get_config()
+        if hasattr(cfg, name):
+            return getattr(cfg, name)
+        raise AttributeError(f"'ConfigProxy' object has no attribute '{name}'")
+
+
+class _NestedConfigProxy:
+    """Proxy for nested config objects (e.g., CFG.fundamentals)."""
+    def __init__(self, obj):
+        self._obj = obj
+
+    def __getattr__(self, name: str):
+        if hasattr(self._obj, name):
+            return getattr(self._obj, name)
+        raise AttributeError(f"'{type(self._obj).__name__}' object has no attribute '{name}'")
+
+
+def _wrap_nested(cfg: Settings) -> dict:
+    """Wrap nested config objects for backward compatibility."""
+    return {
+        "data": _NestedConfigProxy(cfg.data),
+        "indicators": _NestedConfigProxy(cfg.indicators),
+        "signals": _NestedConfigProxy(cfg.signals),
+        "fundamentals": _NestedConfigProxy(cfg.fundamentals),
+        "regimes": _NestedConfigProxy(cfg.regimes),
+        "backtest": _NestedConfigProxy(cfg.backtest),
+        "portfolio": _NestedConfigProxy(cfg.portfolio),
+        "models": _NestedConfigProxy(cfg.models) if hasattr(cfg, "models") else None,
+        "genai": _NestedConfigProxy(cfg.genai),
+        "app": _NestedConfigProxy(cfg.app),
+    }
+
+
+class _ConfigProxy:
+    """Proxy to access config via CFG.attribute style."""
+    def __getattr__(self, name: str):
+        cfg = get_config()
+        if hasattr(cfg, name):
+            val = getattr(cfg, name)
+            # Wrap nested config objects
+            if name in _wrap_nested(cfg):
+                return _wrap_nested(cfg)[name]
+            return val
+        raise AttributeError(f"'ConfigProxy' object has no attribute '{name}'")
+
+
+CFG = _ConfigProxy()
 
 
 # ============================================================
