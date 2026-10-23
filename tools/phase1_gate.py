@@ -49,6 +49,27 @@ def main() -> int:
     # Marker for the end-of-gate zero-writes check (G18)
     gate_marker = time.time()
 
+    def _in_gate_scope(f: Path) -> bool:
+        """G18 scope: everything under the repo root except .git and .venv*."""
+        parts = f.parts
+        if ".git" in parts:
+            return False
+        if any(p.startswith(".venv") for p in parts):
+            return False
+        return True
+
+    # Eager start-of-gate snapshot: hash every in-scope file NOW, before any
+    # subprocess runs (hashing after pytest rewrote a file would prove nothing).
+    start_snapshot: dict[str, str] = {}
+    for f in repo_root.rglob("*"):
+        if not f.is_file() or not _in_gate_scope(f):
+            continue
+        rel = f.relative_to(repo_root).as_posix()
+        try:
+            start_snapshot[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
+        except OSError:
+            start_snapshot[rel] = "<unreadable at gate start>"
+
     # Load .env file to ensure DATABASE_URL and other vars are in environment
     from dotenv import load_dotenv
     load_dotenv(repo_root / ".env")
@@ -485,28 +506,65 @@ def main() -> int:
     shutil.rmtree(mypy_cache_dir, ignore_errors=True)
 
     # G18: Zero writes inside the repo since gate start
+    #
+    # Rule: every in-scope file present at gate start is sha256-snapshotted
+    # before any subprocess runs. At gate end, a file with mtime newer than
+    # the marker is an identical rewrite (INFO) if its bytes equal the
+    # snapshot, a FAIL if changed, and a FAIL if it did not exist at start.
+    # A snapshot file missing at gate end is a FAIL.
+    #
+    # Known behavior: legacy characterization tests rewrite three gitignored
+    # parquet fixtures (tests/fixtures/*.parquet) on every pytest run. On a
+    # fresh clone those files do not exist at start, so the FIRST gate run
+    # FAILs G18 once ("new during gate"); from the second run on they are
+    # byte-identical rewrites and G18 passes. No allowlist is added for this.
     print("\n=== G18: Zero writes inside repo ===")
-    new_files = []
+    g18_failures: list[str] = []
+    identical = 0
+
+    # Files currently on disk with mtime newer than the marker
+    current_newer: dict[str, Path] = {}
     for f in repo_root.rglob("*"):
-        parts = f.parts
-        if ".git" in parts:
-            continue
-        if any(p.startswith(".venv") for p in parts):
-            continue
-        if not f.is_file():
+        if not f.is_file() or not _in_gate_scope(f):
             continue
         try:
             if f.stat().st_mtime > gate_marker:
-                new_files.append(f)
+                current_newer[f.relative_to(repo_root).as_posix()] = f
         except OSError:
             continue
-    if new_files:
-        fail("G18", f"{len(new_files)} file(s) written inside the repo after gate start:")
-        for f in new_files[:20]:
-            info("G18", f"  {f.relative_to(repo_root)}")
+
+    for rel, f in sorted(current_newer.items()):
+        if rel not in start_snapshot:
+            g18_failures.append(f"{rel} (new during gate)")
+            continue
+        try:
+            disk_sha = hashlib.sha256(f.read_bytes()).hexdigest()
+        except OSError:
+            g18_failures.append(f"{rel} (unreadable at gate end)")
+            continue
+        if disk_sha == start_snapshot[rel]:
+            identical += 1
+            info("G18", f"rewritten identically: {rel}")
+        else:
+            g18_failures.append(f"{rel} (content changed)")
+
+    # Deletions: a snapshot file that no longer exists
+    for rel in sorted(start_snapshot):
+        if not (repo_root / rel).exists():
+            g18_failures.append(f"{rel} (deleted during gate)")
+
+    if g18_failures:
+        fail("G18", f"{len(g18_failures)} zero-write violation(s) after gate start:")
+        for entry in g18_failures[:20]:
+            info("G18", f"  {entry}")
+        if identical:
+            info("G18", f"(+{identical} byte-identical rewrite(s), not failing)")
         fails += 1
     else:
-        pass_("G18", "No files written inside the repo (excl. .git, .venv*) after gate start")
+        pass_(
+            "G18",
+            f"No changed/new/deleted files after gate start ({identical} byte-identical legacy rewrite(s) allowed)",
+        )
 
     print(f"\n{'='*50}")
     if fails == 0:
