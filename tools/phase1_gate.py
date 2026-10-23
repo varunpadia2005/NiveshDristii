@@ -86,12 +86,14 @@ def main() -> int:
     else:
         pass_("G01", "git status clean before pytest")
 
-    # Single shared pytest run: G01 (bracket), G06 (counts), G07 (utcnow) all
-    # consume this one run. -p no:cacheprovider keeps .pytest_cache unwritten.
+    # Single shared pytest run: G01 (bracket), G06 (counts + node IDs), G07
+    # (utcnow) all consume this one run. -v puts every node ID in the output
+    # so the "all nodes under tests/" check needs no second invocation.
+    # -p no:cacheprovider keeps .pytest_cache unwritten.
     print("\n=== Shared pytest run ===")
     info("PYTEST", "pytest runs: 1")
     shared_pytest = run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider"], cwd=repo_root, capture=True
+        [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider"], cwd=repo_root, capture=True
     )
     tail = [l for l in shared_pytest.stdout.splitlines() if l.strip()][-1:]
     info("PYTEST", tail[0] if tail else f"exit={shared_pytest.returncode}")
@@ -271,6 +273,23 @@ def main() -> int:
         fail("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
         fails += 1
 
+    # G06 (cont.): every collected test node ID must start with tests/
+    status_re = re.compile(r"^(.*?)\s+(?:PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
+    node_ids = []
+    for line in shared_pytest.stdout.split("\n"):
+        m = status_re.match(line.strip())
+        if m and "::" in m.group(1):
+            node_ids.append(m.group(1))
+    outside = [n for n in node_ids if not n.startswith("tests/")]
+    if outside:
+        fail("G06", f"{len(outside)} collected node(s) outside tests/: {outside[:10]}")
+        fails += 1
+    elif len(node_ids) != collected:
+        fail("G06", f"node-id count {len(node_ids)} != collected {collected}")
+        fails += 1
+    else:
+        pass_("G06", f"all {len(node_ids)} collected node IDs under tests/")
+
     # G07: No utcnow warnings (derived from the single shared run)
     print("\n=== G07: No utcnow warnings ===")
     warnings = []
@@ -282,22 +301,27 @@ def main() -> int:
     else:
         pass_("G07", "No utcnow warnings")
     
-    # G08: core/*.py: no @dataclass, no utcnow, no naive datetime.now()
-    print("\n=== G08: Core types hygiene ===")
+    # G08: time hygiene across core/, engine/, markets/, cli/, config_loader.py;
+    # the @dataclass ban stays core/-only
+    print("\n=== G08: Time & dataclass hygiene ===")
     issues = []
-    for f in (repo_root / "src/niveshdristi/core").glob("*.py"):
+    g08_files = []
+    for d in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets", "src/niveshdristi/cli"):
+        g08_files.extend((repo_root / d).glob("*.py"))
+    g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
+    for f in g08_files:
         content = f.read_text(encoding="utf-8")
-        if "@dataclass" in content:
-            issues.append(f"{f.name}: has @dataclass")
         if "utcnow(" in content:
             issues.append(f"{f.name}: has utcnow()")
         if "datetime.now()" in content and "datetime.now(timezone.utc)" not in content and "datetime.now(UTC)" not in content:
             issues.append(f"{f.name}: has naive datetime.now()")
+        if f.parent.name == "core" and "@dataclass" in content:
+            issues.append(f"{f.name}: has @dataclass")
     if issues:
         fail("G08", f"Issues: {issues}")
         fails += 1
     else:
-        pass_("G08", "Core types clean")
+        pass_("G08", f"Time & dataclass hygiene clean ({len(g08_files)} files)")
     
     # G09: arbitrary_types_allowed has justification comment
     print("\n=== G09: arbitrary_types_allowed justification ===")
@@ -498,8 +522,8 @@ def main() -> int:
     print("\n=== G17: Environment info ===")
     info("G17", f"python={sys.version.split()[0]}, executable={sys.executable}")
     import pytest
-    import mypy
-    mypy_ver = getattr(mypy, "__version__", "unknown")
+    import mypy.version
+    mypy_ver = mypy.version.__version__
     info("G17", f"pytest={pytest.__version__}, mypy={mypy_ver}")
 
     # Remove the mypy temp cache dir (created before G11, used by G11+G14)
