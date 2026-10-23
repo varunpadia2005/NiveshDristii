@@ -8,6 +8,8 @@ New-code scaffolding (not in Phase 0):
 from __future__ import annotations
 
 import os
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -55,6 +57,35 @@ def _merge_configs(base: dict, override: dict) -> dict:
     return result
 
 
+_ENV_REF_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _expand_env_refs(node: Any, env: dict[str, str]) -> Any:
+    """Expand string values of the exact form '${NAME}' from `env`.
+
+    Only whole-string references are expanded. Unset variables are left as-is
+    with a warning that names ONLY the variable — resolved values are never
+    printed or logged.
+    """
+    if isinstance(node, dict):
+        return {k: _expand_env_refs(v, env) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_expand_env_refs(v, env) for v in node]
+    if isinstance(node, str):
+        m = _ENV_REF_RE.match(node)
+        if m:
+            name = m.group(1)
+            if name in env:
+                return env[name]
+            print(
+                f"Warning: environment variable '{name}' referenced in config is not set; "
+                "keeping literal value",
+                file=sys.stderr,
+            )
+        return node
+    return node
+
+
 def load_layered_config(
     user_config_path: str | Path | None = None,
     env: dict[str, str] | None = None,
@@ -74,8 +105,6 @@ def load_layered_config(
     Returns:
         Merged configuration dict ready for Settings(**config)
     """
-    dict(env or os.environ)
-
     # Layer 1: Defaults (lowest precedence)
     raw: dict[str, Any] = {}
 
@@ -100,13 +129,14 @@ def load_layered_config(
     # Layer 4: Environment overrides (highest)
     # Handled by pydantic_settings automatically via Settings model_config
     # But we also apply flat env vars here for backward compatibility
-    dict(os.environ)
-    if "DATABASE_URL" in os.environ:
-        raw.setdefault("data", {}).setdefault("cache", {})["pg_dsn"] = os.environ["DATABASE_URL"]
-    if "OPENROUTER_API_KEY" in os.environ:
-        raw.setdefault("genai", {})["api_key"] = os.environ["OPENROUTER_API_KEY"]
+    env = dict(os.environ if env is None else env)
+    if "DATABASE_URL" in env:
+        raw.setdefault("data", {}).setdefault("cache", {})["pg_dsn"] = env["DATABASE_URL"]
+    if "OPENROUTER_API_KEY" in env:
+        raw.setdefault("genai", {})["api_key"] = env["OPENROUTER_API_KEY"]
 
-    return raw
+    expanded: dict[str, Any] = _expand_env_refs(raw, env)
+    return expanded
 
 
 def load_config(

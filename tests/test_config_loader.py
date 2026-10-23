@@ -219,3 +219,48 @@ class TestExampleFiles:
         assert isinstance(strategy, Strategy)
         assert strategy.name == "signal_based"
         assert len(strategy.models) > 0
+
+class TestEnvVarExpansion:
+    """'${NAME}' string values expand from the environment (P2-S1)."""
+
+    def _write_config(self, tmp_path: Path) -> Path:
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(
+            "data:\n  cache:\n    pg_dsn: \"${P2_TEST_DSN}\"\n", encoding="utf-8"
+        )
+        return cfg
+
+    def test_expansion_applied_when_set(self, tmp_path):
+        """Set variable: value is replaced by the env value."""
+        cfg = self._write_config(tmp_path)
+        raw = load_layered_config(
+            user_config_path=cfg, defaults_path=cfg, env={"P2_TEST_DSN": "postgresql://x/y"}
+        )
+        assert raw["data"]["cache"]["pg_dsn"] == "postgresql://x/y"
+
+    def test_unset_variable_kept_literal_with_warning(self, tmp_path, capsys):
+        """Unset variable: literal kept, warning names ONLY the variable."""
+        cfg = self._write_config(tmp_path)
+        raw = load_layered_config(user_config_path=cfg, defaults_path=cfg, env={})
+        assert raw["data"]["cache"]["pg_dsn"] == "${P2_TEST_DSN}"
+        err = capsys.readouterr().err
+        assert "P2_TEST_DSN" in err
+        assert "postgresql" not in err  # never any resolved value in output
+
+    def test_partial_and_non_string_values_untouched(self, tmp_path):
+        """Only whole-string '${NAME}' expands; embedded refs, ints, lists pass through."""
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(
+            "a: \"prefix-${NOPE}\"\n"
+            "b: 5\n"
+            "c:\n  - \"${SET_VAR}\"\n"
+            "d: \"${9BAD}\"\n",
+            encoding="utf-8",
+        )
+        raw = load_layered_config(
+            user_config_path=cfg, defaults_path=cfg, env={"SET_VAR": "v"}
+        )
+        assert raw["a"] == "prefix-${NOPE}"   # not whole-string: untouched
+        assert raw["b"] == 5
+        assert raw["c"] == ["v"]              # expanded inside lists
+        assert raw["d"] == "${9BAD}"          # invalid name form: untouched
