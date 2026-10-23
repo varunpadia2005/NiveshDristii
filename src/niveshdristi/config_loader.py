@@ -202,6 +202,8 @@ class Universe:
     description: str = ""
     source: str = "manual"  # "nifty50", "nifty100", "nifty500", "custom"
     last_updated: Optional[str] = None
+    as_of: Optional[str] = None
+    approximate: bool = False
 
 
 @dataclass
@@ -249,8 +251,27 @@ def load_universe(name: str, universes_dir: Optional[Path] = None) -> "Universe"
         raise ConfigurationError(f"Universe not found: {path}")
     data = _load_yaml(path)
     _validate_no_unknown_keys(data, {
-        "name", "market_id", "tickers", "description", "source", "last_updated"
+        "name", "market_id", "tickers", "description", "source", "last_updated",
+        "as_of", "approximate"
     }, f"Universe {name}")
+    universe = Universe(**data)
+    
+    # Warn if ticker count doesn't match nominal size
+    nominal_counts = {
+        "nifty10": 10,
+        "nifty50": 50,
+        "nifty100": 100,
+    }
+    expected = nominal_counts.get(name)
+    if expected is not None and len(universe.tickers) != expected:
+        import warnings
+        warnings.warn(
+            f"Universe '{name}' has {len(universe.tickers)} tickers, "
+            f"expected {expected}. Check for duplicates or malformed symbols.",
+            UserWarning,
+            stacklevel=2
+        )
+    
     return Universe(**data)
 
 
