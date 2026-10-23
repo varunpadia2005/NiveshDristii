@@ -335,7 +335,7 @@ def main() -> int:
     print("\n=== G08: Time & dataclass hygiene ===")
     issues = []
     g08_files = []
-    for d in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets", "src/niveshdristi/cli"):
+    for d in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets", "src/niveshdristi/cli", "src/niveshdristi/marketdata"):
         g08_files.extend((repo_root / d).glob("*.py"))
     g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
     for f in g08_files:
@@ -378,19 +378,46 @@ def main() -> int:
         # Scanner finding paths carry os-native separators (backslashes on Windows)
         return p.replace("\\", "/")
 
-    issues = scan_market_literals(repo_root)
+    issues = scan_market_literals(
+        repo_root,
+        scan_dirs=["src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata"],
+    )
     core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
     engine_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
-    if core_issues or engine_issues:
-        fail("G10", f"Real code has findings: core={len(core_issues)} engine={len(engine_issues)}")
-        for i in (core_issues + engine_issues)[:10]:
+    md_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/marketdata/")]
+    if core_issues or engine_issues or md_issues:
+        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)}")
+        for i in (core_issues + engine_issues + md_issues)[:10]:
             info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
     else:
-        pass_("G10", "Real core/ and engine/ have 0 findings")
+        pass_("G10", "Neutral zones (core/engine/marketdata) have 0 findings")
+
+    # Market literals are allowed ONLY in this explicit adapter allowlist.
+    # Any other file under markets/in_nse/providers/ carrying a literal FAILs.
+    ADAPTER_ALLOWLIST = {
+        "src/niveshdristi/markets/in_nse/providers/yfinance_adapter.py",
+        "src/niveshdristi/markets/in_nse/providers/bhavcopy_file.py",
+    }
+    providers_dir = repo_root / "src/niveshdristi/markets/in_nse/providers"
+    if providers_dir.exists():
+        adapter_issues = scan_market_literals(repo_root, scan_dirs=["src/niveshdristi/markets/in_nse/providers"])
+        rogue = sorted(
+            {_rel_posix(i["file"]) for i in adapter_issues} - ADAPTER_ALLOWLIST
+        )
+        if rogue:
+            fail("G10", f"Market literals outside the adapter allowlist: {rogue}")
+            fails += 1
+        else:
+            present = sorted(
+                p.relative_to(repo_root).as_posix()
+                for p in providers_dir.glob("*.py")
+                if p.relative_to(repo_root).as_posix() in ADAPTER_ALLOWLIST
+            )
+            pass_("G10", f"Adapter allowlist enforced (present: {present})")
 
     # Non-vacuity: each scan target must contain scannable files
-    for target in ("src/niveshdristi/core", "src/niveshdristi/engine"):
+    for target in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata"):
         scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
         if scannable:
             pass_("G10", f"{target}: scan covers {len(scannable)} files")
@@ -489,6 +516,7 @@ def main() -> int:
     result = run([sys.executable, "-m", "ruff", "check", "--no-cache",
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
+                  "src/niveshdristi/marketdata",
                   "src/niveshdristi/config_loader.py"], cwd=repo_root)
     if result.returncode == 0:
         pass_("G13", "Ruff clean on new code paths")
@@ -501,6 +529,7 @@ def main() -> int:
     result = run([sys.executable, "-m", "mypy",
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
+                  "src/niveshdristi/marketdata",
                   "src/niveshdristi/config_loader.py", "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
