@@ -161,3 +161,76 @@ class TestImportBoundary:
                 if self.MARKET_IMPORT.search(py.read_text(encoding="utf-8")):
                     offenders.append(str(py))
         assert offenders == [], f"market imports found in neutral packages: {offenders}"
+
+
+class TestModelRegistry:
+    """Registry: uniqueness, live filtering, stub refusal, market-pack registration."""
+
+    @staticmethod
+    def _entry(model_id: str, data_status: str = "live"):
+        from niveshdristi.core.alpha import ModelRegistryEntry
+
+        return ModelRegistryEntry(
+            model_id=model_id,
+            horizon_days=10,
+            required_data=("prices",),
+            pit_safe=True,
+            data_status=data_status,
+            description="synthetic test entry",
+        )
+
+    def test_register_and_lookup(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+
+        reg = ModelRegistry()
+        reg.register(self._entry("syn_a"))
+        assert reg.entry_for("syn_a").model_id == "syn_a"
+
+    def test_duplicate_rejected(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+        from niveshdristi.core.errors import ConfigurationError
+
+        reg = ModelRegistry()
+        reg.register(self._entry("syn_a"))
+        with pytest.raises(ConfigurationError, match="duplicate"):
+            reg.register(self._entry("syn_a"))
+
+    def test_unknown_rejected(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+        from niveshdristi.core.errors import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="unknown model_id"):
+            ModelRegistry().entry_for("ghost")
+
+    def test_live_entries_exclude_stubs(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+
+        reg = ModelRegistry()
+        reg.register(self._entry("syn_live"))
+        reg.register(self._entry("syn_stub", data_status="stub"))
+        assert [e.model_id for e in reg.live_entries()] == ["syn_live"]
+
+    def test_require_live_refuses_stub_unless_allowed(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+        from niveshdristi.core.errors import ConfigurationError
+
+        reg = ModelRegistry()
+        stub = self._entry("syn_stub", data_status="stub")
+        reg.register(stub)
+        with pytest.raises(ConfigurationError, match="refusing live use"):
+            reg.require_live(reg.entry_for("syn_stub"))
+        assert reg.require_live(reg.entry_for("syn_stub"), allow_stub=True) is stub
+
+    def test_market_pack_register_all_mechanism(self):
+        """The register_all seam works with a FAKE market pack (real IN_NSE
+        pack has no models until P3-S9)."""
+        from niveshdristi.alpha.registry import ModelRegistry
+        from niveshdristi.markets.in_nse.models import register_all
+
+        reg = ModelRegistry()
+        register_all(reg)  # currently registers nothing (no models yet)
+        assert reg.entries() == ()
+        # prove the seam with a fake pack using the same mechanism
+        fake_entries = [self._entry("fake_pack_model", data_status="stub")]
+        reg.register_all(fake_entries)
+        assert reg.entry_for("fake_pack_model").data_status == "stub"
