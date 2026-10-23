@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +47,10 @@ def _common_options(
 
 def _output(data: dict, json_output: bool) -> None:
     if json_output:
-        console.print(json.dumps(data, default=str, indent=2))
+        # Plain print, not console.print: Rich wraps at the terminal width and
+        # can insert newlines inside JSON string literals, producing invalid
+        # JSON on narrow terminals. stdout must be pure, width-independent JSON.
+        print(json.dumps(data, default=str, indent=2))
     else:
         # Pretty print as table
         table = Table(show_header=True, header_style="bold cyan")
@@ -57,6 +61,14 @@ def _output(data: dict, json_output: bool) -> None:
                 v = json.dumps(v, default=str, indent=2)
             table.add_row(str(k), str(v))
         console.print(table)
+
+
+def _diagnostic(message: str, json_output: bool) -> None:
+    """Human-facing diagnostics; must never pollute stdout in --json mode."""
+    if json_output:
+        print(message, file=sys.stderr)
+    else:
+        console.print(message)
 
 
 # Apply common options to all commands
@@ -108,7 +120,7 @@ def data_fetch(
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
     """Fetch price data for tickers."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: fetch {tickers} from {provider}")
+    _diagnostic(f"Not implemented yet: fetch {tickers} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -120,7 +132,7 @@ def data_refresh(
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
     """Refresh all data for a universe."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: refresh {universe} from {provider}")
+    _diagnostic(f"Not implemented yet: refresh {universe} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -139,7 +151,7 @@ def signals_generate(
     as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
     """Generate signals for a ticker."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: generate signal for {ticker}")
+    _diagnostic(f"Not implemented yet: generate signal for {ticker}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -161,7 +173,9 @@ def backtest_run(
     end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
 ):
     """Run backtest."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: backtest {mandate}/{universe}/{strategy}")
+    _diagnostic(
+        f"Not implemented yet: backtest {mandate}/{universe}/{strategy}", ctx.obj["json_output"]
+    )
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -181,7 +195,7 @@ def paper_create(
     capital: float = typer.Option(1_000_000, "--capital", help="Initial capital"),
 ):
     """Create a new paper fund."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: create paper fund {name}")
+    _diagnostic(f"Not implemented yet: create paper fund {name}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -192,7 +206,7 @@ def paper_tick(
     as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
     """Execute one paper trading tick."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: tick fund {fund_id}")
+    _diagnostic(f"Not implemented yet: tick fund {fund_id}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -202,7 +216,7 @@ def paper_status(
     fund_id: str = typer.Argument(..., help="Fund ID"),
 ):
     """Show paper fund status."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: status for fund {fund_id}")
+    _diagnostic(f"Not implemented yet: status for fund {fund_id}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -212,7 +226,7 @@ def paper_halt(
     fund_id: str = typer.Argument(..., help="Fund ID"),
 ):
     """Halt paper fund (kill switch)."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: halt fund {fund_id}")
+    _diagnostic(f"Not implemented yet: halt fund {fund_id}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 
@@ -222,7 +236,7 @@ def paper_resume(
     fund_id: str = typer.Argument(..., help="Fund ID"),
 ):
     """Resume halted paper fund."""
-    console.print(f"[yellow]Not implemented yet[/yellow]: resume fund {fund_id}")
+    _diagnostic(f"Not implemented yet: resume fund {fund_id}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
 

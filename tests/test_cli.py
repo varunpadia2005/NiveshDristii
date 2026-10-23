@@ -5,6 +5,8 @@ Protects the rule that nd CLI commands work and --json outputs valid JSON.
 """
 
 import json
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -119,3 +121,36 @@ class TestConfigCommand:
         """nd config --validate works."""
         result = runner.invoke(app, ["config", "--validate"])
         assert result.exit_code == 0
+
+class TestJSONSubprocess:
+    """--json stdout must be pure, width-independent JSON (real subprocess).
+
+    Regression: _output() printed JSON through a Rich Console, which wraps at
+    the terminal width and inserts newlines inside JSON string literals,
+    producing invalid JSON on narrow terminals.
+    """
+
+    def test_validate_json_is_valid_at_narrow_width(self):
+        """COLUMNS=40: json.loads(stdout) succeeds with summary keys present."""
+        import os
+        import subprocess
+        import sys
+
+        # The CLI resolves config.yaml/universes/ from its working directory
+        repo_root = Path(__file__).resolve().parent.parent
+        env = dict(os.environ)
+        env["COLUMNS"] = "40"
+        proc = subprocess.run(
+            [sys.executable, "-m", "niveshdristi.cli.main", "--json", "validate"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            timeout=120,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        data = json.loads(proc.stdout)
+        assert "summary" in data
+        assert "checks" in data
+        assert data["summary"]["passed"] == data["summary"]["total"]
