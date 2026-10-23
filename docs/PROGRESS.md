@@ -14,7 +14,7 @@ from earlier claims.
   planned 3.11 verification run was skipped. The 3.11 pin decision is deferred to the
   start of Phase 2; `pyproject.toml` still says `requires-python >= 3.11`.
 
-## Test results (as they stand now)
+## Test results (at Phase 1 close)
 
 ```
 $ python -m pytest -v -p no:cacheprovider
@@ -98,7 +98,7 @@ G04/G05 comparison. Do not modify the worktree during gate runs.
 - `core/`: 7 Pydantic v2 frozen model modules; `markets/` registry + `in_nse/` profile
   with holidays/costs/tax/sectors/asm_gsm/fno_ban YAML; `cli/` Typer `nd` with real
   `validate` (8 checks, unknown-key rejection, exit codes); `engine/advance()` stub
-  (`9cf9c85`, `91158c`, `e099b95`, `d1e8328`).
+  (`9cf9c85`, `e099b95`, `d1e8328`).
 - Universes carry `as_of`/`source`/`approximate` metadata (`0a5044e`).
 - Literal guard repaired and non-vacuous; CLI JSON pure; gate with single-run,
   zero-write design and phase0 precheck (`ebe8aa7`, `f58c760`, `85198c1`, `5e5f43b`,
@@ -110,7 +110,8 @@ G04/G05 comparison. Do not modify the worktree during gate runs.
 Kept as listed in `docs/PHASE2_PREREQS.md` (not reproduced or invented here):
 2026 holidays missing (the strict xfail); universe ticker counts need as-of
 constituents (nifty50=49, nifty100=101); `pg_dsn` returns the literal
-'${DATABASE_URL}' (root `config.yaml:8`; no `${...}` expansion is implemented);
+'${DATABASE_URL}' (root `config.yaml:8`) — this was true at Phase 1 close;
+exact `${VAR}` expansion was implemented in Phase 2 S1 (commit `3882feb`);
 legacy backtest latent bugs; unverified rates (all items in `docs/VERIFY.md` are
 unverified); legacy mypy/ruff baselines. Environment risk: the suite is only proven on
 Python 3.13.7/Windows; 3.11 could not be checked because no 3.11 interpreter exists
@@ -142,8 +143,8 @@ downloader.
 
 1. **Official 2026 holidays** — NSE site unreachable automatically. Unblocked
    by: the user downloading the official NSE holiday page/PDF in a browser
-   and providing it; then the pre-agreed single commit (data + xfail removal
-   + gate G06/G15 update, with explicit approval). The strict xfail stays
+   and providing it; then the pre-agreed single commit (data + xfail-marker
+   removal + gate G06/G15 update, with explicit approval). The strict xfail stays
    untouched until then.
 2. **As-of index constituents (nifty50=49, nifty100=101)** — no responding
    free source; historical as-of constituents (incl. delisted) need a
@@ -203,8 +204,39 @@ happen; suite is proven on global Python 3.13.7 / pytest 9.1.1 only.
 
 ## Current verified state
 
+Fresh full gate run, 2026-10-24 (after closeout commit `9e68591`):
+
 ```
-$ python -m pytest -q            → 147 passed, 1 xfailed, 0 failed/skipped
-$ python tools/phase1_gate.py --phase0 "D:\Nivesh Dristi\phase0_wt"
-                                  → GATE: PASS (exit 0), pytest runs: 1
+PASS G01 git status clean before pytest
+INFO PYTEST pytest runs: 1
+INFO PYTEST ================= 147 passed, 1 xfailed, 2 warnings in 6.47s ==================
+PASS G01 git status clean after pytest
+PASS G02 No stray test/check/bak files
+PASS G03 Legacy contract intact / PASS G03 No additions to legacy folders
+PASS G03b tools/dump_config.py md5 match: 7446cc0050965dd2aa05e2c506a00026
+PASS G03b tools/compare_backtest.py md5 match: 2f75d57b1d55e0e932d71a5122c58365
+PASS G04 Config MD5 match: 00fb409ae0b8bcd2e21548847d186fe0 (+ both __file__ PASS)
+PASS G05 Backtest outputs match (+ both __file__ PASS)
+PASS G06 collected=148 passed=147 failed=0 errors=0 xfailed=1 skipped=0
+PASS G06 all 148 collected node IDs under tests/
+PASS G07 No utcnow warnings
+PASS G08 Time & dataclass hygiene clean (21 files)
+PASS G09 All arbitrary_types_allowed have justification
+PASS G10 Neutral zones (core/engine/marketdata) have 0 findings
+PASS G10 Adapter allowlist enforced (bhavcopy_file.py, yfinance_adapter.py)
+PASS G10 core: 7 files / engine: 2 files / marketdata: 7 files covered
+PASS G10 Temp tree reports all 5 patterns
+PASS G11 Typed CFG works (attr-defined error for does_not_exist)
+PASS G12 --json validate exits 0 with summary.failed == 0
+PASS G12 --config <bad> --json validate exits 1
+PASS G13 Ruff clean on new code paths
+PASS G14 Mypy clean, type:ignore count=1
+PASS G15 Exactly one xfail marker, strict=True
+PASS G16 Docs exist, .gitignore contains .venv
+PASS G18 (3 byte-identical legacy fixture rewrites; no changed/new/deleted files)
+GATE: PASS
 ```
+
+Figures: **148 collected, 147 passed, 0 failed, 0 errors, 0 skipped,
+1 xfailed** (the approved strict holiday xfail), 2 known universe-count
+warnings.
