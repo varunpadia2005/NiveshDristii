@@ -289,15 +289,31 @@ def main() -> int:
     print("\n=== G10: Literal guard ===")
     # Run the literal guard on real core/ and engine/
     sys.path.insert(0, str(repo_root))
-    from tests.market_literals import scan_market_literals
-    issues = scan_market_literals(repo_root / "src/niveshdristi/core")
-    core_issues = [i for i in issues if i["file"].startswith("src/niveshdristi/core/")]
-    engine_issues = [i for i in issues if i["file"].startswith("src/niveshdristi/engine/")]
+    from tests.market_literals import scan_market_literals, SCAN_EXTS
+
+    def _rel_posix(p: str) -> str:
+        # Scanner finding paths carry os-native separators (backslashes on Windows)
+        return p.replace("\\", "/")
+
+    issues = scan_market_literals(repo_root)
+    core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
+    engine_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
     if core_issues or engine_issues:
         fail("G10", f"Real code has findings: core={len(core_issues)} engine={len(engine_issues)}")
+        for i in (core_issues + engine_issues)[:10]:
+            info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
     else:
         pass_("G10", "Real core/ and engine/ have 0 findings")
+
+    # Non-vacuity: each scan target must contain scannable files
+    for target in ("src/niveshdristi/core", "src/niveshdristi/engine"):
+        scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
+        if scannable:
+            pass_("G10", f"{target}: scan covers {len(scannable)} files")
+        else:
+            fail("G10", f"{target}: scan covers 0 files (guard would be vacuous)")
+            fails += 1
     
     # Test on temp tree with forbidden patterns
     with tempfile.TemporaryDirectory() as tmp:

@@ -10,7 +10,18 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from tests.market_literals import scan_market_literals, FORBIDDEN_PATTERNS
+from tests.market_literals import scan_market_literals, FORBIDDEN_PATTERNS, SCAN_EXTS
+
+
+def _rel_posix(path_str: str) -> str:
+    """Normalize a scanner finding path to forward slashes.
+
+    The scanner emits os-native separators (backslashes on Windows), so a
+    finding path must be normalized before comparing it with a forward-slash
+    prefix. Uses string replace, not Path.as_posix(), so a Windows-style path
+    is normalized identically on every OS.
+    """
+    return path_str.replace("\\", "/")
 
 
 class TestScannerSelfTest:
@@ -77,8 +88,8 @@ class TestCoreEngineNoLiterals:
     def test_core_no_market_literals(self):
         """src/niveshdristi/core has no forbidden patterns."""
         issues = scan_market_literals(Path("."))
-        # Filter to core/
-        core_issues = [i for i in issues if i["file"].startswith("src/niveshdristi/core/")]
+        # Filter to core/ (normalize separators: scanner emits os-native paths)
+        core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
         assert len(core_issues) == 0, f"Found {len(core_issues)} market literals in core/:\n" + "\n".join(
             f"  {i['file']}:{i['line']} - {i['pattern']}" for i in core_issues
         )
@@ -86,10 +97,43 @@ class TestCoreEngineNoLiterals:
     def test_engine_no_market_literals(self):
         """src/niveshdristi/engine has no forbidden patterns."""
         issues = scan_market_literals(Path("."))
-        engine_issues = [i for i in issues if i["file"].startswith("src/niveshdristi/engine/")]
+        engine_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
         assert len(engine_issues) == 0, f"Found {len(engine_issues)} market literals in engine/:\n" + "\n".join(
             f"  {i['file']}:{i['line']} - {i['pattern']}" for i in engine_issues
         )
+
+    def test_real_tree_scan_is_not_vacuous(self):
+        """Non-vacuity: each scan target must contain scannable files.
+
+        If a directory were renamed or emptied, the two tests above would
+        pass without checking anything. Fail loudly instead.
+        """
+        for scan_dir in ("src/niveshdristi/core", "src/niveshdristi/engine"):
+            scannable = [p for p in Path(scan_dir).rglob("*") if p.suffix in SCAN_EXTS]
+            assert len(scannable) > 0, (
+                f"{scan_dir} has no scannable files; the literal guard is vacuous"
+            )
+
+
+class TestFindingPathFilter:
+    """The core/engine finding filter must work with Windows-style paths."""
+
+    def test_filter_matches_windows_backslash_paths(self):
+        """Regression: scanner findings carry backslash separators on Windows.
+
+        The old forward-slash startswith filter matched nothing there, so the
+        real-tree guard passed vacuously on Windows.
+        """
+        findings = [
+            {"file": "src\\niveshdristi\\core\\instrument.py", "line": 17, "pattern": r"\bNSE\b", "context": "x"},
+            {"file": "src\\niveshdristi\\markets\\registry.py", "line": 1, "pattern": r"\bNSE\b", "context": "x"},
+            # Trailing-slash prefix must not match a sibling like corex/
+            {"file": "src\\niveshdristi\\corex\\other.py", "line": 2, "pattern": r"\bNSE\b", "context": "x"},
+        ]
+        core = [i for i in findings if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
+        assert [i["line"] for i in core] == [17], core
+        engine = [i for i in findings if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
+        assert engine == [], engine
 
 
 class TestForbiddenPatternsCoverRequired:
