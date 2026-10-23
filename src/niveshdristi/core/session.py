@@ -1,27 +1,29 @@
 """SessionRecord — immutable record of one trading session for ledger/audit."""
 
 from __future__ import annotations
-from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Optional
 from hashlib import sha256
 import json
 
+from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
+
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.decision import Decision, Fill
 
 
-@dataclass(frozen=True, slots=True)
-class PositionSnapshot:
+class PositionSnapshot(BaseModel):
     """Position state at a point in time."""
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     instrument: Instrument
     shares: int
     avg_cost: float  # Average cost per share (for P&L)
     market_value: float  # Current market value
 
 
-@dataclass(frozen=True, slots=True)
-class SessionRecord:
+class SessionRecord(BaseModel):
     """
     Immutable record of one complete trading session (one call to `advance()`).
 
@@ -42,17 +44,19 @@ class SessionRecord:
         created_at: Wall-clock timestamp when record was created
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
     session_id: int
     session_date: date
     previous_hash: str
-    decisions: tuple[Decision, ...] = field(default_factory=tuple)
-    fills: tuple[Fill, ...] = field(default_factory=tuple)
-    positions_after: tuple[PositionSnapshot, ...] = field(default_factory=tuple)
+    decisions: tuple[Decision, ...] = ()
+    fills: tuple[Fill, ...] = ()
+    positions_after: tuple["PositionSnapshot", ...] = ()
     cash_after: float = 0.0
     equity_after: float = 0.0
-    risk_metrics: dict[str, float] = field(default_factory=dict)
-    events: tuple[str, ...] = field(default_factory=tuple)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    risk_metrics: dict[str, float] = {}
+    events: tuple[str, ...] = ()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
     def compute_hash(self) -> str:
         """Compute SHA256 hash of this record (excluding the hash itself)."""
@@ -61,9 +65,9 @@ class SessionRecord:
             "session_id": self.session_id,
             "session_date": self.session_date.isoformat(),
             "previous_hash": self.previous_hash,
-            "decisions": [d.__dict__ for d in self.decisions],
-            "fills": [f.__dict__ for f in self.fills],
-            "positions_after": [p.__dict__ for p in self.positions_after],
+            "decisions": [d.model_dump() for d in self.decisions],
+            "fills": [f.model_dump() for f in self.fills],
+            "positions_after": [p.model_dump() for p in self.positions_after],
             "cash_after": self.cash_after,
             "equity_after": self.equity_after,
             "risk_metrics": self.risk_metrics,
@@ -80,22 +84,29 @@ class SessionRecord:
             return self.previous_hash == "0" * 64
         return self.previous_hash == previous_record.compute_hash()
 
+    @classmethod
+    def create_genesis_record(
+        cls,
+        initial_cash: float,
+        session_date: date,
+        initial_positions: tuple["PositionSnapshot", ...] = (),
+    ) -> "SessionRecord":
+        """Create the genesis (session 0) record."""
+        equity = initial_cash + sum(p.market_value for p in initial_positions)
+        return cls(
+            session_id=0,
+            session_date=session_date,
+            previous_hash="0" * 64,
+            cash_after=initial_cash,
+            equity_after=initial_cash + sum(p.market_value for p in initial_positions),
+            positions_after=initial_positions,
+        )
+
 
 def create_genesis_record(
     initial_cash: float,
     session_date: date,
-    initial_positions: tuple[PositionSnapshot, ...] = (),
-) -> SessionRecord:
-    """Create the genesis (session 0) record."""
-    equity = initial_cash + sum(p.market_value for p in initial_positions)
-    record = SessionRecord(
-        session_id=0,
-        session_date=session_date,
-        previous_hash="0" * 64,
-        cash_after=initial_cash,
-        equity_after=equity,
-        positions_after=initial_positions,
-    )
-    # Verify self-consistency
-    assert record.compute_hash() == record.previous_hash or record.previous_hash == "0" * 64
-    return record
+    initial_positions: tuple["PositionSnapshot", ...] = (),
+) -> "SessionRecord":
+    """Create the genesis (session 0) record (module-level function for backwards compatibility)."""
+    return SessionRecord.create_genesis_record(initial_cash, session_date, initial_positions)

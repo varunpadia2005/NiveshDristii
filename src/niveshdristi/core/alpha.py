@@ -1,16 +1,17 @@
 """AlphaModel protocol — the contract for all signal generators."""
 
 from __future__ import annotations
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
+
+from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
 
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
 
 
-@dataclass(frozen=True, slots=True)
-class AsOfContext:
+class AsOfContext(BaseModel):
     """
     Context passed to AlphaModel.predict() containing point-in-time data.
 
@@ -21,13 +22,14 @@ class AsOfContext:
         market_id: Market identifier (e.g., "IN_NSE") for market-specific logic.
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
     as_of: datetime
     universe: tuple[Instrument, ...]
     market_id: str
 
 
-@dataclass(frozen=True, slots=True)
-class ModelRegistryEntry:
+class ModelRegistryEntry(BaseModel):
     """
     Metadata for a registered AlphaModel.
 
@@ -40,11 +42,13 @@ class ModelRegistryEntry:
         description: Human-readable description of the model's approach
     """
 
-    model_id: str
-    horizon_days: int
-    required_data: tuple[str, ...]
-    pit_safe: bool
-    data_status: str = "live"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model_id: str = Field(..., min_length=1)
+    horizon_days: int = Field(..., ge=1)
+    required_data: tuple[str, ...] = ()
+    pit_safe: bool = True
+    data_status: str = Field(default="live", pattern="^(live|stub|unavailable)$")
     description: str = ""
 
 

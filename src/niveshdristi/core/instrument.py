@@ -1,13 +1,14 @@
 """Instrument — market-agnostic security identifier."""
 
 from __future__ import annotations
-from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
+from pydantic import BaseModel, Field, field_validator
+from pydantic.config import ConfigDict
 
-@dataclass(frozen=True, slots=True)
-class Instrument:
+
+class Instrument(BaseModel):
     """
     Immutable security identifier.
 
@@ -24,30 +25,25 @@ class Instrument:
         delisted_date: Date the instrument was delisted (if applicable)
     """
 
-    symbol: str
-    exchange: str
-    market_id: str
-    currency: str
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str = Field(..., min_length=1)
+    exchange: str = Field(..., min_length=1)
+    market_id: str = Field(..., min_length=1)
+    currency: str = Field(..., min_length=1)
     isin: Optional[str] = None
     sector: Optional[str] = None
-    lot_size: int = 1
-    tick_size: float = 0.01
+    lot_size: int = Field(default=1, ge=1)
+    tick_size: float = Field(default=0.01, gt=0)
     listed_date: Optional[date] = None
     delisted_date: Optional[date] = None
 
-    def __post_init__(self):
-        if not self.symbol:
-            raise ValueError("symbol cannot be empty")
-        if not self.exchange:
-            raise ValueError("exchange cannot be empty")
-        if not self.market_id:
-            raise ValueError("market_id cannot be empty")
-        if not self.currency:
-            raise ValueError("currency cannot be empty")
-        if self.lot_size < 1:
-            raise ValueError("lot_size must be >= 1")
-        if self.tick_size <= 0:
-            raise ValueError("tick_size must be > 0")
+    @field_validator("symbol", "exchange", "market_id", "currency", mode="before")
+    @classmethod
+    def _not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("cannot be empty")
+        return v.strip()
 
     @property
     def is_active(self) -> bool:

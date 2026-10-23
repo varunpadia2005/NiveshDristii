@@ -1,27 +1,28 @@
 """Decision, Order, Fill — portfolio construction and execution primitives."""
 
 from __future__ import annotations
-from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic.config import ConfigDict
 
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
 
 
-class OrderSide(Enum):
+class OrderSide(str, Enum):
     BUY = "buy"
     SELL = "sell"
 
 
-class OrderType(Enum):
+class OrderType(str, Enum):
     MARKET = "market"
     LIMIT = "limit"
 
 
-@dataclass(frozen=True, slots=True)
-class Decision:
+class Decision(BaseModel):
     """
     Portfolio construction decision for a single instrument.
 
@@ -42,37 +43,36 @@ class Decision:
         as_of: Point-in-time timestamp of the decision
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     instrument: Instrument
     target_weight: float
     target_shares: int
     current_shares: int
     delta_shares: int
-    side: Optional[OrderSide]
-    reason: str
-    signal_contributions: dict[str, float] = None
+    side: Optional[OrderSide] = None
+    reason: str = Field(..., min_length=1)
+    signal_contributions: dict[str, float] = {}
     risk_gate_clamp: bool = False
     clamp_reasons: tuple[str, ...] = ()
-    as_of: datetime = None
+    as_of: datetime = Field(default_factory=datetime.utcnow)
 
-    def __post_init__(self):
-        if self.signal_contributions is None:
-            object.__setattr__(self, "signal_contributions", {})
-        if self.as_of is None:
-            object.__setattr__(self, "as_of", datetime.utcnow())
+    @model_validator(mode="after")
+    def _derive_side(self) -> "Decision":
         if self.delta_shares == 0:
             object.__setattr__(self, "side", None)
         elif self.delta_shares > 0 and self.side != OrderSide.BUY:
             object.__setattr__(self, "side", OrderSide.BUY)
         elif self.delta_shares < 0 and self.side != OrderSide.SELL:
             object.__setattr__(self, "side", OrderSide.SELL)
+        return self
 
     @property
     def is_trade(self) -> bool:
         return self.delta_shares != 0
 
 
-@dataclass(frozen=True, slots=True)
-class Order:
+class Order(BaseModel):
     """
     Order sent to the broker.
 
@@ -88,29 +88,35 @@ class Order:
         client_order_id: Unique client-side order ID
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     instrument: Instrument
     side: OrderSide
-    quantity: int
+    quantity: int = Field(..., gt=0)
     order_type: OrderType = OrderType.MARKET
     limit_price: Optional[float] = None
     time_in_force: str = "day"
     decision_id: Optional[str] = None
-    placed_at: datetime = None
+    placed_at: datetime = Field(default_factory=datetime.utcnow)
     client_order_id: str = ""
 
-    def __post_init__(self):
-        if self.placed_at is None:
-            object.__setattr__(self, "placed_at", datetime.utcnow())
-        if self.quantity <= 0:
-            raise ValueError("quantity must be > 0")
+    @model_validator(mode="after")
+    def _validate_limit_price(self) -> "Order":
         if self.order_type == OrderType.LIMIT and self.limit_price is None:
             raise ValueError("limit_price required for LIMIT orders")
         if self.limit_price is not None and self.limit_price <= 0:
             raise ValueError("limit_price must be > 0")
+        return self
+
+    @field_validator("quantity")
+    @classmethod
+    def _quantity_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("quantity must be > 0")
+        return v
 
 
-@dataclass(frozen=True, slots=True)
-class Fill:
+class Fill(BaseModel):
     """
     Execution fill returned by the broker.
 
@@ -126,25 +132,23 @@ class Fill:
         broker_fill_id: Broker's fill ID
     """
 
-    order: Order
-    filled_quantity: int
-    fill_price: float
-    fill_time: datetime
-    commission: float = 0.0
-    fees: float = 0.0
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    order: "Order"
+    filled_quantity: int = Field(..., gt=0)
+    fill_price: float = Field(..., gt=0)
+    fill_time: datetime = Field(default_factory=datetime.utcnow)
+    commission: float = Field(default=0.0, ge=0)
+    fees: float = Field(default=0.0, ge=0)
     slippage_bps: float = 0.0
     broker_order_id: str = ""
     broker_fill_id: str = ""
 
-    def __post_init__(self):
-        if self.filled_quantity <= 0:
-            raise ValueError("filled_quantity must be > 0")
+    @model_validator(mode="after")
+    def _validate_fill(self) -> "Fill":
         if self.filled_quantity > self.order.quantity:
             raise ValueError("filled_quantity cannot exceed order.quantity")
-        if self.fill_price <= 0:
-            raise ValueError("fill_price must be > 0")
-        if self.commission < 0 or self.fees < 0:
-            raise ValueError("commission and fees must be >= 0")
+        return self
 
     @property
     def total_cost(self) -> float:
