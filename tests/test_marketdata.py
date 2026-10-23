@@ -338,3 +338,69 @@ class TestProviderChain:
         chained = ChainedDataClient(ProviderRegistry(), "M", "prices")
         with pytest.raises(ProviderError, match="no provider chain"):
             chained.call("prices", "X", date(2026, 1, 1), date(2026, 1, 31))
+
+
+class TestDataQuality:
+    """Quality report fires on planted defects (and stays silent on clean data)."""
+
+    @staticmethod
+    def _planted() -> pl.DataFrame:
+        # Mon 19, Tue 20, [Wed 21 MISSING], Thu 22, Fri 23
+        # defects: Tue zero volume; Thu raw close halved (suspected split); Fri NaN OHLC
+        return pl.DataFrame(
+            {
+                "date": ["2026-10-19", "2026-10-20", "2026-10-22", "2026-10-23"],
+                "open": [100.0, 100.0, 50.0, None],
+                "high": [101.0, 101.0, 51.0, None],
+                "low": [99.0, 99.0, 49.0, None],
+                "close": [100.0, 100.0, 50.0, None],
+                "volume": [1000, 0, 1000, 900],
+            }
+        )
+
+    @staticmethod
+    def _clean() -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "date": ["2026-10-19", "2026-10-20", "2026-10-21"],
+                "open": [100.0, 100.5, 101.0],
+                "high": [101.0, 101.5, 102.0],
+                "low": [99.0, 99.5, 100.0],
+                "close": [100.0, 100.5, 101.0],
+                "volume": [1000, 1100, 1200],
+            }
+        )
+
+    def test_planted_defects_all_detected(self):
+        from niveshdristi.marketdata.quality import check_prices
+
+        report = check_prices(self._planted(), "TEST")
+        assert report.count("gap") == 1                      # Wed 2026-10-21
+        assert report.count("zero_volume") == 1              # Tue
+        assert report.count("nan_ohl") == 1                  # Fri
+        assert report.count("split_discontinuity") == 1      # Thu halving
+        assert report.has_critical
+
+    def test_clean_data_no_issues(self):
+        from niveshdristi.marketdata.quality import check_prices
+
+        report = check_prices(self._clean(), "TEST")
+        assert report.issues == []
+
+    def test_stale_last_bar(self):
+        from niveshdristi.marketdata.quality import check_prices
+
+        report = check_prices(
+            self._clean(),
+            "TEST",
+            reference_date=date(2026, 10, 30),
+            max_stale_days=5,
+        )
+        assert report.count("stale_bars") == 1
+
+    def test_missing_columns_critical(self):
+        from niveshdristi.marketdata.quality import check_prices
+
+        report = check_prices(pl.DataFrame({"date": []}), "TEST")
+        assert report.count("schema") == 1
+        assert report.has_critical
