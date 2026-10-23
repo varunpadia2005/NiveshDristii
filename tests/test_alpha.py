@@ -4,6 +4,18 @@ the no-look-ahead property test (with a deliberately leaky CANARY), and the
 import boundary (core/, marketdata/, alpha/ must not import niveshdristi.markets).
 
 All frames here are SYNTHETIC and generated in code (neutral names SYN001...).
+
+NO-LOOK-AHEAD CAVEAT (plain statement): the property test catches SIDE-CHANNEL
+peeking only — a model that consults an as-of-unaware raw source whose content
+extends past as_of. The REAL point-in-time guard is the builder's construction
+validation (marketdata.context.build_model_inputs raises DataError on any row
+dated after as_of); black-box output comparison alone cannot prove absence of
+look-ahead.
+
+DATE.TODAY() EXEMPTION: wrapped legacy code (legacy folders, e.g. the TA
+indicators/signals the port calls) is exempt from the model-zone date.today()
+ban; such wrapped code is marked 'legacy, not PIT-safe' in its registry entry
+description where applicable.
 """
 
 import re
@@ -21,8 +33,10 @@ T = date(2026, 10, 23)
 
 def _syn_frame(closes: list[float], start: date = date(2026, 9, 1)) -> pl.DataFrame:
     """Synthetic daily frame (neutral symbol data, generated in code)."""
+    from datetime import timedelta
+
     n = len(closes)
-    dates = [(start + __import__("datetime").timedelta(days=i)).isoformat() for i in range(n)]
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(n)]
     return pl.DataFrame({"date": dates, "close": closes, "volume": [1000] * n})
 
 
@@ -259,7 +273,12 @@ class TestTaEnsemblePort:
         )
 
     def test_pinned_cfg_values(self):
-        """Legacy reads CFG at CALL time — pin the values the equality relies on."""
+        """Legacy reads CFG at CALL time — pin the values the equality relies on.
+
+        INTENTIONAL TRIPWIRE: if anyone changes indicator periods or signal
+        weights in config.yaml, this fails so the port-equality result is
+        re-examined instead of silently drifting.
+        """
         from niveshdristi.config import CFG
 
         assert CFG.indicators.ema_periods == [20, 50, 200]
@@ -267,6 +286,50 @@ class TestTaEnsemblePort:
         assert CFG.signals.weights == {
             "trend": 0.35, "momentum": 0.30, "volatility": 0.15, "volume": 0.20,
         }
+
+    def test_conviction_bounded_on_extremes(self):
+        """Synthetic extremes: conviction always within [-1, 1] (NEW clamp).
+
+        Frames chosen to push the legacy composite to its extremes: a strong
+        uptrend (all scorers max) and a crash below all bands (volatility
+        scorer at -1.0, which without the clamp would push 2c-1 below -1).
+        """
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+        from niveshdristi.core.alpha import AsOfContext
+
+        up = self._syn_frame_extreme(uptrend=True)
+        crash = self._syn_frame_extreme(uptrend=False)
+        for df in (up, crash):
+            inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN001": df})
+            ctx = AsOfContext(
+                as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC),
+                universe=(),
+                market_id="TEST_MARKET",
+            )
+            for s in TaEnsemble().predict(ctx, inputs):
+                assert -1.0 <= s.conviction <= 1.0
+
+    @staticmethod
+    def _syn_frame_extreme(uptrend: bool):
+        from datetime import timedelta
+
+        n = 300
+        if uptrend:
+            closes = [100.0 * (1.0 + 0.004 * i) for i in range(n)]
+        else:  # crash: long decline then a gap-down far below the bands
+            closes = [100.0 * (1.0 - 0.003 * i) for i in range(n)]
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame(
+            {
+                "date": dates,
+                "adj_close": closes,
+                "adj_high": [c * 1.01 for c in closes],
+                "adj_low": [c * 0.99 for c in closes],
+                "volume": [2_000_000] * n,
+            }
+        )
 
     def test_wrapper_equals_direct_legacy_call(self):
         """PORT EQUALITY: wrapper's legacy path == direct legacy invocation."""

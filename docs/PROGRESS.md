@@ -240,3 +240,25 @@ GATE: PASS
 Figures: **148 collected, 147 passed, 0 failed, 0 errors, 0 skipped,
 1 xfailed** (the approved strict holiday xfail), 2 known universe-count
 warnings.
+
+---
+
+# Phase 3 (partial, 2026-10-24): seam, registry, TA port, gate G1
+
+Gate hardening (G1): the model zones (alpha/, markets/in_nse/models/) ban
+`date.today()` in addition to the existing time hygiene — **wrapped legacy
+code is exempt** (it is not scanned; where a model wraps non-PIT-safe legacy
+behaviour, its registry entry says "legacy, not PIT-safe"). G13/G14 now also
+cover tests/test_alpha.py by explicit path.
+
+**No-look-ahead caveat (plain statement):** the property test in
+tests/test_alpha.py catches SIDE-CHANNEL peeking only (a model consulting an
+as-of-unaware raw source). The REAL point-in-time guard is the builder's
+construction-time DataError on any row dated after as_of
+(marketdata.context.build_model_inputs).
+
+TA ensemble: the legacy composite is a weighted sum of scorers clipped to
+[-1, 1] and CAN be negative, so a NEW clamp into [0, 1] precedes the
+conviction mapping (documented in the module docstring); a bounds test on
+synthetic extremes enforces conviction ∈ [-1, 1]. The CFG-pinning assertions
+in the equality test are an intentional tripwire against config drift.

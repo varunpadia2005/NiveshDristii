@@ -2,6 +2,7 @@
 """Phase 1 Gate Script — validates all Phase 1 requirements."""
 
 from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -104,7 +105,7 @@ def main() -> int:
         fails += 1
     else:
         pass_("G01", "git status clean after pytest")
-    
+
     # G02: No test_*.py, check_*.py or *.bak outside tests/ and tools/
     print("\n=== G02: No stray test/check files ===")
     stray = []
@@ -119,35 +120,35 @@ def main() -> int:
         fails += 1
     else:
         pass_("G02", "No stray test/check/bak files")
-    
+
     # G03: Legacy contract - git diff empty over legacy folders
     print("\n=== G03: Legacy contract ===")
     legacy_folders = [
-        "backtest", "data", "signals", "indicators", "app", "api", 
+        "backtest", "data", "signals", "indicators", "app", "api",
         "fundamentals", "genai", "regime"
     ]
     diff_args = ["git", "diff", "--diff-filter=MD", "--name-only", "82f76d8", "HEAD"]
     for folder in legacy_folders:
         diff_args.extend(["--", f"src/niveshdristi/{folder}"])
     diff_args.extend(["--", "tests/test_characterization.py"])
-    
+
     result = run(diff_args, cwd=repo_root)
     if result.stdout.strip():
         fail("G03", f"Legacy folders have changes:\n{result.stdout}")
         fails += 1
     else:
         pass_("G03", "Legacy contract intact")
-    
+
     # Also check for additions (diff without --diff-filter=MD)
-    result = run(["git", "diff", "82f76d8", "HEAD", "--"] + 
-                 [f"src/niveshdristi/{f}" for f in legacy_folders] + 
+    result = run(["git", "diff", "82f76d8", "HEAD", "--"] +
+                 [f"src/niveshdristi/{f}" for f in legacy_folders] +
                  ["tests/test_characterization.py"], cwd=repo_root)
     if result.stdout.strip():
         fail("G03", f"Legacy folders have additions:\n{result.stdout}")
         fails += 1
     else:
         pass_("G03", "No additions to legacy folders")
-    
+
     # G03b: phase0 tool precheck — the comparison tools must exist in the
     # phase0 tree and be byte-identical to the repo copies, otherwise G04/G05
     # would compare with different code. The gate never writes to phase0_root.
@@ -178,19 +179,19 @@ def main() -> int:
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
         result0 = run([sys.executable, "tools/dump_config.py"], cwd=phase0_root, capture=True, env=env0)
-        
+
         # Run dump_config on current
         env1 = os.environ.copy()
         env1["PYTHONPATH"] = str(repo_root / "src")
         result1 = run([sys.executable, "tools/dump_config.py"], cwd=repo_root, capture=True, env=env1)
-        
+
         if result0.returncode == 0 and result1.returncode == 0:
             try:
                 data0 = json.loads(result0.stdout.strip().split("JSON: ")[1])
                 data1 = json.loads(result1.stdout.strip().split("JSON: ")[1])
                 md5_0 = result0.stdout.strip().split("MD5: ")[1].split(" |")[0]
                 md5_1 = result1.stdout.strip().split("MD5: ")[1].split(" |")[0]
-                
+
                 if md5_0 == md5_1:
                     pass_("G04", f"Config MD5 match: {md5_0}")
                     # Check __file__ paths
@@ -225,19 +226,19 @@ def main() -> int:
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
         result0 = run([sys.executable, "tools/compare_backtest.py"], cwd=phase0_root, capture=True, env=env0)
-        
+
         env1 = os.environ.copy()
         env1["PYTHONPATH"] = str(repo_root / "src")
         result1 = run([sys.executable, "tools/compare_backtest.py"], cwd=repo_root, capture=True, env=env1)
-        
+
         if result0.returncode == 0 and result1.returncode == 0:
             try:
                 out0 = json.loads(result0.stdout.strip())
                 out1 = json.loads(result1.stdout.strip())
-                
+
                 keys = ["total_return", "trade_count", "total_cost", "equity_curve_md5"]
                 match = all(abs(out0[k] - out1[k]) < 1e-9 if isinstance(out0[k], float) else out0[k] == out1[k] for k in keys)
-                
+
                 if match:
                     pass_("G05", "Backtest outputs match")
                     # Check __file__ paths
@@ -267,7 +268,7 @@ def main() -> int:
             info("G05", "Skipped (phase0 tool precheck failed)")
         else:
             info("G05", "Skipped (no phase0 path)")
-    
+
     # G06: pytest results (derived from the single shared run)
     print("\n=== G06: Pytest results ===")
     assert shared_pytest is not None
@@ -329,7 +330,7 @@ def main() -> int:
         info("G07", f"Found {len(warnings)} utcnow warnings: {warnings[:3]}")
     else:
         pass_("G07", "No utcnow warnings")
-    
+
     # G08: time hygiene across core/, engine/, markets/, cli/, config_loader.py;
     # the @dataclass ban stays core/-only
     print("\n=== G08: Time & dataclass hygiene ===")
@@ -346,12 +347,20 @@ def main() -> int:
             issues.append(f"{f.name}: has naive datetime.now()")
         if f.parent.name == "core" and "@dataclass" in content:
             issues.append(f"{f.name}: has @dataclass")
+        # date.today() ban applies to the NEW model zones only; wrapped legacy
+        # code (legacy folders) is exempt (marked 'legacy, not PIT-safe').
+        rel_p = f.relative_to(repo_root).as_posix()
+        in_model_zones = rel_p.startswith("src/niveshdristi/alpha/") or rel_p.startswith(
+            "src/niveshdristi/markets/in_nse/models/"
+        )
+        if in_model_zones and "date.today(" in content:
+            issues.append(f"{f.name}: has date.today() in a model zone")
     if issues:
         fail("G08", f"Issues: {issues}")
         fails += 1
     else:
         pass_("G08", f"Time & dataclass hygiene clean ({len(g08_files)} files)")
-    
+
     # G09: arbitrary_types_allowed has justification comment
     print("\n=== G09: arbitrary_types_allowed justification ===")
     issues = []
@@ -367,12 +376,12 @@ def main() -> int:
         fails += 1
     else:
         pass_("G09", "All arbitrary_types_allowed have justification")
-    
+
     # G10: Literal guard
     print("\n=== G10: Literal guard ===")
     # Run the literal guard on real core/ and engine/
     sys.path.insert(0, str(repo_root))
-    from tests.market_literals import scan_market_literals, SCAN_EXTS
+    from tests.market_literals import SCAN_EXTS, scan_market_literals
 
     def _rel_posix(p: str) -> str:
         # Scanner finding paths carry os-native separators (backslashes on Windows)
@@ -432,7 +441,7 @@ def main() -> int:
         else:
             fail("G10", f"{target}: scan covers 0 files (guard would be vacuous)")
             fails += 1
-    
+
     # Test on temp tree with forbidden patterns
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -452,7 +461,7 @@ def main() -> int:
         else:
             fail("G10", f"Temp tree missing patterns: expected={expected}, found={patterns_found}")
             fails += 1
-    
+
     # G11: Typed CFG
     print("\n=== G11: Typed CFG ===")
     # mypy cache goes to a fresh temp dir outside the repo (removed after G14)
@@ -473,14 +482,14 @@ def main() -> int:
             fails += 1
     finally:
         Path(temp_file).unlink(missing_ok=True)
-    
+
     # G12: CLI via python -m niveshdristi.cli.main
     print("\n=== G12: CLI validation ===")
     # Check nd command on PATH
     result = run(["nd", "--help"], cwd=repo_root)
     nd_on_path = result.returncode == 0
     info("G12", f"nd command on PATH: {nd_on_path}")
-    
+
     # --json validate exits 0
     result = run([sys.executable, "-m", "niveshdristi.cli.main", "--json", "validate"], cwd=repo_root, capture=True)
     if result.returncode == 0:
@@ -507,7 +516,7 @@ def main() -> int:
     else:
         fail("G12", f"--json validate exited {result.returncode}: {result.stdout}")
         fails += 1
-    
+
     # --config <bad yaml> --json validate exits 1
     with tempfile.TemporaryDirectory() as tmp:
         bad_yaml = Path(tmp) / "bad.yaml"
@@ -518,27 +527,29 @@ def main() -> int:
         else:
             fail("G12", f"--config <bad> --json validate exited {result.returncode}: {result.stdout}")
             fails += 1
-    
+
     # G13: ruff check on new-code paths = 0 errors
     print("\n=== G13: Ruff on new code ===")
     result = run([sys.executable, "-m", "ruff", "check", "--no-cache",
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
-                  "src/niveshdristi/config_loader.py"], cwd=repo_root)
+                  "src/niveshdristi/config_loader.py",
+                  "tests/test_alpha.py"], cwd=repo_root)
     if result.returncode == 0:
         pass_("G13", "Ruff clean on new code paths")
     else:
         fail("G13", f"Ruff errors: {result.stdout}")
         fails += 1
-    
+
     # G14: mypy on new code paths = 0 errors, #type:ignore <= 10
     print("\n=== G14: Mypy on new code ===")
     result = run([sys.executable, "-m", "mypy",
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
-                  "src/niveshdristi/config_loader.py", "--ignore-missing-imports",
+                  "src/niveshdristi/config_loader.py", "tests/test_alpha.py",
+                  "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
         # Count type: ignore comments
@@ -555,7 +566,7 @@ def main() -> int:
     else:
         fail("G14", f"Mypy errors: {result.stdout}")
         fails += 1
-    
+
     # G15: Exactly one xfail marker in tests/, strict=True
     print("\n=== G15: Xfail markers ===")
     xfail_count = 0
@@ -568,11 +579,11 @@ def main() -> int:
                 if "strict=True" in line:
                     strict_xfail = True
     if xfail_count == 1 and strict_xfail:
-        pass_("G15", f"Exactly one xfail marker, strict=True")
+        pass_("G15", "Exactly one xfail marker, strict=True")
     else:
         fail("G15", f"xfail_count={xfail_count}, strict={strict_xfail}")
         fails += 1
-    
+
     # G16: Docs exist, .gitignore contains .venv
     print("\n=== G16: Docs and gitignore ===")
     docs_ok = (repo_root / "docs" / "PHASE2_PREREQS.md").exists() and (repo_root / "docs" / "PROGRESS.md").exists()
@@ -583,12 +594,12 @@ def main() -> int:
     else:
         fail("G16", f"docs_ok={docs_ok}, venv_ignored={venv_ignored}")
         fails += 1
-    
+
     # G17: Environment info
     print("\n=== G17: Environment info ===")
     info("G17", f"python={sys.version.split()[0]}, executable={sys.executable}")
-    import pytest
     import mypy.version
+    import pytest
     mypy_ver = mypy.version.__version__
     info("G17", f"pytest={pytest.__version__}, mypy={mypy_ver}")
 

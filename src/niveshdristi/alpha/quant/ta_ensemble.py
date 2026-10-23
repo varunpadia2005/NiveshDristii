@@ -68,7 +68,12 @@ class TaEnsemble:
             else:
                 composite = report.composite  # legacy value, unchanged
 
-            conviction = composite * 2.0 - 1.0  # NEW mapping (0..1 -> -1..+1)
+            # NEW clamp (not a port): the legacy composite is a weighted sum of
+            # scorers clipped to [-1, 1], so it can be NEGATIVE (e.g. a -1.0
+            # volatility score with others at 0); clamping into [0, 1] before
+            # the conviction mapping keeps conviction within Signal's [-1, +1].
+            clamped = min(1.0, max(0.0, composite))
+            conviction = clamped * 2.0 - 1.0  # NEW mapping (0..1 -> -1..+1)
             if abs(conviction) < NEUTRAL_BAND:
                 continue  # no opinion
 
