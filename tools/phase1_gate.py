@@ -148,9 +148,32 @@ def main() -> int:
     else:
         pass_("G03", "No additions to legacy folders")
     
+    # G03b: phase0 tool precheck — the comparison tools must exist in the
+    # phase0 tree and be byte-identical to the repo copies, otherwise G04/G05
+    # would compare with different code. The gate never writes to phase0_root.
+    phase0_tools_ok = True
+    if phase0_root:
+        print("\n=== G03b: phase0 tool md5 precheck ===")
+        for name in ("dump_config.py", "compare_backtest.py"):
+            p0 = phase0_root / "tools" / name
+            p1 = repo_root / "tools" / name
+            if not p0.exists() or not p1.exists():
+                fail("G03b", f"missing tool copy: tools/{name} (phase0 exists={p0.exists()}, repo exists={p1.exists()})")
+                phase0_tools_ok = False
+                fails += 1
+                continue
+            h0 = hashlib.md5(p0.read_bytes()).hexdigest()
+            h1 = hashlib.md5(p1.read_bytes()).hexdigest()
+            if h0 != h1:
+                fail("G03b", f"md5 mismatch for tools/{name}: phase0={h0} repo={h1}")
+                phase0_tools_ok = False
+                fails += 1
+            else:
+                pass_("G03b", f"tools/{name} md5 match: {h0}")
+
     # G04: Config equality - MD5 match
     print("\n=== G04: Config equality ===")
-    if phase0_root:
+    if phase0_root and phase0_tools_ok:
         # Run dump_config on phase0 using current repo's tool with phase0 src, cwd=phase0_root
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
@@ -191,11 +214,14 @@ def main() -> int:
             fail("G04", f"dump_config failed: phase0_rc={result0.returncode} phase0_err={result0.stderr} current_rc={result1.returncode} current_err={result1.stderr}")
             fails += 1
     else:
-        info("G04", "Skipped (no phase0 path)")
-    
+        if phase0_root and not phase0_tools_ok:
+            info("G04", "Skipped (phase0 tool precheck failed)")
+        else:
+            info("G04", "Skipped (no phase0 path)")
+
     # G05: Backtest equality
     print("\n=== G05: Backtest equality ===")
-    if phase0_root:
+    if phase0_root and phase0_tools_ok:
         env0 = os.environ.copy()
         env0["PYTHONPATH"] = str(phase0_root / "src")
         result0 = run([sys.executable, "tools/compare_backtest.py"], cwd=phase0_root, capture=True, env=env0)
@@ -237,7 +263,10 @@ def main() -> int:
             fail("G05", f"compare_backtest failed: phase0_rc={result0.returncode} phase0_err={result0.stderr} current_rc={result1.returncode} current_err={result1.stderr}")
             fails += 1
     else:
-        info("G05", "Skipped (no phase0 path)")
+        if phase0_root and not phase0_tools_ok:
+            info("G05", "Skipped (phase0 tool precheck failed)")
+        else:
+            info("G05", "Skipped (no phase0 path)")
     
     # G06: pytest results (derived from the single shared run)
     print("\n=== G06: Pytest results ===")
