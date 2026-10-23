@@ -322,11 +322,14 @@ def main() -> int:
     # G11: Typed CFG
     print("\n=== G11: Typed CFG ===")
     # Use a file-based check since mypy needs the full module context
+    # Run with PYTHONPATH=src to use source tree instead of installed package
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("from niveshdristi.config import CFG\nCFG.backtest.does_not_exist\n")
         temp_file = f.name
     try:
-        result = run([sys.executable, "-m", "mypy", temp_file, "--ignore-missing-imports"], cwd=repo_root)
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(repo_root / "src")
+        result = run([sys.executable, "-m", "mypy", temp_file], cwd=repo_root, env=env)
         if "attr-defined" in result.stdout and "does_not_exist" in result.stdout:
             pass_("G11", "Typed CFG works (attr-defined error for does_not_exist)")
         else:

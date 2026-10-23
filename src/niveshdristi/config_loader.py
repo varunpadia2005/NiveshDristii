@@ -231,10 +231,12 @@ def load_universe(name: str, universes_dir: Path | None = None) -> Universe:
     if expected is not None and len(universe.tickers) != expected:
         import warnings
         warnings.warn(
-            f"Universe '{name}' has {len(universe.tickers)} tickers, "
-            f"expected {expected}. Check for duplicates or malformed symbols.",
+            (
+                f"Universe '{name}' has {len(universe.tickers)} tickers, "
+                f"expected {expected}. Check for duplicates or malformed symbols."
+            ),
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
     return universe
