@@ -7,12 +7,13 @@ providers fail loudly.
 """
 
 from datetime import date
+from pathlib import Path
 
 import polars as pl
 import pytest
 
 from niveshdristi.core.errors import ConfigurationError
-from niveshdristi.marketdata.client import DATA_KINDS, DataClient, PriceSeries
+from niveshdristi.marketdata.client import DataClient, PriceSeries
 from niveshdristi.marketdata.registry import ProviderRegistry, default_registry
 
 
@@ -105,7 +106,10 @@ class TestYFinanceAdapter:
                 "Volume": [1000, 1100, 1200],
             }
             if auto_adjust:
-                base = {k: [v * 0.5 if v is not None else None for v in vs] for k, vs in base.items()}
+                base = {
+                    k: [v * 0.5 if v is not None else None for v in vs]
+                    for k, vs in base.items()
+                }
             return pd.DataFrame(base, index=idx)
 
         return fetcher
@@ -157,3 +161,45 @@ class TestYFinanceAdapter:
             client.fundamentals("RELIANCE", as_of=date(2026, 10, 23))
         with pytest.raises(NotImplementedError):
             client.index_constituents("NIFTY 50", as_of=date(2026, 10, 23))
+
+
+class TestBhavcopyFileParser:
+    """IN_NSE bhavcopy file parser: schema-typed, date-keyed, loud on mismatch."""
+
+    FIXTURE = Path("tests/fixtures/bhavcopy_SYNTHETIC_sec_bhavdata_full.csv")
+
+    def test_parses_synthetic_fixture_with_real_schema(self):
+        from niveshdristi.markets.in_nse.providers.bhavcopy_file import parse_bhavcopy_csv
+
+        df = parse_bhavcopy_csv(self.FIXTURE)
+        assert df.height == 3
+        assert df["DELIV_QTY"].dtype == pl.Int64
+        assert df["DELIV_PER"].dtype == pl.Float64
+        assert df["DATE1"].to_list() == [date(2026, 10, 23)] * 3  # date-keyed
+
+    def test_schema_mismatch_fails_loudly(self, tmp_path):
+        from niveshdristi.core.errors import ProviderError
+        from niveshdristi.markets.in_nse.providers.bhavcopy_file import parse_bhavcopy_csv
+
+        bad = tmp_path / "bad.csv"
+        bad.write_text(
+            "SYMBOL,DATE1,CLOSE_PRICE,WRONG_COL\nTESTA,23-Oct-2026,100.0,1\n", encoding="utf-8"
+        )
+        with pytest.raises(ProviderError, match="schema mismatch"):
+            parse_bhavcopy_csv(bad)
+
+    def test_delivery_for_symbol_and_missing_file(self, tmp_path):
+        from niveshdristi.core.errors import ProviderError
+        from niveshdristi.markets.in_nse.providers.bhavcopy_file import BhavcopyFileStore
+
+        store = BhavcopyFileStore(tmp_path)
+        (tmp_path / "sec_bhavdata_full_23102026.csv").write_text(
+            self.FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        assert store.available_dates() == [date(2026, 10, 23)]
+        d = store.delivery_for("TESTA", date(2026, 10, 23))
+        assert d.height == 1
+        assert d["DELIV_QTY"].to_list() == [40000]
+        assert d["DELIV_PER"].to_list() == [40.0]
+        with pytest.raises(ProviderError, match="not found"):
+            store.load_day(date(2026, 10, 22))
