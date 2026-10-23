@@ -115,3 +115,93 @@ legacy backtest latent bugs; unverified rates (all items in `docs/VERIFY.md` are
 unverified); legacy mypy/ruff baselines. Environment risk: the suite is only proven on
 Python 3.13.7/Windows; 3.11 could not be checked because no 3.11 interpreter exists
 here.
+
+---
+
+# Phase 2 Progress (P0 probe + steps S1–S8, 2026-10-24)
+
+## P0 live data-source probe (read-only; raw outputs in D:/Nivesh Dristi/p2_probe/)
+
+Verdicts (details in docs/VERIFY.md §9): yfinance **usable** (unofficial,
+prices fallback; 2015→today verified live); NSE bhavcopy via archives
+**usable with caveats** (single-file probe returned 3,542 rows with
+DELIV_QTY/DELIV_PER; 2015 paths 404); jugaad-data 0.37 **bhavcopy-only**
+(index/TRI functions broken: internal TypeError); niftyindices.com,
+nseindia.com main site (holidays/filings/constituents), NSDL FII/DII
+**blocked** (timeout / Akamai 403 / connection reset). No block was worked
+around; no automated NSE/NSDL/niftyindices requests beyond the one-off
+probes above.
+
+**NSE ToS gray zone (2026-10):** nseindia.com Terms of Use prohibit
+"systematic or automated data collection"; robots.txt allows "/" (only
+/market-data-test disallowed). Project decision: bhavcopy is FILE-BASED —
+the user downloads files manually in a browser; there is no automated
+downloader.
+
+## The three blocked Phase 2 items and what unblocks each
+
+1. **Official 2026 holidays** — NSE site unreachable automatically. Unblocked
+   by: the user downloading the official NSE holiday page/PDF in a browser
+   and providing it; then the pre-agreed single commit (data + xfail removal
+   + gate G06/G15 update, with explicit approval). The strict xfail stays
+   untouched until then.
+2. **As-of index constituents (nifty50=49, nifty100=101)** — no responding
+   free source; historical as-of constituents (incl. delisted) need a
+   licensed feed or manual archives. Currently blocked.
+3. **Announcement-dated fundamentals** — no responding source provides
+   announced_at (yfinance is current-state). PIT schema + frozen
+   invisibility test exist (S8); real announcement dates blocked.
+
+Also still open: **Python 3.11 is not installed** on this machine
+(`py --list` shows only 3.13), so the 3.11 verification run could not
+happen; suite is proven on global Python 3.13.7 / pytest 9.1.1 only.
+
+## Steps S1–S8 (one commit each; gate GATE: PASS after every commit)
+
+- **S1** `3882feb` — `${VAR}` expansion (exact whole-string form) in
+  config_loader; unset vars keep the literal with a warning naming only the
+  variable. Proven with gate runs under default env and
+  `DATABASE_URL=postgresql://gate-dummy-2026` (G04 PASS both; pg_dsn took
+  the dummy value when set). A fully-unset gate run is impossible while
+  .env defines DATABASE_URL — covered by unit test instead.
+- **S2** `36dd886` — `src/niveshdristi/marketdata/` (name chosen because
+  `niveshdristi.data` is the LEGACY package): DataClient protocol +
+  PriceSeries (raw/adjusted separate, flags) + ProviderRegistry. Gate now
+  covers marketdata/ in G08 hygiene, G10 literal scan (neutral zone), G13
+  ruff, G14 mypy; market literals allowed only in an explicit adapter
+  allowlist under markets/in_nse/providers/. Each extension proven
+  fail-able with seeded one-off files.
+- **S3** `c190714` — YFinanceClient (IN_NSE): `.NS` suffix only inside the
+  adapter, lazy yfinance import, raw + adjusted fetched separately,
+  NaN-OHLC rows FLAGGED not dropped (reproduced live on 2026-10-23),
+  unsupported kinds raise NotImplementedError. `tools/probe_yfinance.py`
+  live smoke (opt-in, never run by pytest/gate). pyproject gained the one
+  allowed extra edit: `data = ["yfinance>=1.5"]`.
+- **S4** `ed8a9f9` — bhavcopy FILE parser: exact official schema (fails
+  loudly on mismatch), typed DELIV_QTY/DELIV_PER, date-keyed, "-" → null,
+  strip of real-file padding spaces. Tests use a SYNTHETIC fixture labeled
+  inside the file; `tools/bhavcopy_check.py` is the opt-in real-file
+  checker (verified against the P0 file: 3,542 rows parsed, EQ mean
+  DELIV_PER 55.49). No real NSE data committed.
+- **S5** `23e097c` — Parquet cache (market-neutral): deterministic sha256
+  keys, second identical call is a cache hit, live queries honour
+  max_age, as_of-pinned queries are immutable (never stale). Tests write
+  only under tmp_path.
+- **S6** `1f9e023` — ordered provider chain: retries, fallback on error or
+  unsupported, ALL-fail raises typed ProviderError (never an empty frame);
+  chain order is registry-driven (default IN_NSE prices: yfinance;
+  bhavcopy enriches with delivery data — not primary).
+- **S7** `cd76aed` — data-quality report object: nan_ohl, zero_volume,
+  weekday gaps, stale_bars, split_discontinuity (critical) — planted
+  defects fixture proves all fire; clean data yields zero issues.
+- **S8** `c72c64b` — PIT store: period_end/announced_at/source, as_of
+  queries, conservative-lag `put_with_lag` (approximate=True, off by
+  default). FROZEN TEST: a result announced tomorrow is invisible today.
+
+## Current verified state
+
+```
+$ python -m pytest -q            → 147 passed, 1 xfailed, 0 failed/skipped
+$ python tools/phase1_gate.py --phase0 "D:\Nivesh Dristi\phase0_wt"
+                                  → GATE: PASS (exit 0), pytest runs: 1
+```
