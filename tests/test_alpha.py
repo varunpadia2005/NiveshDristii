@@ -2249,3 +2249,170 @@ class TestTaxEngine:
 
         assert financial_year_of(date(2026, 2, 1), 4) == 2025  # Feb -> prior FY
         assert financial_year_of(date(2026, 5, 1), 4) == 2026
+
+
+class TestOrderBuildingAndSimBroker:
+    """P4-S5: integer-share orders + SimBroker known answers."""
+
+    @staticmethod
+    def _gated(weights: dict[str, float]):
+        from niveshdristi.portfolio.risk_gates import GateLimits, run_chain
+        from tests.test_alpha import TestRiskGates
+
+        rules = TestRiskGates._rules()
+        return run_chain(
+            dict(weights),
+            limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0),
+            rules=rules,
+            current_weights={},
+            prices=dict.fromkeys(weights, 100.0),
+            nav=1_000_000.0,
+        )
+
+    @staticmethod
+    def _instrument(symbol: str):
+        from niveshdristi.core.instrument import Instrument
+
+        return Instrument(symbol=symbol, exchange="TEST_M", market_id="TEST_M", currency="XXX")
+
+    def test_build_orders_floors_and_never_overspends(self):
+        from niveshdristi.execution.orders import build_orders
+
+        gated = self._gated({"SYN050": 0.10, "SYN051": 0.10})
+        orders, logs = build_orders(
+            gated,
+            nav=1_000_000.0,
+            cash=150_000.0,
+            prices={"SYN050": 33.33, "SYN051": 100.0},
+            instruments={
+                "SYN050": self._instrument("SYN050"),
+                "SYN051": self._instrument("SYN051"),
+            },
+            current_holdings={},
+        )
+        by_sym = {o.instrument.symbol: o for o in orders}
+        # SYN050: 100k/33.33 = 3000.3 -> floor 3000 (cost 99,990); remaining
+        # cash 50,010 -> SYN051: 500 shares (cost 50,000); total 149,990 <= 150k
+        assert by_sym["SYN050"].quantity == 3000
+        assert by_sym["SYN051"].quantity == 500
+        spend = 3000 * 33.33 + 500 * 100.0
+        assert spend <= 150_000.0
+
+    def test_zero_quantity_dropped_with_log(self):
+        from niveshdristi.execution.orders import build_orders
+
+        gated = self._gated({"SYN050": 0.001})  # 1000 target, price 1500 -> floor 0
+        orders, logs = build_orders(
+            gated,
+            nav=1_000_000.0,
+            cash=10_000.0,
+            prices={"SYN050": 1500.0},
+            instruments={"SYN050": self._instrument("SYN050")},
+            current_holdings={},
+        )
+        assert orders == []
+        assert any("floored quantity 0" in log.note for log in logs)
+
+    def test_broker_rejects_ungated_order(self):
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.decision import Order, OrderSide
+        from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        broker = SimBroker(rates=RateSchedule(), price_limits=PriceLimitRule(enabled=False))
+        rogue = Order(
+            instrument=self._instrument("SYN050"),
+            side=OrderSide.BUY,
+            quantity=10,
+            placed_at=datetime.now(UTC),
+            client_order_id="rogue-1",
+        )
+        with pytest.raises(ValueError, match="gate provenance"):
+            broker.execute([rogue], prices={"SYN050": 100.0})
+
+    @staticmethod
+    def _broker():
+        from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            exchange_fee=0.0000345, regulator_fee=0.000001,
+            stamp_duty_buy=0.00015, gst_on_fees=0.18,
+            dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
+        )
+        return SimBroker(
+            rates=rates,
+            price_limits=PriceLimitRule(enabled=True, bands=(0.10,)),
+        )
+
+    @staticmethod
+    def _order(symbol: str, qty: int):
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.decision import Order, OrderSide
+        from niveshdristi.core.instrument import Instrument
+
+        return Order(
+            instrument=Instrument(
+                symbol=symbol, exchange="TEST_M", market_id="TEST_M", currency="XXX"
+            ),
+            side=OrderSide.BUY,
+            quantity=qty,
+            placed_at=datetime.now(UTC),
+            client_order_id=f"gate-{symbol}",
+        )
+
+    def test_normal_fill_known_answer(self):
+        """1000 shares at 100 with base slippage 5bps: fill price
+        100*(1+5/10000) = 100.05; notional 100,050; commission 20."""
+        results = self._broker().execute(
+            [self._order("SYN050", 1000)], prices={"SYN050": 100.0}
+        )
+        assert results[0].filled
+        fill = results[0].fill
+        assert fill.fill_price == pytest.approx(100.05)
+        assert fill.filled_quantity == 1000
+        assert fill.commission == 20.0
+
+    def test_circuit_limit_fill_failure(self):
+        """Price moved 10% (at the band) -> no fill; 9.9% -> fill."""
+        broker = self._broker()
+        ref = {"SYN050": 100.0}
+        failed = broker.execute(
+            [self._order("SYN050", 10)], prices={"SYN050": 110.0}, reference_prices=ref
+        )
+        assert not failed[0].filled
+        assert "circuit limit" in failed[0].reason
+        ok = broker.execute(
+            [self._order("SYN050", 10)], prices={"SYN050": 109.9}, reference_prices=ref
+        )
+        assert ok[0].filled
+
+    def test_slippage_scales_with_liquidity(self):
+        """Order value 10% of ADV -> 2x base (10bps); 20% of ADV -> 3x capped."""
+        broker = self._broker()
+        r1 = broker.execute(
+            [self._order("SYN050", 100)], prices={"SYN050": 100.0}, advs={"SYN050": 1_000_000.0}
+        )
+        # notional 10,005 / ADV 1,000,000 = 0.010005 -> multiplier
+        # 1 + 0.010005/0.10 = 1.10005 -> 5 x 1.10005 = 5.5 bps (hand-computed)
+        assert r1[0].fill.slippage_bps == pytest.approx(5.50025, rel=1e-3)
+        r2 = broker.execute(
+            [self._order("SYN051", 1000)], prices={"SYN051": 100.0}, advs={"SYN051": 1_000_000.0}
+        )
+        # notional ~100k -> ratio 0.1 -> multiplier 2.0 -> 10 bps
+        assert r2[0].fill.slippage_bps == pytest.approx(10.0, rel=1e-3)
+
+    def test_cash_never_negative_adversarial(self):
+        """Two 10M orders vs 150k cash: the first is rejected (insufficient
+        cash), the second also rejected; nothing fills and nothing spends."""
+        broker = self._broker()
+        results = broker.execute(
+            [self._order("SYN050", 100000), self._order("SYN051", 100000)],
+            prices={"SYN050": 100.0, "SYN051": 100.0},
+            cash=150_000.0,
+        )
+        assert all(not r.filled for r in results)
+        assert all("insufficient cash" in r.reason for r in results)
