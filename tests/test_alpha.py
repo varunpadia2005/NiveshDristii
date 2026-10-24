@@ -236,15 +236,16 @@ class TestModelRegistry:
         assert reg.require_live(reg.entry_for("syn_stub"), allow_stub=True) is stub
 
     def test_market_pack_register_all_mechanism(self):
-        """The register_all seam works with a FAKE market pack (real IN_NSE
-        pack has no models until P3-S9)."""
+        """register_all registers every IN_NSE model (wired in S9b); the seam
+        also accepts further entries via the same mechanism."""
         from niveshdristi.alpha.registry import ModelRegistry
         from niveshdristi.markets.in_nse.models import register_all
 
         reg = ModelRegistry()
-        register_all(reg)  # currently registers nothing (no models yet)
-        assert reg.entries() == ()
-        # prove the seam with a fake pack using the same mechanism
+        register_all(reg)
+        assert [e.model_id for e in reg.entries()] == [
+            "block_deals", "delivery_anomaly", "fii_dii_regime", "promoter_pledge",
+        ]
         fake_entries = [self._entry("fake_pack_model", data_status="stub")]
         reg.register_all(fake_entries)
         assert reg.entry_for("fake_pack_model").data_status == "stub"
@@ -1011,3 +1012,122 @@ class TestDeliveryAnomaly:
         b = [(s.instrument.symbol, s.conviction) for s in m.predict(ctx, via_handle)]
         assert a == b
         assert len(a) == 1
+
+
+class TestIndiaStubModels:
+    """S9b: three India stubs — fixture maths + stub marking + register_all."""
+
+    @staticmethod
+    def _ctx_inputs(aux: dict, prices=None):
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        inputs = build_model_inputs(
+            as_of=as_of,
+            prices=prices or {"SYN010": _syn_frame([100.0] * 30)},
+            aux=aux,
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        return ctx, inputs
+
+    def test_promoter_pledge_rising_is_red_flag(self):
+        from niveshdristi.markets.in_nse.models.promoter_pledge import PromoterPledge
+
+        frame = pl.DataFrame(
+            {
+                "symbol": ["SYN010"] * 4,
+                "date": ["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"],
+                "pledge_pct": [5.0, 5.0, 5.0, 10.0],  # +5pp rise -> full negative
+            }
+        )
+        ctx, inputs = self._ctx_inputs({"promoter_pledge": frame})
+        signals = PromoterPledge().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == -1.0
+        assert signals[0].evidence["data_status"] == "stub"
+
+    def test_fii_dii_flow_regime_known_answer(self):
+        from niveshdristi.markets.in_nse.models.fii_dii_regime import FiiDiiRegime
+
+        frame = pl.DataFrame(
+            {
+                "date": [f"2026-09-{i:02d}" for i in range(1, 21)],
+                "net_flow": [50.0] * 20,  # total 1000 -> conviction +1.0
+            }
+        )
+        ctx, inputs = self._ctx_inputs({"flows": frame})
+        signals = FiiDiiRegime().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 1.0
+        assert signals[0].evidence["data_status"] == "stub"
+
+    def test_block_deal_premium_recent(self):
+        from niveshdristi.markets.in_nse.models.block_deals import BlockDeals
+
+        frame = pl.DataFrame(
+            {"symbol": ["SYN010"], "date": ["2026-10-10"], "premium_pct": [5.0]}
+        )
+        ctx, inputs = self._ctx_inputs({"block_deals": frame})
+        signals = BlockDeals().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 1.0  # 5% premium at scale 5 -> +1
+        assert signals[0].evidence["days_old"] == 13
+
+    def test_block_deal_stale_ignored(self):
+        from niveshdristi.markets.in_nse.models.block_deals import BlockDeals
+
+        frame = pl.DataFrame(
+            {"symbol": ["SYN010"], "date": ["2026-01-10"], "premium_pct": [5.0]}
+        )
+        ctx, inputs = self._ctx_inputs({"block_deals": frame})
+        assert BlockDeals().predict(ctx, inputs) == []
+
+    def test_register_all_registers_every_india_model(self):
+        from niveshdristi.alpha.registry import ModelRegistry
+        from niveshdristi.markets.in_nse.models import register_all
+
+        reg = ModelRegistry()
+        register_all(reg)
+        ids = [e.model_id for e in reg.entries()]
+        assert ids == ["block_deals", "delivery_anomaly", "fii_dii_regime", "promoter_pledge"]
+        statuses = {e.model_id: e.data_status for e in reg.entries()}
+        assert statuses["delivery_anomaly"] == "live"
+        assert statuses["promoter_pledge"] == "stub"
+        assert statuses["fii_dii_regime"] == "stub"
+        assert statuses["block_deals"] == "stub"
+
+    def test_no_look_ahead_stub_models(self):
+        """Future-dated aux rows invisible for all three stubs (via handle)."""
+        from niveshdristi.markets.in_nse.models.block_deals import BlockDeals
+        from niveshdristi.markets.in_nse.models.fii_dii_regime import FiiDiiRegime
+        from niveshdristi.markets.in_nse.models.promoter_pledge import PromoterPledge
+
+        pledge = pl.DataFrame(
+            {
+                "symbol": ["SYN010"] * 4,
+                "date": ["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"],
+                "pledge_pct": [5.0, 5.0, 5.0, 10.0],
+            }
+        )
+        future_row = pl.DataFrame(
+            {"symbol": ["SYN010"], "date": ["2027-01-01"], "pledge_pct": [99.0]}
+        )
+        pledge_future = pl.concat([pledge, future_row])
+        from niveshdristi.core.alpha import AsOfContext
+
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        prices = {"SYN010": _syn_frame([100.0] * 30)}
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        truncated = build_model_inputs(as_of=as_of, prices=prices, aux={"promoter_pledge": pledge})
+        via_handle = build_from_full_frames(
+            as_of=as_of, prices=prices, aux={"promoter_pledge": pledge_future}
+        )
+        m = PromoterPledge()
+        assert [(s.instrument.symbol, s.conviction) for s in m.predict(ctx, truncated)] == [
+            (s.instrument.symbol, s.conviction) for s in m.predict(ctx, via_handle)
+        ]
+        # flows and block_deals roles use the same builder-validated path
+        assert FiiDiiRegime().predict(ctx, truncated) == []
+        assert BlockDeals().predict(ctx, truncated) == []
