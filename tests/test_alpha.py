@@ -516,3 +516,100 @@ class TestPriceRangeModel:
         a = [(s.instrument.symbol, s.evidence) for s in model.predict(ctx, truncated)]
         b = [(s.instrument.symbol, s.evidence) for s in model.predict(ctx, via_handle)]
         assert a == b
+
+
+class TestMomentumModels:
+    """S5: TS and XS momentum — known answers on synthetic frames."""
+
+    N = 130  # enough for LOOKBACK=120 + SKIP=5 + margin
+
+    @staticmethod
+    def _growth_frame(rate: float, n: int) -> pl.DataFrame:
+        from datetime import timedelta
+
+        closes = [100.0 * ((1.0 + rate) ** i) for i in range(n)]
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame({"date": dates, "close": closes})
+
+    def _expected_ts_return(self, rate: float) -> float:
+        from niveshdristi.alpha.quant.momentum import LOOKBACK_DAYS, SKIP_DAYS
+
+        end = self.N - 1 - SKIP_DAYS
+        start = end - LOOKBACK_DAYS
+        return (1.0 + rate) ** (end - start) - 1.0
+
+    def test_ts_known_answer(self):
+        """Constant 0.1% daily growth: conviction == clipped trailing return."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
+        from niveshdristi.core.alpha import AsOfContext
+
+        df = self._growth_frame(0.001, self.N)
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN003": df})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = TimeSeriesMomentum().predict(ctx, inputs)
+        assert len(signals) == 1
+        expected = round(max(-1.0, min(1.0, self._expected_ts_return(0.001))), 6)
+        assert signals[0].conviction == expected
+
+    def test_xs_known_answer_ten_instruments(self):
+        """SYN001..SYN010 with strictly increasing growth rates: convictions
+        are exactly the centered ranks -1 ... +1 in steps of 2/9."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.momentum import CrossSectionalMomentum
+        from niveshdristi.core.alpha import AsOfContext
+
+        prices = {
+            f"SYN{i:03d}": self._growth_frame(0.001 * i, self.N) for i in range(1, 11)
+        }
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices=prices)
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = CrossSectionalMomentum().predict(ctx, inputs)
+        by_symbol = {s.instrument.symbol: s.conviction for s in signals}
+        assert len(by_symbol) == 10
+        for rank, i in enumerate(range(1, 11)):
+            expected = round(2.0 * (rank / 9) - 1.0, 6)
+            assert by_symbol[f"SYN{i:03d}"] == expected
+        # extreme ranks
+        assert by_symbol["SYN001"] == -1.0
+        assert by_symbol["SYN010"] == 1.0
+
+    def test_xs_needs_multiple_instruments(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.momentum import CrossSectionalMomentum
+        from niveshdristi.core.alpha import AsOfContext
+
+        inputs = build_model_inputs(
+            as_of=date(2026, 12, 31), prices={"SYN003": self._growth_frame(0.001, self.N)}
+        )
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        assert CrossSectionalMomentum().predict(ctx, inputs) == []
+
+    def test_momentum_no_look_ahead(self):
+        """Future wild rows must not change momentum signals at as_of=T."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.momentum import CrossSectionalMomentum, TimeSeriesMomentum
+        from niveshdristi.core.alpha import AsOfContext
+
+        base = self._growth_frame(0.001, 129)
+        future = pl.DataFrame({"date": ["2027-01-01"], "close": [99999.0]})
+        full = pl.concat([base, future])
+        as_of = datetime(2026, 12, 31, 15, 0, tzinfo=UTC)
+        truncated = build_model_inputs(
+            as_of=as_of, prices={"SYN003": base.filter(pl.col("date") <= "2026-12-31")}
+        )
+        via_handle = build_from_full_frames(as_of=as_of, prices={"SYN003": full})
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        for model in (TimeSeriesMomentum(), CrossSectionalMomentum()):
+            key = lambda ss: [(s.instrument.symbol, s.conviction) for s in ss]  # noqa: E731
+            assert key(model.predict(ctx, truncated)) == key(model.predict(ctx, via_handle))
