@@ -425,3 +425,9 @@ and execution/ beside it; nothing in Phase 4 edited any legacy file.
 Official 2026 holidays (still blocked); VERIFIED rates (VERIFY 1-5 all
 open); a symbol->sector map source; market-cap data source; per-symbol
 circuit-band data; as-of constituents; announcement-dated fundamentals.
+
+**R4a convention finding (2026-10-25, pre-Phase-5):** SPEC TEST 2's "costs"
+counts FEES only; slippage is embedded in fill prices and NOT added back,
+so its "gross" (990,261.70) is before fees but AFTER slippage — it
+understates the true all-in drag (~534 bps of NAV, not 437). No double
+count. Phase 5 must adopt ONE convention: gross = before ALL frictions.
