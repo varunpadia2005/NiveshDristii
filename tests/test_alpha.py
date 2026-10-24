@@ -1492,3 +1492,80 @@ class TestPhase3SpecConformance:
         entries = {m["model_id"] for m in self._registry_entries()}
         extra = entries - set(self.REQUIRED_MODELS)
         assert extra == set(), f"registry contains unlisted models: {extra}"
+
+
+class TestSectorRotationAsyncSafety:
+    """P4-S0: predict must work from inside a running event loop.
+
+    Regression: the old glue used asyncio.run(), which raises
+    'cannot be called from a running event loop' when predict is called
+    from async contexts (Streamlit/FastAPI).
+    """
+
+    @staticmethod
+    def _frames():
+        from datetime import timedelta
+
+        n = 80
+        dates = [(date(2026, 6, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        bench = pl.DataFrame({"date": dates, "close": [100.0 + i * 0.1 for i in range(n)]})
+        sector = pl.DataFrame(
+            {
+                "sector": ["alpha", "beta"] * (n // 2),
+                "date": dates,
+                "close": [100.0 + i * 0.2 if i % 2 == 0 else 100.0 - i * 0.1 for i in range(n)],
+            }
+        )
+        return sector, bench
+
+    def _run_inside_loop(self):
+        import asyncio
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+        from niveshdristi.core.alpha import AsOfContext
+
+        sector_frame, bench = self._frames()
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        inputs = build_from_full_frames(
+            as_of=as_of,
+            prices={"SYN012": _syn_frame([100.0] * 30)},
+            aux={"sector_index": sector_frame, "benchmark": bench},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        model = SectorRotation()
+
+        async def call_predict():
+            return model.predict(ctx, inputs)  # inside a running loop
+
+        return asyncio.run(call_predict())
+
+    def test_predict_works_inside_running_loop(self):
+        signals = self._run_inside_loop()
+        assert len(signals) == 1
+
+    def test_predict_works_without_loop(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+        from niveshdristi.core.alpha import AsOfContext
+
+        sector_frame, bench = self._frames()
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        inputs = build_from_full_frames(
+            as_of=as_of,
+            prices={"SYN012": _syn_frame([100.0] * 30)},
+            aux={"sector_index": sector_frame, "benchmark": bench},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        signals = SectorRotation().predict(ctx, inputs)
+        assert len(signals) == 1
+
+    def test_coroutine_exceptions_propagate(self):
+        from niveshdristi.alpha.quant.sector_rotation import _run_async
+
+        async def boom():
+            raise RuntimeError("boom-inside-coroutine")
+
+        with pytest.raises(RuntimeError, match="boom-inside-coroutine"):
+            _run_async(boom())

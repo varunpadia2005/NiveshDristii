@@ -133,10 +133,35 @@ class SectorRotation:
 
 
 def _run_async(coro):
-    """Run the legacy async compute_rrg synchronously (NEW glue)."""
-    import asyncio
+    """Run the legacy async compute_rrg synchronously (NEW glue).
 
-    return asyncio.run(coro)
+    Loop-aware: with no running loop, asyncio.run() is fine; inside a
+    running event loop (Streamlit/FastAPI contexts), asyncio.run() raises,
+    so the coroutine runs in a worker thread with its OWN loop and the
+    thread is joined. Exceptions from the coroutine propagate unchanged.
+    """
+    import asyncio
+    import threading
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    outcome: dict = {}
+
+    def _worker() -> None:
+        try:
+            outcome["value"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised below unchanged
+            outcome["exc"] = exc
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join()
+    if "exc" in outcome:
+        raise outcome["exc"]
+    return outcome.get("value")
 
 
 # mypy enforces the predict(ctx, inputs) signature at module level
