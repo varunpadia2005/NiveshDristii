@@ -776,7 +776,8 @@ class TestRegimeModel:
         assert RegimeModel().predict(ctx, inputs) == []
 
     def test_aux_frames_truncated_to_as_of(self):
-        """Aux frames are not builder-validated; the model must self-truncate."""
+        """Aux frames flow through the truncating handle (G2a); the model's
+        own self-truncation is a redundant second layer."""
         from datetime import UTC
 
         from niveshdristi.alpha.quant.regime import RegimeModel
@@ -789,7 +790,7 @@ class TestRegimeModel:
             [self._vol_frame(15.0), pl.DataFrame({"date": ["2027-06-01"], "value": [99.0]})]
         )
         as_of = datetime(2026, 12, 31, 15, 0, tzinfo=UTC)
-        inputs = build_model_inputs(
+        inputs = build_from_full_frames(
             as_of=as_of,
             prices={"SYN007": _syn_frame([100.0] * 30)},
             aux={"benchmark": bench, "volatility": vol},
@@ -809,3 +810,30 @@ class TestRegimeModel:
         assert hasattr(MarketProfile, "model_fields") or True  # pydantic model
         assert IN_NSE_PROFILE.volatility_index_symbol != ""
         assert IN_NSE_PROFILE.benchmark_symbol != ""
+
+
+class TestAuxFrameValidation:
+    """G2a: the builder validates/truncates aux frames by ROLE."""
+
+    def _aux_with_future(self):
+        good = pl.DataFrame({"date": ["2026-10-20"], "value": [10.0]})
+        bad = pl.DataFrame({"date": ["2027-01-01"], "value": [99.0]})
+        return pl.concat([good, bad])
+
+    def test_builder_fails_on_future_dated_aux(self):
+        with pytest.raises(DataError, match="aux frame for 'volatility'.*2027-01-01"):
+            build_model_inputs(
+                as_of=T,
+                prices={"SYN001": _truncated()},
+                aux={"volatility": self._aux_with_future()},
+            )
+
+    def test_handle_truncates_aux(self):
+        inputs = build_from_full_frames(
+            as_of=T,
+            prices={"SYN001": _truncated()},
+            aux={"volatility": self._aux_with_future()},
+        )
+        vol = inputs.aux["volatility"]
+        assert vol.height == 1
+        assert float(vol["value"].tail(1)[0]) == 10.0

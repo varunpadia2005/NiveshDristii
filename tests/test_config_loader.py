@@ -5,20 +5,19 @@ Protects the rule that configuration is loaded with correct precedence,
 mandate/universe/strategy loaders validate, and broken YAML is rejected clearly.
 """
 
-import pytest
-import tempfile
-import os
 from pathlib import Path
 
-from niveshdristi.config import load_config, get_config, reset_config
+import pytest
+
+from niveshdristi.config import load_config
 from niveshdristi.config_loader import (
-    load_mandate,
-    load_universe,
-    load_strategy,
-    load_layered_config,
     Mandate,
-    Universe,
     Strategy,
+    Universe,
+    load_layered_config,
+    load_mandate,
+    load_strategy,
+    load_universe,
 )
 from niveshdristi.core.errors import ConfigurationError
 
@@ -113,7 +112,7 @@ rebalance_frequency: "monthly"
         """Mandate missing required field raises."""
         mandate_file = tmp_path / "bad_mandate.yaml"
         mandate_file.write_text("name: test\n")  # missing required fields
-        with pytest.raises(Exception):  # ValidationError or similar
+        with pytest.raises(Exception, match="Mandate"):
             load_mandate("bad_mandate", mandates_dir=tmp_path)
 
 
@@ -179,17 +178,24 @@ class TestBrokenYAMLRejected:
     """Broken YAML is rejected with clear error."""
 
     def test_syntax_error_yaml(self, tmp_path):
-        """YAML syntax error raises clear error."""
+        """YAML syntax error raises clear error.
+
+        STRENGTHENED in G2b: the old broad `pytest.raises(Exception)` passed
+        via an unrelated TypeError (wrong kwarg for config.load_config); the
+        test now calls the real signature and asserts the actual YAML error.
+        """
+        import yaml
+
         bad_file = tmp_path / "bad.yaml"
         bad_file.write_text("{ invalid yaml [")
-        with pytest.raises(Exception):  # yaml.YAMLError or similar
-            load_config(user_config_path=str(bad_file))
+        with pytest.raises(yaml.YAMLError):
+            load_config(str(bad_file))
 
     def test_mandate_yaml_syntax_error(self, tmp_path):
         """Mandate with YAML syntax error raises clear error."""
         bad_file = tmp_path / "bad_mandate.yaml"
         bad_file.write_text("{ invalid [")
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="mandate|yaml"):
             load_mandate("bad_mandate", mandates_dir=tmp_path)
 
 

@@ -5,8 +5,9 @@ Protects the rule that IN_NSE profile loads from YAML files and that every
 # VERIFY rate listed in docs/VERIFY.md exists in the corresponding YAML.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from niveshdristi.markets import IN_NSE_PROFILE, get_registry
 from niveshdristi.markets.registry import MarketProfile
@@ -154,18 +155,24 @@ class TestVerifyRatesExistInYAML:
             holidays = yaml.safe_load(f)
         assert "years_covered" in holidays, "years_covered key missing"
         assert 2024 in holidays.get("years_covered", []), "2024 not in years_covered"
-        assert any(d.startswith("2024-") for d in holidays.get("holidays", [])), "2024 holidays missing from holidays list"
+        any_2024 = any(d.startswith("2024-") for d in holidays.get("holidays", []))
+        assert any_2024, "2024 holidays missing from holidays list"
 
     @pytest.mark.xfail(strict=True, reason="Phase 2: fill 2026 holidays from the NSE official list")
     def test_holidays_yaml_covers_current_year(self):
         """holidays_in.yaml covers the current year (2026-10-23)."""
-        import yaml
         from datetime import date
+
+        import yaml
         with open(IN_NSE_PROFILE.calendar_path, encoding="utf-8") as f:
             holidays = yaml.safe_load(f)
         current_year = date.today().year
-        assert current_year in holidays.get("years_covered", []), f"{current_year} not in years_covered"
-        assert any(d.startswith(f"{current_year}-") for d in holidays.get("holidays", [])), f"{current_year} holidays missing from holidays list"
+        assert current_year in holidays.get("years_covered", []), (
+            f"{current_year} not in years_covered"
+        )
+        assert any(
+            d.startswith(f"{current_year}-") for d in holidays.get("holidays", [])
+        ), f"{current_year} holidays missing from holidays list"
 
     def test_cost_model_matches_profile(self):
         """Profile's cost_model matches costs.yaml (if exists)."""

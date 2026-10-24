@@ -7,11 +7,9 @@ Protects the rule that nd CLI commands work and --json outputs valid JSON.
 import json
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from niveshdristi.cli.main import app
-
 
 runner = CliRunner()
 

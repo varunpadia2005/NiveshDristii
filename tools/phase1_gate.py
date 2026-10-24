@@ -530,12 +530,29 @@ def main() -> int:
 
     # G13: ruff check on new-code paths = 0 errors
     print("\n=== G13: Ruff on new code ===")
+    # All NEW test files are linted/type-checked; these are EXCLUDED because
+    # they are legacy (pre-existing at Phase 0 commit 82f76d8) or protected:
+    #   tests/test_characterization.py  - legacy characterization suite (frozen)
+    #   tests/test_imports.py           - legacy import smoke test (frozen)
+    #   tests/create_fixtures.py        - legacy fixture generator (frozen)
+    #   tests/market_literals.py        - PROTECTED scanner (no edits allowed)
+    LEGACY_TEST_EXCLUSIONS = {
+        "tests/test_characterization.py",
+        "tests/test_imports.py",
+        "tests/create_fixtures.py",
+        "tests/market_literals.py",
+    }
+    test_files = sorted(
+        f.relative_to(repo_root).as_posix()
+        for f in (repo_root / "tests").glob("*.py")
+        if f.relative_to(repo_root).as_posix() not in LEGACY_TEST_EXCLUSIONS
+    )
     result = run([sys.executable, "-m", "ruff", "check", "--no-cache",
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
                   "src/niveshdristi/config_loader.py",
-                  "tests/test_alpha.py"], cwd=repo_root)
+                  *test_files], cwd=repo_root)
     if result.returncode == 0:
         pass_("G13", "Ruff clean on new code paths")
     else:
@@ -548,7 +565,7 @@ def main() -> int:
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
-                  "src/niveshdristi/config_loader.py", "tests/test_alpha.py",
+                  "src/niveshdristi/config_loader.py", *test_files,
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
@@ -678,3 +695,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

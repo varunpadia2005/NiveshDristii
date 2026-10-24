@@ -3,6 +3,12 @@
 alpha/ must NOT import niveshdristi.markets (enforced by the import-boundary
 test in tests/test_alpha.py). Market packs (e.g. markets/in_nse/models)
 populate the registry from a composition point via register_all(registry).
+
+CONVICTION SCALES ARE NOT COMPARABLE (plain statement): each model maps its
+own raw statistic to [-1, +1] with its own UNVALIDATED DEFAULT constants.
+Convictions across models are NOT calibrated and NOT probabilities; no
+downstream combiner may treat them as such until Phase 4 introduces explicit
+validation of the combination.
 """
 
 from __future__ import annotations

@@ -262,3 +262,19 @@ TA ensemble: the legacy composite is a weighted sum of scorers clipped to
 conviction mapping (documented in the module docstring); a bounds test on
 synthetic extremes enforces conviction ∈ [-1, 1]. The CFG-pinning assertions
 in the equality test are an intentional tripwire against config drift.
+
+
+## G2 (2026-10-24): builder aux validation, tests/ lint coverage, registry listing
+
+- The ModelInputs builder now validates AUX frames by ROLE (DataError naming
+  role and dates on future rows) and the truncating handle truncates them;
+  the regime model's self-truncation is documented as a redundant second layer.
+- Gate G13/G14 now lint/type-check every NEW test file; the explicit legacy
+  exclusion list is in tools/phase1_gate.py (characterization, imports,
+  create_fixtures, and the PROTECTED scanner tests/market_literals.py).
+- CONVICTION SCALES ARE NOT COMPARABLE OR CALIBRATED across models, and no
+  downstream combiner may treat them as probabilities until Phase 4
+  validation exists (stated in alpha/registry.py and here).
+- Registry listing (command output, G2c): ta_ensemble(10), price_range(5),
+  momentum_ts(20), momentum_cs(20), mean_reversion(10), low_volatility(60),
+  regime(5) — all pit_safe=True, data_status=live.

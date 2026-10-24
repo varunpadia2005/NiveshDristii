@@ -6,11 +6,12 @@ required fields (horizon_days, thesis, as_of, model_id) are enforced.
 Signals are frozen Pydantic models - assignment to fields must raise ValidationError.
 """
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 from pydantic import ValidationError
 
-from niveshdristi.core import Signal, Instrument
+from niveshdristi.core import Instrument, Signal
 
 
 class TestSignalConvictionBounds:
@@ -21,7 +22,7 @@ class TestSignalConvictionBounds:
         inst = Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR")
         s = Signal(
             instrument=inst,
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             conviction=1.0,
             horizon_days=10,
             thesis="Strong bullish",
@@ -34,7 +35,7 @@ class TestSignalConvictionBounds:
         inst = Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR")
         s = Signal(
             instrument=inst,
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             conviction=0.0,
             horizon_days=10,
             thesis="Neutral",
@@ -47,7 +48,7 @@ class TestSignalConvictionBounds:
         inst = Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR")
         s = Signal(
             instrument=inst,
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             conviction=-1.0,
             horizon_days=10,
             thesis="Bearish",
@@ -61,7 +62,7 @@ class TestSignalConvictionBounds:
         with pytest.raises(ValidationError) as exc_info:
             Signal(
                 instrument=inst,
-                as_of=datetime.now(timezone.utc),
+                as_of=datetime.now(UTC),
                 conviction=1.01,
                 horizon_days=10,
                 thesis="Too bullish",
@@ -76,14 +77,15 @@ class TestSignalConvictionBounds:
         with pytest.raises(ValidationError) as exc_info:
             Signal(
                 instrument=inst,
-                as_of=datetime.now(timezone.utc),
+                as_of=datetime.now(UTC),
                 conviction=-1.01,
                 horizon_days=10,
                 thesis="Too bearish",
                 model_id="test_model",
             )
         errors = exc_info.value.errors()
-        assert any(e["type"] == "greater_than_equal" and e["loc"] == ("conviction",) for e in errors)
+        assert any(e["type"]
+            == "greater_than_equal" and e["loc"] == ("conviction",) for e in errors)
 
 
 class TestSignalRequiredFields:
@@ -95,7 +97,7 @@ class TestSignalRequiredFields:
         with pytest.raises(ValidationError) as exc_info:
             Signal(
                 instrument=inst,
-                as_of=datetime.now(timezone.utc),
+                as_of=datetime.now(UTC),
                 conviction=0.5,
                 thesis="Test",
                 model_id="test_model",
@@ -110,7 +112,7 @@ class TestSignalRequiredFields:
         with pytest.raises(ValidationError) as exc_info:
             Signal(
                 instrument=inst,
-                as_of=datetime.now(timezone.utc),
+                as_of=datetime.now(UTC),
                 conviction=0.5,
                 horizon_days=10,
                 thesis="",  # empty
@@ -140,7 +142,7 @@ class TestSignalRequiredFields:
         with pytest.raises(ValidationError) as exc_info:
             Signal(
                 instrument=inst,
-                as_of=datetime.now(timezone.utc),
+                as_of=datetime.now(UTC),
                 conviction=0.5,
                 horizon_days=10,
                 thesis="Test",
@@ -158,7 +160,7 @@ class TestSignalFrozen:
         inst = Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR")
         s = Signal(
             instrument=inst,
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             conviction=0.5,
             horizon_days=10,
             thesis="Test",

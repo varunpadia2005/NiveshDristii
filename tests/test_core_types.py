@@ -5,23 +5,20 @@ Protects the rule that all core types are frozen Pydantic v2 models
 that reject missing required fields, and that AlphaModel protocol is satisfied.
 """
 
+from datetime import UTC, date, datetime
+
 import pytest
-from datetime import datetime, date, timezone
 from pydantic import ValidationError
 
 from niveshdristi.core import (
-    Instrument,
-    Signal,
-    Decision,
-    Order,
-    Fill,
-    SessionRecord,
-    PositionSnapshot,
     AlphaModel,
-    AsOfContext,
-    ModelRegistryEntry,
-    OrderSide,
-    OrderType,
+    Decision,
+    Fill,
+    Instrument,
+    Order,
+    PositionSnapshot,
+    SessionRecord,
+    Signal,
 )
 
 
@@ -123,7 +120,8 @@ class TestDecision:
         with pytest.raises(ValidationError) as exc_info:
             d.target_weight = 0.1
         errors = exc_info.value.errors()
-        assert any(e["type"] == "frozen_instance" and e["loc"] == ("target_weight",) for e in errors)
+        assert any(e["type"]
+            == "frozen_instance" and e["loc"] == ("target_weight",) for e in errors)
 
 
 class TestOrder:
@@ -183,7 +181,7 @@ class TestFill:
             order=o,
             filled_quantity=100,
             fill_price=2500.0,
-            fill_time=datetime.now(timezone.utc),
+            fill_time=datetime.now(UTC),
             commission=20.0,
             fees=5.0,
         )
@@ -199,10 +197,13 @@ class TestFill:
                 order=o,
                 filled_quantity=100,  # exceeds 50
                 fill_price=2500.0,
-                fill_time=datetime.now(timezone.utc),
+                fill_time=datetime.now(UTC),
             )
         errors = exc_info.value.errors()
-        assert any(e["type"] == "value_error" and "filled_quantity cannot exceed order.quantity" in str(e["msg"]) for e in errors)
+        wanted = "filled_quantity cannot exceed order.quantity"
+        assert any(
+            e["type"] == "value_error" and wanted in str(e["msg"]) for e in errors
+        )
 
     def test_rejects_negative_commission(self):
         """Negative commission raises ValidationError with greater_than_equal error."""
@@ -213,11 +214,12 @@ class TestFill:
                 order=o,
                 filled_quantity=100,
                 fill_price=2500.0,
-                fill_time=datetime.now(timezone.utc),
+                fill_time=datetime.now(UTC),
                 commission=-1.0,
             )
         errors = exc_info.value.errors()
-        assert any(e["type"] == "greater_than_equal" and e["loc"] == ("commission",) for e in errors)
+        assert any(e["type"]
+            == "greater_than_equal" and e["loc"] == ("commission",) for e in errors)
 
 
 class TestSessionRecord:
@@ -226,7 +228,8 @@ class TestSessionRecord:
     def test_genesis_record_creation(self):
         """Genesis record has previous_hash = '0'*64."""
         snap = PositionSnapshot(
-            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR"),
+            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE",
+                currency="INR"),
             shares=100,
             avg_cost=2500.0,
             market_value=250000.0,
@@ -243,7 +246,8 @@ class TestSessionRecord:
     def test_compute_hash_deterministic(self):
         """compute_hash is deterministic."""
         snap = PositionSnapshot(
-            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR"),
+            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE",
+                currency="INR"),
             shares=100,
             avg_cost=2500.0,
             market_value=250000.0,
@@ -260,7 +264,8 @@ class TestSessionRecord:
     def test_verify_chain(self):
         """verify_chain checks link to previous record."""
         snap = PositionSnapshot(
-            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR"),
+            instrument=Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE",
+                currency="INR"),
             shares=100,
             avg_cost=2500.0,
             market_value=250000.0,
@@ -310,7 +315,7 @@ class TestAlphaModelProtocol:
         assert isinstance(stub, AlphaModel)
         # Can call predict
         ctx = AsOfContext(
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             universe=(),
             market_id="IN_NSE",
         )
@@ -338,7 +343,7 @@ class TestSignalConvictionEdgeCases:
         inst = Instrument(symbol="RELIANCE", exchange="NSE", market_id="IN_NSE", currency="INR")
         s = Signal(
             instrument=inst,
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             conviction=0.5,
             horizon_days=10,
             thesis="Test thesis",
@@ -354,7 +359,6 @@ class TestAlphaModelSeamProtocol:
 
     def test_model_with_inputs_signature_satisfies_protocol(self):
         """A predict(ctx, inputs) implementation satisfies AlphaModel."""
-        from datetime import timezone
 
         from niveshdristi.core.alpha import AsOfContext, ModelRegistryEntry
         from niveshdristi.marketdata.context import build_model_inputs
@@ -379,7 +383,7 @@ class TestAlphaModelSeamProtocol:
         model = SeamModel()
         assert isinstance(model, AlphaModel)
         ctx = AsOfContext(
-            as_of=datetime.now(timezone.utc),
+            as_of=datetime.now(UTC),
             universe=(),
             market_id="IN_NSE",
         )

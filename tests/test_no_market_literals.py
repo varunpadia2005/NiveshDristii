@@ -6,11 +6,9 @@ Protects the rule that core/ and engine/ contain no market-specific literals
 Also tests the scanner itself works correctly on known-good and known-bad files.
 """
 
-import pytest
-import tempfile
 from pathlib import Path
 
-from tests.market_literals import scan_market_literals, FORBIDDEN_PATTERNS, SCAN_EXTS
+from tests.market_literals import FORBIDDEN_PATTERNS, SCAN_EXTS, scan_market_literals
 
 
 def _rel_posix(path_str: str) -> str:
@@ -89,17 +87,23 @@ class TestCoreEngineNoLiterals:
         """src/niveshdristi/core has no forbidden patterns."""
         issues = scan_market_literals(Path("."))
         # Filter to core/ (normalize separators: scanner emits os-native paths)
-        core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
-        assert len(core_issues) == 0, f"Found {len(core_issues)} market literals in core/:\n" + "\n".join(
-            f"  {i['file']}:{i['line']} - {i['pattern']}" for i in core_issues
+        core_issues = [
+            i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")
+        ]
+        assert len(core_issues) == 0, (
+            f"Found {len(core_issues)} market literals in core/:\n"
+            + "\n".join(f"  {i['file']}:{i['line']} - {i['pattern']}" for i in core_issues)
         )
 
     def test_engine_no_market_literals(self):
         """src/niveshdristi/engine has no forbidden patterns."""
         issues = scan_market_literals(Path("."))
-        engine_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
-        assert len(engine_issues) == 0, f"Found {len(engine_issues)} market literals in engine/:\n" + "\n".join(
-            f"  {i['file']}:{i['line']} - {i['pattern']}" for i in engine_issues
+        engine_issues = [
+            i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")
+        ]
+        assert len(engine_issues) == 0, (
+            f"Found {len(engine_issues)} market literals in engine/:\n"
+            + "\n".join(f"  {i['file']}:{i['line']} - {i['pattern']}" for i in engine_issues)
         )
 
     def test_real_tree_scan_is_not_vacuous(self):
@@ -124,15 +128,25 @@ class TestFindingPathFilter:
         The old forward-slash startswith filter matched nothing there, so the
         real-tree guard passed vacuously on Windows.
         """
-        findings = [
-            {"file": "src\\niveshdristi\\core\\instrument.py", "line": 17, "pattern": r"\bNSE\b", "context": "x"},
-            {"file": "src\\niveshdristi\\markets\\registry.py", "line": 1, "pattern": r"\bNSE\b", "context": "x"},
-            # Trailing-slash prefix must not match a sibling like corex/
-            {"file": "src\\niveshdristi\\corex\\other.py", "line": 2, "pattern": r"\bNSE\b", "context": "x"},
-        ]
+        f_core = {
+            "file": "src\\niveshdristi\\core\\instrument.py",
+            "line": 17, "pattern": r"\bNSE\b", "context": "x",
+        }
+        f_other = {
+            "file": "src\\niveshdristi\\markets\\registry.py",
+            "line": 1, "pattern": r"\bNSE\b", "context": "x",
+        }
+        # Trailing-slash prefix must not match a sibling like corex/
+        f_sibling = {
+            "file": "src\\niveshdristi\\corex\\other.py",
+            "line": 2, "pattern": r"\bNSE\b", "context": "x",
+        }
+        findings = [f_core, f_other, f_sibling]
         core = [i for i in findings if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
         assert [i["line"] for i in core] == [17], core
-        engine = [i for i in findings if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")]
+        engine = [
+            i for i in findings if _rel_posix(i["file"]).startswith("src/niveshdristi/engine/")
+        ]
         assert engine == [], engine
 
 

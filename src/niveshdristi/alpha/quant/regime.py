@@ -9,8 +9,10 @@ point — never inside this module.
 
 Signals are EVIDENCE-ONLY (conviction exactly 0.0): the regime state is
 context for other models, not a directional view. Aux frames are truncated
-to as_of defensively inside this module (the builder validates price frames
-only). UNVALIDATED DEFAULTS throughout; theses state hypotheses only.
+to as_of defensively inside this module — REDUNDANT second layer: the
+builder (marketdata.context) validates and truncates aux frames by ROLE
+since G2a; this self-truncation remains as belt-and-braces.
+UNVALIDATED DEFAULTS throughout; theses state hypotheses only.
 """
 
 from __future__ import annotations
