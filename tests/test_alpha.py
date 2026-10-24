@@ -2416,3 +2416,178 @@ class TestOrderBuildingAndSimBroker:
         )
         assert all(not r.filled for r in results)
         assert all("insufficient cash" in r.reason for r in results)
+
+
+class TestPaperBrokerAndSpecTests:
+    """P4-S6: PaperBroker persistence + the two Phase 4 SPEC TESTS."""
+
+    @staticmethod
+    def _rates():
+        from niveshdristi.core.market_rules import RateSchedule
+
+        return RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            exchange_fee=0.0000345, regulator_fee=0.000001,
+            stamp_duty_buy=0.00015, gst_on_fees=0.18,
+            dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
+        )
+
+    def test_paper_broker_persists_to_caller_path(self, tmp_path):
+        from niveshdristi.core.market_rules import PriceLimitRule
+        from niveshdristi.execution.paper_broker import PaperBroker
+        from niveshdristi.execution.sim_broker import GATE_MARKER
+
+        state = tmp_path / "paper.json"
+        broker = PaperBroker(
+            rates=self._rates(),
+            price_limits=PriceLimitRule(enabled=False),
+            state_path=state,
+        )
+        broker.cash = None
+        order = TestOrderBuildingAndSimBroker._order("SYN060", 10)
+        assert order.client_order_id.startswith(GATE_MARKER)
+        broker.execute([order], prices={"SYN060": 100.0})
+        assert state.exists()
+        data = json.loads(state.read_text(encoding="utf-8"))
+        assert data["fills"][0]["symbol"] == "SYN060"
+        # reload continues from the persisted fills
+        broker2 = PaperBroker(
+            rates=self._rates(),
+            price_limits=PriceLimitRule(enabled=False),
+            state_path=state,
+        )
+        assert broker2.fills == data["fills"]
+
+    def test_spec_1_extreme_conviction_illiquid_clipped_end_to_end(self):
+        """SPEC TEST 1: construct_targets -> run_chain -> build_orders ->
+        SimBroker: extreme conviction on an illiquid instrument is clipped,
+        the GateLog contains the ADV reason, and the executed order matches
+        the clipped size."""
+        from niveshdristi.core.market_rules import PriceLimitRule
+        from niveshdristi.execution.orders import build_orders
+        from niveshdristi.execution.sim_broker import SimBroker
+        from niveshdristi.portfolio.construction import construct_targets
+        from niveshdristi.portfolio.risk_gates import GateLimits, run_chain
+        from tests.test_alpha import TestRiskGates
+
+        rules = TestRiskGates._rules()
+        sig = TestPortfolioConstruction._signal("SYN061", 1.0)  # extreme conviction
+        weights = construct_targets([sig], rules)
+        assert weights == {"SYN061": 1.0}  # S1 property
+        gated = run_chain(
+            weights,
+            limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0),
+            rules=rules,
+            current_weights={},
+            prices={"SYN061": 100.0},
+            advs={"SYN061": 200_000.0},  # illiquid: 5% x 200k = 10k max
+            nav=1_000_000.0,
+        )
+        adv_logs = [g for g in gated.log if g.gate == "adv_cap" and g.symbol == "SYN061"]
+        assert adv_logs
+        assert adv_logs[0].outcome == "clamped"
+        assert gated.weights["SYN061"] == pytest.approx(0.01)
+        orders, _logs = build_orders(
+            gated,
+            nav=1_000_000.0,
+            cash=1_000_000.0,
+            prices={"SYN061": 100.0},
+            instruments={"SYN061": TestOrderBuildingAndSimBroker._instrument("SYN061")},
+            current_holdings={},
+        )
+        assert orders[0].quantity == 100  # 10k / 100 = exactly 100 shares
+        broker = SimBroker(rates=self._rates(), price_limits=PriceLimitRule(enabled=False))
+        results = broker.execute(orders, prices={"SYN061": 100.0})
+        assert results[0].filled
+        assert results[0].fill.filled_quantity == 100  # matches clipped size
+
+    @staticmethod
+    def _run_strategy(turnover_days_gap: int, days: int = 20):
+        """Alternate between two single-name books every `turnover_days_gap`
+        days on flat prices; returns (gross_final, net_final, cost_total)."""
+        from niveshdristi.core.market_rules import PriceLimitRule
+        from niveshdristi.execution.orders import build_orders
+        from niveshdristi.execution.sim_broker import SimBroker
+        from niveshdristi.portfolio.construction import construct_targets
+        from niveshdristi.portfolio.risk_gates import GateLimits, run_chain
+        from tests.test_alpha import TestRiskGates
+
+        rules = TestRiskGates._rules()
+        limits = GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0)
+        broker = SimBroker(rates=TestPaperBrokerAndSpecTests._rates(),
+                           price_limits=PriceLimitRule(enabled=False))
+        cash = 1_000_000.0
+        holdings: dict[str, int] = {}
+        cost_total = 0.0
+        current_symbol = "SYN070"
+        for day in range(days):
+            if day % turnover_days_gap != 0:
+                continue  # hold; trade only on switch days
+            current_symbol = "SYN070" if (day // turnover_days_gap) % 2 == 0 else "SYN071"
+            sig = TestPortfolioConstruction._signal(current_symbol, 1.0)
+            weights = construct_targets([sig], rules)
+            gated = run_chain(
+                weights, limits=limits, rules=rules, current_weights={},
+                prices={"SYN070": 100.0, "SYN071": 100.0}, nav=1_000_000.0,
+            )
+            # sell existing holdings first (full turnover accounting)
+            for sym in list(holdings):
+                proceeds = holdings[sym] * 100.0
+                sell_costs = compute_sell_costs(holdings[sym], 100.0)
+                cost_total += sell_costs
+                cash += proceeds - sell_costs
+                del holdings[sym]
+            orders, _ = build_orders(
+                gated, nav=1_000_000.0, cash=cash,
+                prices={"SYN070": 100.0, "SYN071": 100.0},
+                instruments={
+                    "SYN070": TestOrderBuildingAndSimBroker._instrument("SYN070"),
+                    "SYN071": TestOrderBuildingAndSimBroker._instrument("SYN071"),
+                },
+                current_holdings={},
+            )
+            results = broker.execute(orders, prices={"SYN070": 100.0, "SYN071": 100.0})
+            for r in results:
+                if r.filled and r.fill is not None:
+                    spend = r.fill.filled_quantity * r.fill.fill_price
+                    fee = r.fill.commission + r.fill.fees
+                    cash -= spend + fee
+                    cost_total += fee
+                    holdings[r.order.instrument.symbol] = r.fill.filled_quantity
+        gross = (cash + sum(q * 100.0 for q in holdings.values()) + cost_total)
+        net = cash + sum(q * 100.0 for q in holdings.values())
+        return gross, net, cost_total
+
+    def test_spec_2_high_turnover_loses_materially_gross_vs_net(self):
+        """SPEC TEST 2: high-turnover strategy's NET is materially below
+        GROSS. Hand-computed materiality: each round trip of the full
+        ~1,000,000 notional costs >= ~142.79 buy + ~141.29 sell = ~284;
+        10 switches -> >= 2,840 drag. Low-turnover control: 2 switches ->
+        much smaller drag."""
+        gross_h, net_h, costs_h = self._run_strategy(turnover_days_gap=1, days=20)
+        # gross vs net reported SEPARATELY; net materially below gross
+        assert net_h < gross_h
+        assert costs_h >= 2_800.0  # hand-computed minimum drag (see docstring)
+        gross_l, net_l, costs_l = self._run_strategy(turnover_days_gap=10, days=20)
+        assert costs_l < costs_h / 3  # control drag far smaller
+
+    def test_net_report_requires_verified_flag_and_banner(self):
+        """A net-of-cost report cannot hide unverified rates: the report
+        object carries rates_verified and the banner whenever False."""
+        from niveshdristi.execution.costs import BANNER, compute_costs
+
+        b = compute_costs(side="buy", notional=1000.0, rates=self._rates())
+        assert b.rates_verified is False
+        assert b.banner == BANNER
+
+
+def compute_sell_costs(qty: int, price: float) -> float:
+    """Sell-side cost for the turnover test: levy 0.1% + brokerage 20 +
+    exchange 0.00345% + regulator 0.0001% + GST 18% on (20 + exch + reg)
+    + depository per-scrip charge 13.5 once per sell order."""
+    notional = qty * price
+    levy = notional * 0.001
+    exchange = notional * 0.0000345
+    regulator = notional * 0.000001
+    gst = (20.0 + exchange + regulator) * 0.18
+    return levy + 20.0 + exchange + regulator + gst + 13.5
