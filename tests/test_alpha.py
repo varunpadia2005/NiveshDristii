@@ -164,6 +164,7 @@ class TestImportBoundary:
 
     NEUTRAL_DIRS = (
         "src/niveshdristi/core",
+        "src/niveshdristi/engine",
         "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha",
         "src/niveshdristi/portfolio",
@@ -2677,3 +2678,105 @@ class TestBlending:
             strategy.models, [sig], known_model_ids=ids | {"ta_ensemble"}
         )
         assert out["SYN080"] == pytest.approx(0.5)
+
+
+class TestSessionCalendar:
+    """P5-S1: data-derived calendar + conflict reporting (no invented dates)."""
+
+    @staticmethod
+    def _frames(dates_by_symbol):
+        return {
+            sym: pl.DataFrame({"date": ds, "close": [100.0] * len(ds)})
+            for sym, ds in dates_by_symbol.items()
+        }
+
+    def test_union_of_dates_with_planted_gap(self):
+        """SYN090 trades Mon-Wed, SYN091 Tue-Thu: union Mon-Thu; SYN090's
+        Wednesday gap in its own frame doesn't remove Wednesday (SYN091 has
+        it), but a day absent from BOTH is absent from the calendar."""
+        from niveshdristi.engine.calendar import DataCalendar
+
+        frames = self._frames({
+            "SYN090": ["2026-03-02", "2026-03-03", "2026-03-05"],  # Mon, Tue, Thu
+            "SYN091": ["2026-03-03", "2026-03-04", "2026-03-05"],  # Tue, Wed, Thu
+        })
+        cal = DataCalendar.from_frames(frames)
+        got = [d.isoformat() for d in cal.sessions()]
+        # union: Mon 03-02, Tue 03-03, Wed 03-04, Thu 03-05 (no Friday 03-06)
+        assert got == ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"]
+        assert cal.is_session(date(2026, 3, 4))
+        assert not cal.is_session(date(2026, 3, 6))  # absent everywhere: not a session
+        assert cal.next_session(date(2026, 3, 3)) == date(2026, 3, 4)
+        assert cal.next_session(date(2026, 3, 5)) is None
+
+    def test_conflict_reporting_planted_conflict(self):
+        """Official says 03-04 is a HOLIDAY but data has bars (conflict A);
+        official says 03-06 is a session but no data bar exists (conflict B).
+        Neither source is altered; counts and lists reported."""
+        from niveshdristi.engine.calendar import DataCalendar, check_against_official
+
+        frames = self._frames({"SYN090": ["2026-03-02", "2026-03-03", "2026-03-04"]})
+        cal = DataCalendar.from_frames(frames)
+        official = {
+            date(2026, 3, 2), date(2026, 3, 3),
+            date(2026, 3, 6),  # official session with NO data bar (conflict B)
+        }  # 03-04 absent from official = data bar on non-session (conflict A)
+        conflicts = check_against_official(cal, official)
+        assert conflicts.data_on_non_session == [date(2026, 3, 4)]
+        assert conflicts.official_session_without_data == [date(2026, 3, 6)]
+        assert conflicts.count == 2
+        assert "conflicts=2" in conflicts.summary()
+        # calendar unchanged: 03-04 still a session (data calendar kept)
+        assert cal.is_session(date(2026, 3, 4))
+
+
+class TestDataLimitations:
+    """P5-S1: limitations contract + result-container requirement."""
+
+    def test_banner_and_promotable(self):
+        from niveshdristi.core.limitations import DataLimitations
+
+        lim = DataLimitations(CODES=frozenset({"rates_unverified", "derived_calendar"}))
+        assert lim.banner == "DATA LIMITATIONS: derived_calendar, rates_unverified"
+        assert lim.promotable is False
+        empty = DataLimitations()
+        assert empty.banner is None
+        assert empty.promotable is True
+
+    def test_unknown_code_rejected(self):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.core.limitations import DataLimitations
+
+        with pytest.raises(Exception, match="unknown limitation codes") as exc:
+            DataLimitations(CODES=frozenset({"bogus_code"}))
+        assert exc.value.__class__.__name__ == "ConfigurationError" or isinstance(
+            exc.value, ConfigurationError
+        )
+
+    def test_frozen(self):
+        from niveshdristi.core.limitations import DataLimitations
+
+        lim = DataLimitations(CODES=frozenset())
+        with pytest.raises(Exception, match="frozen|immutable|Instance"):
+            lim.CODES = frozenset({"rates_unverified"})  # type: ignore[misc]
+
+    def test_result_container_requires_limitations(self):
+        """A result-like container cannot be built WITHOUT DataLimitations.
+        This models the constructor contract BacktestResult/ValidationResult
+        will adopt in later Phase 5 tasks."""
+
+        from pydantic import BaseModel
+        from pydantic.config import ConfigDict
+
+        from niveshdristi.core.limitations import DataLimitations
+
+        class ResultLike(BaseModel):
+            model_config = ConfigDict(frozen=True, extra="forbid")
+
+            equity_final: float
+            limitations: DataLimitations  # REQUIRED field
+
+        ok = ResultLike(equity_final=100.0, limitations=DataLimitations())
+        assert ok.limitations.promotable is True
+        with pytest.raises(Exception, match="limitations"):
+            ResultLike(equity_final=100.0)  # missing limitations -> rejected
