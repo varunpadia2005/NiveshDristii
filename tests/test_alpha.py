@@ -1272,3 +1272,122 @@ class TestSectorRotation:
         assert signals[0].conviction == 0.0
         assert set(signals[0].metadata["sector_quadrants"]) == {"('alpha',)", "('beta',)"}
         assert signals[0].evidence["data_status"] == "stub"
+
+
+class TestQualityValue:
+    """S10: two-leg quality/value screen over synthetic PIT records."""
+
+    @staticmethod
+    def _inputs(metrics: dict):
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.marketdata.pit import PITRecord
+
+        records = tuple(
+            PITRecord(
+                symbol="SYN013", metric=m, value=v,
+                period_end=date(2026, 6, 30), announced_at=date(2026, 7, 20),
+                source="synthetic",
+            )
+            for m, v in metrics.items()
+        )
+        as_of = datetime(2026, 8, 1, 15, 0, tzinfo=UTC)
+        inputs = build_model_inputs(as_of=as_of, prices={}, fundamentals={"SYN013": records})
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        return ctx, inputs
+
+    def test_both_legs_pass(self):
+        from niveshdristi.alpha.quant.quality_value import QualityValue
+
+        ctx, inputs = self._inputs({"earnings_yield": 0.08, "roce": 0.20})
+        signals = QualityValue().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 1.0
+        assert signals[0].evidence["data_status"] == "stub"
+
+    def test_one_leg_fails_is_neutral_no_signal(self):
+        from niveshdristi.alpha.quant.quality_value import QualityValue
+
+        ctx, inputs = self._inputs({"earnings_yield": 0.08, "roce": 0.05})
+        assert QualityValue().predict(ctx, inputs) == []  # score 0.5 -> conviction 0
+
+    def test_both_fail_negative(self):
+        from niveshdristi.alpha.quant.quality_value import QualityValue
+
+        ctx, inputs = self._inputs({"earnings_yield": 0.01, "roce": 0.02})
+        signals = QualityValue().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == -1.0
+
+
+class TestEarningsDrift:
+    """S10: post-announcement drift over synthetic announcement + prices."""
+
+    @staticmethod
+    def _inputs(announce_day: str, base: float, last: float, as_of_day: str):
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.marketdata.pit import PITRecord
+
+        record = PITRecord(
+            symbol="SYN014", metric="eps", value=10.0,
+            period_end=date.fromisoformat(announce_day),
+            announced_at=date.fromisoformat(announce_day), source="synthetic",
+        )
+        prices = _syn_frame([base, base], start=date.fromisoformat(announce_day))
+        # overwrite dates explicitly: announcement day and as_of day
+        prices = pl.DataFrame(
+            {"date": [announce_day, as_of_day], "close": [base, last], "volume": [1, 1]}
+        )
+        as_of = datetime.fromisoformat(as_of_day + "T15:00:00+00:00")
+        inputs = build_model_inputs(
+            as_of=as_of, prices={"SYN014": prices}, fundamentals={"SYN014": (record,)}
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        return ctx, inputs
+
+    def test_drift_known_answer(self):
+        """+10% drift with clip 20% -> conviction +0.5."""
+        from niveshdristi.alpha.quant.earnings_drift import EarningsDrift
+
+        ctx, inputs = self._inputs("2026-10-01", 100.0, 110.0, "2026-10-21")
+        signals = EarningsDrift().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 0.5
+        assert signals[0].evidence["post_announcement_return"] == 0.1
+        assert signals[0].evidence["data_status"] == "stub"
+
+    def test_stale_announcement_ignored(self):
+        from niveshdristi.alpha.quant.earnings_drift import EarningsDrift
+
+        ctx, inputs = self._inputs("2026-01-01", 100.0, 150.0, "2026-10-21")
+        assert EarningsDrift().predict(ctx, inputs) == []
+
+    def test_no_look_ahead(self):
+        """A record announced AFTER as_of never reaches the model (builder/PIT)."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.earnings_drift import EarningsDrift
+        from niveshdristi.marketdata.pit import PITRecord
+
+        record = PITRecord(
+            symbol="SYN014", metric="eps", value=1.0,
+            period_end=date(2026, 10, 1), announced_at=date(2026, 11, 1),
+            source="synthetic",
+        )
+        as_of = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
+        prices = pl.DataFrame(
+            {"date": ["2026-10-01", "2026-10-21"], "close": [100.0, 110.0], "volume": [1, 1]}
+        )
+        inputs = build_model_inputs(
+            as_of=as_of, prices={"SYN014": prices}, fundamentals={"SYN014": (record,)}
+        )
+        from niveshdristi.core.alpha import AsOfContext
+
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        # The record is in the bundle only if the caller's PIT query included it;
+        # the model itself measures drift only from as_of-visible prices, and a
+        # future announcement (announced_at > as_of) is filtered by PIT queries.
+        # Here we assert the model ignores an announcement dated after as_of:
+        signals = EarningsDrift().predict(ctx, inputs)
+        assert signals == []  # days = -11 < 0 -> ignored
