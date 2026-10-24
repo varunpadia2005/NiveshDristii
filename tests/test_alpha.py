@@ -1131,3 +1131,144 @@ class TestIndiaStubModels:
         # flows and block_deals roles use the same builder-validated path
         assert FiiDiiRegime().predict(ctx, truncated) == []
         assert BlockDeals().predict(ctx, truncated) == []
+
+
+class TestMacroOverlay:
+    """S9c: direction-only macro overlay, tilt from UNVERIFIED YAML."""
+
+    @staticmethod
+    def _macro_frame():
+        return pl.DataFrame(
+            {
+                "factor": ["repo_rate_down", "fx_inr_stronger"],
+                "date": ["2026-10-20", "2026-10-21"],
+                "direction": [1, -1],
+            }
+        )
+
+    def test_tilt_known_answer(self):
+        """repo_rate_down=+1 -> banks +1; fx_inr_stronger=-1 -> it +1, paints -1."""
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.markets.in_nse.models.macro_overlay import MacroOverlay
+
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        inputs = build_model_inputs(
+            as_of=as_of,
+            prices={"SYN011": _syn_frame([100.0] * 30)},
+            aux={"macro": self._macro_frame()},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        signals = MacroOverlay().predict(ctx, inputs)
+        assert len(signals) == 1
+        s = signals[0]
+        assert s.conviction == 0.0  # evidence-only
+        # zero-direction sectors also appear (direction-only sums, incl. 0)
+        assert s.metadata["sector_tilt"] == {"banks": 1, "energy": 0, "it": 1, "paints": -1}
+        assert s.metadata["factor_directions"] == {"fx_inr_stronger": -1, "repo_rate_down": 1}
+        assert s.evidence["data_status"] == "stub"
+
+    def test_future_macro_rows_invisible(self):
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.markets.in_nse.models.macro_overlay import MacroOverlay
+
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        future = pl.DataFrame(
+            {"factor": ["crude_down"], "date": ["2027-01-01"], "direction": [1]}
+        )
+        full = pl.concat([self._macro_frame(), future])
+        prices = {"SYN011": _syn_frame([100.0] * 30)}
+        via_handle = build_from_full_frames(as_of=as_of, prices=prices, aux={"macro": full})
+        truncated = build_model_inputs(
+            as_of=as_of, prices=prices, aux={"macro": self._macro_frame()}
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        m = MacroOverlay()
+        assert [(s.evidence, s.metadata) for s in m.predict(ctx, truncated)] == [
+            (s.evidence, s.metadata) for s in m.predict(ctx, via_handle)
+        ]
+
+
+class TestSectorRotation:
+    """S9c: ported compute_rrg/market_regime — equality vs direct legacy calls."""
+
+    @staticmethod
+    def _frames():
+        from datetime import timedelta
+
+        n = 80
+        dates = [(date(2026, 6, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        bench = pl.DataFrame({"date": dates, "close": [100.0 + i * 0.1 for i in range(n)]})
+        sector = pl.DataFrame(
+            {
+                "sector": ["alpha", "beta"] * (n // 2),
+                "date": dates * 1,
+                "close": [100.0 + i * 0.2 if i % 2 == 0 else 100.0 - i * 0.1 for i in range(n)],
+            }
+        )
+        return sector, bench
+
+    def test_quadrants_equal_direct_legacy_call(self):
+        """PORT EQUALITY: wrapper quadrants == direct legacy compute_rrg on the
+        same synthetic inputs (no legacy golden exists for compute_rrg)."""
+        import asyncio
+
+        from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+        from niveshdristi.regime.rrg import compute_rrg
+
+        sector_frame, bench = self._frames()
+        model = SectorRotation()
+        wrapped = asyncio.run(
+            model.legacy_quadrants(
+                {
+                    name: g.drop("sector")
+                    for name, g in sector_frame.partition_by("sector", as_dict=True).items()
+                },
+                bench,
+            )
+        )
+        direct = asyncio.run(
+            compute_rrg(
+                {
+                    name: g.drop("sector").with_columns(
+                        pl.col("close").alias("adj_close")
+                    )
+                    for name, g in sector_frame.partition_by("sector", as_dict=True).items()
+                },
+                bench.with_columns(pl.col("close").alias("adj_close")),
+            )
+        )
+        assert wrapped == direct
+
+    def test_state_equal_direct_legacy_call(self):
+        from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+        from niveshdristi.regime.rrg import market_regime
+
+        _, bench = self._frames()
+        model = SectorRotation()
+        assert model.legacy_state(bench) == market_regime(
+            bench.with_columns(pl.col("close").alias("adj_close")), 15.0
+        )
+
+    def test_predict_emits_evidence_only_tilt(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+        from niveshdristi.core.alpha import AsOfContext
+
+        sector_frame, bench = self._frames()
+        as_of = datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
+        inputs = build_from_full_frames(
+            as_of=as_of,
+            prices={"SYN012": _syn_frame([100.0] * 30)},
+            aux={"sector_index": sector_frame, "benchmark": bench},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        signals = SectorRotation().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 0.0
+        assert set(signals[0].metadata["sector_quadrants"]) == {"('alpha',)", "('beta',)"}
+        assert signals[0].evidence["data_status"] == "stub"
