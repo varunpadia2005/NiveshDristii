@@ -1435,3 +1435,60 @@ class TestModelsListCLI:
         assert proc.returncode == 0
         data = json.loads(proc.stdout)  # valid at COLUMNS=40
         assert data["count"] == 16
+
+
+class TestPhase3SpecConformance:
+    """S12: every model the Phase 3 spec lists is registered, documented and tested.
+
+    Source of truth: docs/CLAUDE_CODE_PROMPT.md '## PHASE 3 — Alpha models'
+    (HMM is explicitly optional and therefore NOT required). A missing model
+    must fail the build.
+    """
+
+    # The spec's model list, mapped to registry ids
+    REQUIRED_MODELS = (
+        "ta_ensemble",            # port: TA ensemble
+        "fundamental_guardrails", # port: fundamental guardrails
+        "sector_rotation",        # port: sector rotation
+        "price_range",            # port: price-range engine (fresh, no legacy impl)
+        "momentum_ts",            # quant: time-series momentum
+        "momentum_cs",            # quant: cross-sectional momentum
+        "mean_reversion",         # quant: mean reversion
+        "quality_value",          # quant: quality/value factors
+        "low_volatility",         # quant: low-volatility
+        "earnings_drift",         # quant: earnings-reaction drift
+        "regime",                 # quant: regime detection (simple states; HMM optional)
+        "promoter_pledge",        # India: promoter holding/pledge trend
+        "delivery_anomaly",       # India: delivery-percentage anomaly
+        "fii_dii_regime",         # India: FII/DII flow regime
+        "block_deals",            # India: bulk/block deal signal
+        "macro_overlay",          # India: macro overlay
+    )
+
+    @staticmethod
+    def _registry_entries():
+        from typer.testing import CliRunner
+
+        from niveshdristi.cli.main import app
+
+        result = CliRunner().invoke(app, ["--json", "models"])
+        assert result.exit_code == 0
+        return json.loads(result.output)["models"]
+
+    def test_every_spec_model_registered_with_horizon(self):
+        entries = {m["model_id"]: m for m in self._registry_entries()}
+        missing = [mid for mid in self.REQUIRED_MODELS if mid not in entries]
+        assert missing == [], f"spec models missing from registry: {missing}"
+        for mid in self.REQUIRED_MODELS:
+            assert entries[mid]["horizon_days"] >= 1, f"{mid} lacks a documented horizon"
+            assert entries[mid]["data_status"] in ("live", "stub")
+
+    def test_every_spec_model_has_unit_tests(self):
+        test_source = Path("tests/test_alpha.py").read_text(encoding="utf-8")
+        untested = [mid for mid in self.REQUIRED_MODELS if mid not in test_source]
+        assert untested == [], f"spec models without unit-test references: {untested}"
+
+    def test_registry_has_no_unexpected_models(self):
+        entries = {m["model_id"] for m in self._registry_entries()}
+        extra = entries - set(self.REQUIRED_MODELS)
+        assert extra == set(), f"registry contains unlisted models: {extra}"

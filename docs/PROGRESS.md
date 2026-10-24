@@ -278,3 +278,72 @@ in the equality test are an intentional tripwire against config drift.
 - Registry listing (command output, G2c): ta_ensemble(10), price_range(5),
   momentum_ts(20), momentum_cs(20), mean_reversion(10), low_volatility(60),
   regime(5) — all pit_safe=True, data_status=live.
+
+---
+
+# Phase 3 (complete, 2026-10-24): all spec models registered and tested
+
+## Model registry (raw `nd --json models` output; composition point = the CLI command)
+
+```
+count: 16
+block_deals              horizon= 20 data=filings                  pit=True status=stub
+delivery_anomaly         horizon= 10 data=prices                   pit=True status=live
+earnings_drift           horizon= 20 data=fundamentals,prices      pit=True status=stub
+fii_dii_regime           horizon= 20 data=flows                    pit=True status=stub
+fundamental_guardrails   horizon= 60 data=fundamentals             pit=True status=stub
+low_volatility           horizon= 60 data=prices                   pit=True status=live
+macro_overlay            horizon= 20 data=prices                   pit=True status=stub
+mean_reversion           horizon= 10 data=prices                   pit=True status=live
+momentum_cs              horizon= 20 data=prices                   pit=True status=live
+momentum_ts              horizon= 20 data=prices                   pit=True status=live
+price_range              horizon=  5 data=prices                   pit=True status=live
+promoter_pledge          horizon= 60 data=filings                  pit=True status=stub
+quality_value            horizon= 60 data=fundamentals             pit=True status=stub
+regime                   horizon=  5 data=prices                   pit=True status=live
+sector_rotation          horizon= 20 data=prices                   pit=True status=stub
+ta_ensemble              horizon= 10 data=prices                   pit=True status=live
+```
+
+live vs stub, and WHY: **live** = computed purely from supplied price/aux
+frames (ta_ensemble, price_range, momentum×2, mean_reversion,
+low_volatility, regime, delivery_anomaly). **stub** = maths exists but no
+verified data source: fundamentals/announced_at (fundamental_guardrails,
+quality_value, earnings_drift), sector indices (sector_rotation), flows
+(fii_dii_regime), filings/deals (promoter_pledge, block_deals), macro
+factors (macro_overlay).
+
+PORTS vs NEW: **ported (import-only, equality-tested)**: ta_ensemble
+(indicators + signal engine), fundamental_guardrails (check_guardrails rules
+maths only), sector_rotation (compute_rrg + market_regime; NOTE: no legacy
+golden exists for compute_rrg — the equality test compares wrapper vs direct
+legacy call, no golden file pretends legacy correctness). **NEW**:
+price_range (no legacy implementation existed), all quant models, all India
+models, every conviction mapping, quality score, macro overlay.
+
+## Spec conformance (S12)
+
+tests/test_alpha.py::TestPhase3SpecConformance enumerates the Phase 3 model
+list (HMM optional, not required) and fails the build if any is missing from
+the registry, lacks a horizon, or has no unit-test reference. Proven
+fail-able with a seeded missing id (raw output in the session log).
+
+## R1 dependency finding (2026-10-24)
+
+legacy fundamentals/loader.py (imported read-only by the guardrails port for
+check_guardrails) imports yfinance AND asyncpg at top level. Both are MAIN
+dependencies in pyproject [project.dependencies] (yfinance>=0.2.40,
+asyncpg>=0.29; the optional 'data' extra adds yfinance>=1.5), so the suite
+does NOT fail on import in any environment installed from main deps. The
+new-code layer's yfinance-free goal therefore holds only transitively; if
+main deps ever drop yfinance/asyncpg, the guardrails port would need the
+rules maths inlined (requires explicit approval — it would be a copy, not a
+port).
+
+## Standing caveats
+
+- CONVICTION SCALES ARE NOT COMPARABLE OR CALIBRATED across models; no
+  downstream combiner may treat them as probabilities until Phase 4.
+- The no-look-ahead property test catches side-channel peeking only; the
+  real PIT guard is the builder's DataError on future rows.
+- Blocked data items (holidays/constituents/announced_at) remain blocked.
