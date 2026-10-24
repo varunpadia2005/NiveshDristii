@@ -1718,3 +1718,238 @@ class TestPortfolioConstruction:
         w = construct_targets(signals, self._rules())
         assert sum(w.values()) <= 1.0 + 1e-12
         assert all(v > 0 for v in w.values())
+
+
+class TestRiskGates:
+    """P4-S2: deterministic risk gates — seeded violations, properties."""
+
+    @staticmethod
+    def _rules(excl_symbols=frozenset(), excl_as_of=None, excl_source="", min_price=0.0):
+        from niveshdristi.core.market_rules import ExclusionList, MarketRules
+
+        return MarketRules(
+            market_id="TEST_M",
+            shorting_allowed=False,
+            min_price=min_price,
+            exclusions=ExclusionList(
+                symbols=frozenset(excl_symbols), as_of=excl_as_of, source=excl_source
+            ),
+        )
+
+    @staticmethod
+    def _run(weights, limits=None, rules=None, **kw):
+        from niveshdristi.portfolio.risk_gates import GateLimits, run_chain
+
+        limits = limits or GateLimits()
+        rules = rules or TestRiskGates._rules()
+        defaults = {
+            "current_weights": {},
+            "prices": dict.fromkeys(weights, 100.0),
+            "nav": 1_000_000.0,
+        }
+        defaults.update(kw)
+        return run_chain(dict(weights), limits=limits, rules=rules, **defaults)
+
+    def test_exclusion_removes_with_log_and_staleness_warning(self):
+        from datetime import date
+
+        rules = self._rules(
+            excl_symbols={"SYN030"}, excl_as_of=date(2026, 1, 1), excl_source="test-list"
+        )
+        out = self._run(
+            {"SYN030": 0.5, "SYN031": 0.5}, rules=rules, decision_date=date(2026, 10, 23)
+        )
+        assert set(out.weights) == {"SYN031"}
+        entry = [g for g in out.log if g.gate == "exclusion"][0]
+        assert entry.symbol == "SYN030"
+        assert entry.outcome == "removed"
+        assert "source='test-list'" in entry.reason
+        assert "age_days=295" in entry.reason
+        assert "WARNING" in entry.reason  # 295d > 90d default threshold
+
+    def test_min_price_removes(self):
+        out = self._run({"SYN030": 0.5, "SYN031": 0.5}, rules=self._rules(min_price=50.0),
+                        prices={"SYN030": 40.0, "SYN031": 100.0})
+        assert set(out.weights) == {"SYN031"}
+        assert [g for g in out.log if g.gate == "min_price"][0].outcome == "removed"
+
+    def test_min_market_cap_inert_without_data_then_active(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        out = self._run({"SYN030": 0.5})
+        skips = [g for g in out.log if g.gate == "min_market_cap"]
+        assert skips
+        assert skips[0].outcome == "skipped: no data"
+        limits = GateLimits(min_market_cap=1_000_000_000.0)
+        out2 = self._run({"SYN030": 0.5, "SYN031": 0.5}, limits=limits,
+                         market_caps={"SYN030": 100.0, "SYN031": 5e9})
+        assert set(out2.weights) == {"SYN031"}
+
+    def test_max_positions_keeps_top_n(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        w = {f"SYN03{i}": 0.1 * (10 - i) for i in range(5)}  # SYN030 highest
+        out = self._run(w, limits=GateLimits(max_positions=2))
+        assert set(out.weights) == {"SYN030", "SYN031"}
+
+    def test_max_position_clips(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        out = self._run({"SYN030": 1.0}, limits=GateLimits(max_position_pct=0.10, min_cash_pct=0.0))
+        assert out.weights["SYN030"] == 0.10
+        entry = [g for g in out.log if g.gate == "max_position"][0]
+        assert entry.outcome == "clamped"
+        assert entry.weight_before == 1.0
+
+    def test_max_sector_scales(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        w = {"SYN030": 0.25, "SYN031": 0.25, "SYN032": 0.5}
+        sector = {"SYN030": "sec_a", "SYN031": "sec_a", "SYN032": "sec_b"}
+        out = self._run(
+            w,
+            limits=GateLimits(
+                max_position_pct=1.0, max_sector_pct=0.30, turnover_max=1.0
+            ),
+            sector_map=sector,
+        )
+        # sec_a total 0.5 -> scaled to 0.30 (0.15 each); sec_b total 0.5 is
+        # ALSO above the 0.30 cap -> SYN032 scaled to 0.30 (hand-computed).
+        assert out.weights["SYN030"] == pytest.approx(0.15)
+        assert out.weights["SYN031"] == pytest.approx(0.15)
+        assert out.weights["SYN032"] == pytest.approx(0.30)
+
+    def test_adv_cap_spec_test_extreme_conviction_illiquid(self):
+        """SPEC: extreme conviction on an illiquid instrument is clipped by
+        the ADV gate with the logged reason."""
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        # extreme conviction 1.0 -> weight 1.0 (S1 property); illiquid: ADV tiny
+        out = self._run(
+            {"SYN030": 1.0},
+            limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0, adv_fraction=0.05),
+            advs={"SYN030": 200_000.0},  # 5% x 200k = 10k max position value
+        )
+        assert out.weights["SYN030"] == pytest.approx(10_000.0 / 1_000_000.0)
+        entry = [g for g in out.log if g.gate == "adv_cap"][0]
+        assert entry.outcome == "clamped"
+        assert "exceeds 0.05 x ADV 200000" in entry.reason
+
+    def test_adv_inert_without_data(self):
+        out = self._run({"SYN030": 1.0}, limits=None)
+        entry = [g for g in out.log if g.gate == "adv_cap"][0]
+        assert entry.outcome == "skipped: no data"
+
+    def test_turnover_cap_shrinks_increases_only(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        # current 0/0; targets 0.2/0.2 -> turnover 0.4 > 0.3 cap
+        out = self._run(
+            {"SYN030": 0.2, "SYN031": 0.2},
+            limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=0.3),
+            current_weights={},
+        )
+        # increases scaled by (1 - 0.1/0.4) = 0.75 -> 0.15 each; turnover 0.3
+        assert out.weights["SYN030"] == pytest.approx(0.15)
+        assert out.weights["SYN031"] == pytest.approx(0.15)
+        assert [g for g in out.log if g.gate == "turnover"][0].outcome == "clamped"
+
+    def test_min_cash_creates_cash(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        out = self._run(
+            {"SYN030": 0.5, "SYN031": 0.5},
+            limits=GateLimits(
+                max_position_pct=1.0, min_cash_pct=0.30, turnover_max=1.0
+            ),
+        )
+        assert sum(out.weights.values()) == pytest.approx(0.70)
+
+    def test_drawdown_circuit_boundaries(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        limits = GateLimits(
+            max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0,
+            drawdown_threshold=0.20, drawdown_exposure_factor=0.50,
+        )
+        # below threshold: no circuit
+        out = self._run({"SYN030": 1.0}, limits=limits, equity_history=[100.0, 81.0])
+        assert out.weights["SYN030"] == pytest.approx(1.0)
+        assert not [g for g in out.log if g.gate == "drawdown_circuit"]
+        # AT threshold (drawdown exactly 0.20): circuit fires
+        out = self._run({"SYN030": 1.0}, limits=limits, equity_history=[100.0, 80.0])
+        assert out.weights["SYN030"] == pytest.approx(0.50)
+        # above threshold: circuit fires
+        out = self._run({"SYN030": 1.0}, limits=limits, equity_history=[100.0, 70.0])
+        assert out.weights["SYN030"] == pytest.approx(0.50)
+
+    def test_gated_targets_direct_convention_check(self):
+        from niveshdristi.portfolio.risk_gates import GatedTargets
+
+        with pytest.raises(Exception, match="construction token"):
+            GatedTargets(weights={"SYN030": 0.1}, log=())
+
+    def test_idempotence(self):
+        from niveshdristi.portfolio.risk_gates import GateLimits, run_chain
+
+        limits = GateLimits(max_position_pct=0.10)
+        first = self._run({"SYN030": 0.5, "SYN031": 0.5}, limits=limits,
+                          sector_map={"SYN030": "a", "SYN031": "a"})
+        second = run_chain(
+            dict(first.weights), limits=limits, rules=self._rules(),
+            current_weights={}, prices={"SYN030": 100.0, "SYN031": 100.0}, nav=1_000_000.0,
+        )
+        assert second.weights == first.weights
+        clamps = [g for g in second.log if g.outcome in ("clamped", "removed")]
+        assert clamps == []  # no further clamps on its own output
+
+
+    def test_never_violates_limits_property_fixed_seed(self):
+        """FIXED seed: random inputs; output never violates any limit and
+        never exceeds the input weight for any symbol."""
+        import random
+
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        rng = random.Random(42)
+        limits = GateLimits(max_position_pct=0.10, max_sector_pct=0.25, max_positions=5)
+        for _ in range(200):
+            n = rng.randint(1, 10)
+            syms = [f"SYN03{i}" for i in range(n)]
+            weights = {s: rng.random() for s in syms}
+            advs = {
+                s: rng.choice([50_000.0, 500_000.0, 5_000_000.0])
+                for s in syms
+                if rng.random() < 0.7
+            }
+            sector = {s: rng.choice(["a", "b", "c"]) for s in syms}
+            out = self._run(
+                weights,
+                limits=limits,
+                advs=advs or None,
+                sector_map=sector,
+                prices={s: rng.choice([50.0, 150.0]) for s in syms},
+                equity_history=[100.0, rng.choice([95.0, 75.0])],
+            )
+            for s, w in out.weights.items():
+                assert w <= weights[s] + 1e-12, f"{s} weight increased"
+                assert w <= limits.max_position_pct + 1e-12
+                if s in advs:
+                    assert w * 1_000_000.0 <= limits.adv_fraction * advs[s] + 1e-6
+            assert len(out.weights) <= limits.max_positions
+            assert sum(out.weights.values()) <= 1.0 + 1e-12
+            assert 1.0 - sum(out.weights.values()) >= limits.min_cash_pct - 1e-12
+
+    def test_s1_property_conviction_fixes_relative_size_only(self):
+        """S1 property: construct_targets sums positive convictions to 1.0;
+        a single 0.01 conviction becomes weight 1.0 BEFORE gates, then the
+        max-position gate clips it - gates create cash, conviction does not."""
+        from niveshdristi.portfolio.construction import construct_targets
+        from niveshdristi.portfolio.risk_gates import GateLimits
+
+        rules = self._rules()
+        sig = TestPortfolioConstruction._signal("SYN030", 0.01)
+        weights = construct_targets([sig], rules)
+        assert weights == {"SYN030": 1.0}
+        out = self._run(weights, limits=GateLimits(max_position_pct=0.10))
+        assert out.weights["SYN030"] == 0.10
