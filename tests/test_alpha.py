@@ -613,3 +613,102 @@ class TestMomentumModels:
         for model in (TimeSeriesMomentum(), CrossSectionalMomentum()):
             key = lambda ss: [(s.instrument.symbol, s.conviction) for s in ss]  # noqa: E731
             assert key(model.predict(ctx, truncated)) == key(model.predict(ctx, via_handle))
+
+
+class TestMeanReversion:
+    """S6: contrarian z-score — hand-computed known answer."""
+
+    def test_known_answer_clipped(self):
+        """19 closes of 100 + last 102: mean=100.1, var=0.19, std=sqrt(0.19),
+        z=1.9/sqrt(0.19)=4.3589 -> contrarian conviction clipped to -1.0."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.mean_reversion import MeanReversion, zscore_last
+        from niveshdristi.core.alpha import AsOfContext
+
+        closes = [100.0] * 19 + [102.0]
+        z = zscore_last(closes)
+        assert z is not None
+        assert round(z, 4) == 4.3589
+        df = _syn_frame(closes)
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN004": df})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = MeanReversion().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == -1.0  # clipped at Z_CAP=3.0
+        assert signals[0].evidence["z_score"] == round(z, 6)
+
+    def test_degenerate_series_no_opinion(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.mean_reversion import MeanReversion
+        from niveshdristi.core.alpha import AsOfContext
+
+        df = _syn_frame([100.0] * 30)  # zero variance
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN004": df})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        assert MeanReversion().predict(ctx, inputs) == []
+
+    def test_no_look_ahead(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.mean_reversion import MeanReversion
+        from niveshdristi.core.alpha import AsOfContext
+
+        base = _syn_frame([100.0] * 19 + [101.0])
+        future = pl.DataFrame({"date": ["2027-01-01"], "close": [9999.0], "volume": [1]})
+        full = pl.concat([base, future])
+        as_of = datetime(2026, 12, 31, 15, 0, tzinfo=UTC)
+        truncated = build_model_inputs(
+            as_of=as_of, prices={"SYN004": base.filter(pl.col("date") <= "2026-12-31")}
+        )
+        via_handle = build_from_full_frames(as_of=as_of, prices={"SYN004": full})
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        m = MeanReversion()
+        assert m.predict(ctx, truncated) == m.predict(ctx, via_handle)
+
+
+class TestLowVolatility:
+    """S6: below-median vol tilt — hand-computable two-symbol case."""
+
+    @staticmethod
+    def _frames():
+        from datetime import timedelta
+
+        n = 70
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        flat = pl.DataFrame({"date": dates, "close": [100.0] * n})
+        wild_closes = [100.0 * (1.1 if i % 2 else 0.9) for i in range(n)]
+        wild = pl.DataFrame({"date": dates, "close": wild_closes})
+        return {"SYN005": flat, "SYN006": wild}
+
+    def test_known_answer(self):
+        """Flat symbol: vol=0 -> conviction 1.0. Wild symbol: above median -> skipped."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.low_volatility import LowVolatility
+        from niveshdristi.core.alpha import AsOfContext
+
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices=self._frames())
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = LowVolatility().predict(ctx, inputs)
+        assert [(s.instrument.symbol, s.conviction) for s in signals] == [("SYN005", 1.0)]
+
+    def test_needs_multiple_instruments(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.low_volatility import LowVolatility
+        from niveshdristi.core.alpha import AsOfContext
+
+        frames = self._frames()
+        inputs = build_model_inputs(as_of=date(2026, 12, 31), prices={"SYN005": frames["SYN005"]})
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        assert LowVolatility().predict(ctx, inputs) == []
