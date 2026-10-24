@@ -36,3 +36,8 @@ dp_charge_per_scrip: 13.5  # # VERIFY: CDSL/NSDL; varies by DP
 # - STT rates differ for equity delivery, intraday, F&O
 # - Stamp duty is state-specific but currently uniform for exchange trades
 # - GST applies to brokerage + exchange charges + SEBI fee (not STT, stamp duty)
+# Machine-readable verification block (P4-S3): verified=true requires a
+# non-empty source and verified_on everywhere (loader enforces).
+verified: false
+source: ""
+verified_on: ""

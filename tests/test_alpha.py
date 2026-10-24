@@ -167,6 +167,7 @@ class TestImportBoundary:
         "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha",
         "src/niveshdristi/portfolio",
+        "src/niveshdristi/execution",
     )
     MARKET_IMPORT = re.compile(r"^\s*(?:from|import)\s+niveshdristi\.markets\b", re.MULTILINE)
 
@@ -1953,3 +1954,170 @@ class TestRiskGates:
         assert weights == {"SYN030": 1.0}
         out = self._run(weights, limits=GateLimits(max_position_pct=0.10))
         assert out.weights["SYN030"] == 0.10
+
+
+class TestCostTaxYamlLoaders:
+    """P4-S3: strict YAML loaders + snapshot pin (values equal to R2 audit)."""
+
+    # SNAPSHOT of the pre-S3 HARDCODED profile values (R2 audit: equal to YAML)
+    SNAPSHOT = {
+        "brokerage_per_order": 20.0,
+        "stt_delivery_buy_pct": 0.001,
+        "stt_delivery_sell_pct": 0.001,
+        "stt_intraday_sell_pct": 0.00025,
+        "exchange_charges_pct": 0.0000345,
+        "sebi_fees_pct": 0.000001,
+        "stamp_duty_buy_pct": 0.00015,
+        "gst_pct": 0.18,
+        "slippage_bps": 5.0,
+        "dp_charge_per_scrip": 13.5,
+        "short_term_threshold_days": 365,
+        "short_term_rate": 0.20,
+        "long_term_rate": 0.125,
+        "long_term_exemption": 125000,
+        "loss_setoff_years": 8,
+    }
+
+    def test_loaded_yaml_matches_pinned_snapshot(self):
+        """STOP condition guard: loaded YAML values must equal the snapshot
+        of the previously hardcoded profile values (R2 showed equality)."""
+        from niveshdristi.markets.in_nse.loaders import load_costs, load_tax
+
+        costs = load_costs()
+        tax = load_tax()
+        for key, expected in self.SNAPSHOT.items():
+            actual = costs.get(key, tax.get(key))
+            assert actual == expected, f"{key}: loaded {actual} != snapshot {expected}"
+
+    def test_unknown_keys_rejected(self, tmp_path):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.markets.in_nse.loaders import load_costs
+
+        bad = tmp_path / "costs.yaml"
+        bad.write_text("brokerage_per_order: 20.0\nbogus_key: 1\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match=r"unknown keys: \['bogus_key'\]"):
+            load_costs(bad)
+
+    def test_percent_style_value_rejected_loudly(self, tmp_path):
+        """A percent-style 0.1 in a fraction field fails sanity (100x guard)."""
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.markets.in_nse.loaders import load_costs
+
+        bad = tmp_path / "costs.yaml"
+        bad.write_text("brokerage_per_order: 20.0\nstt_delivery_buy_pct: 0.1\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="percent-style values are rejected"):
+            load_costs(bad)
+
+    def test_verified_true_needs_source_and_date(self, tmp_path):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.markets.in_nse.loaders import load_costs
+
+        bad = tmp_path / "costs.yaml"
+        bad.write_text(
+            "brokerage_per_order: 20.0\n"
+            "stt_delivery_buy_pct: 0.001\n"
+            "stt_delivery_sell_pct: 0.001\n"
+            "exchange_charges_pct: 0.0000345\n"
+            "sebi_fees_pct: 0.000001\n"
+            "stamp_duty_buy_pct: 0.00015\n"
+            "gst_pct: 0.18\nslippage_bps: 5.0\n"
+            "verified: true\nsource: ''\nverified_on: ''\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigurationError, match="verified=true requires"):
+            load_costs(bad)
+
+    def test_real_yaml_verified_blocks_present(self):
+        from niveshdristi.markets.in_nse.loaders import load_costs, load_tax
+
+        assert load_costs()["verified"] is False
+        assert load_tax()["verified"] is False
+        assert load_tax()["holding_period_months"] == 12
+
+
+class TestCostEngine:
+    """P4-S3: neutral cost engine — hand-computed known answers."""
+
+    @staticmethod
+    def _rates(**over):
+        from niveshdristi.core.market_rules import RateSchedule
+
+        base = {
+            "brokerage_per_order": 20.0,
+            "stt_delivery_buy": 0.001,
+            "stt_delivery_sell": 0.001,
+            "exchange_fee": 0.0000345,
+            "regulator_fee": 0.000001,
+            "stamp_duty_buy": 0.00015,
+            "gst_on_fees": 0.18,
+            "dp_charge_per_scrip": 13.5,
+            "slippage_base_bps": 5.0,
+        }
+        base.update(over)
+        return RateSchedule(**base)
+
+    def test_buy_known_answer(self):
+        """Hand arithmetic, notional 100,000:
+        brokerage 20; levy 100000*0.001 = 100; exchange 100000*0.0000345 = 3.45;
+        regulator 100000*0.000001 = 0.1; stamp 100000*0.00015 = 15;
+        GST base = 20 + 3.45 + 0.1 = 23.55 -> GST = 4.239; DP 0 (buy);
+        fees = 20+100+3.45+0.1+15+4.239 = 142.789; slippage = 100000*5/10000 = 50.
+        """
+        from niveshdristi.execution.costs import compute_costs
+
+        b = compute_costs(side="buy", notional=100_000.0, rates=self._rates())
+        assert b.brokerage == 20.0
+        assert b.transaction_levy == 100.0
+        assert b.exchange_fee == 3.45
+        assert b.regulator_fee == 0.1
+        assert b.stamp_duty == 15.0
+        assert b.gst == pytest.approx(4.239)
+        assert b.dp_charge == 0.0
+        assert b.fees_total == pytest.approx(142.789)
+        assert b.slippage == pytest.approx(50.0)
+        assert b.total == pytest.approx(192.789)
+
+    def test_sell_known_answer_with_dp(self):
+        """Sell 100,000: no stamp duty; levy 100; DP 13.5 once; fees
+        = 20+100+3.45+0.1+4.239+13.5 = 141.289; slippage 50; total 191.289."""
+        from niveshdristi.execution.costs import compute_costs
+
+        s = compute_costs(
+            side="sell", notional=100_000.0, rates=self._rates(), include_dp_charge=True
+        )
+        assert s.stamp_duty == 0.0
+        assert s.dp_charge == 13.5
+        assert s.fees_total == pytest.approx(141.289)
+        assert s.total == pytest.approx(191.289)
+
+    def test_percent_misreading_would_be_caught(self):
+        """If stt were read as a PERCENT (0.1) the levy would be 10,000 for a
+        100k notional — 100x the correct 100. The loader rejects 0.1 outright
+        (see loader tests); here we pin the correct fraction behaviour so any
+        regression to percent semantics changes the total ~52x and fails."""
+        from niveshdristi.execution.costs import compute_costs
+
+        b = compute_costs(side="buy", notional=100_000.0, rates=self._rates())
+        assert b.transaction_levy == pytest.approx(100.0)  # fraction semantics
+        assert b.total == pytest.approx(192.789)  # NOT ~10,143
+
+    def test_frozen_and_banner(self):
+        from niveshdristi.execution.costs import BANNER, compute_costs
+
+        b = compute_costs(side="buy", notional=1000.0, rates=self._rates())
+        with pytest.raises(Exception, match="frozen|immutable|Instance"):
+            b.notional = 5.0  # type: ignore[misc]
+        assert b.rates_verified is False
+        assert b.banner == BANNER
+
+    def test_verified_rates_no_banner(self):
+        from datetime import date
+
+        from niveshdristi.execution.costs import compute_costs
+
+        rates = self._rates(
+            verified=True, source="circular 2026", verified_on=date(2026, 10, 1)
+        )
+        b = compute_costs(side="buy", notional=1000.0, rates=rates)
+        assert b.banner is None
+        assert b.rates_verified is True

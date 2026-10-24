@@ -340,6 +340,7 @@ def main() -> int:
         "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets",
         "src/niveshdristi/cli", "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
         "src/niveshdristi/markets/in_nse/models", "src/niveshdristi/portfolio",
+        "src/niveshdristi/execution",
     ):
         g08_files.extend((repo_root / d).glob("*.py"))
     g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
@@ -400,6 +401,7 @@ def main() -> int:
             "src/niveshdristi/alpha",
             "src/niveshdristi/markets/in_nse/models",
             "src/niveshdristi/portfolio",
+            "src/niveshdristi/execution",
         ],
     )
     core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
@@ -408,9 +410,13 @@ def main() -> int:
     alpha_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/alpha/")]
     in_models = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/markets/in_nse/models/")]
     pf_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/portfolio/")]
-    if core_issues or engine_issues or md_issues or alpha_issues or in_models or pf_issues:
-        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)}")
-        for i in (core_issues + engine_issues + md_issues + alpha_issues + in_models + pf_issues)[:10]:
+    ex_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/execution/")]
+    if core_issues or engine_issues or md_issues or alpha_issues or in_models or pf_issues or ex_issues:
+        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)} execution={len(ex_issues)}")
+        for i in (
+            core_issues + engine_issues + md_issues + alpha_issues + in_models
+            + pf_issues + ex_issues
+        )[:10]:
             info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
     else:
@@ -564,7 +570,7 @@ def main() -> int:
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
-                  "src/niveshdristi/portfolio",
+                  "src/niveshdristi/portfolio", "src/niveshdristi/execution",
                   "src/niveshdristi/config_loader.py",
                   *test_files], cwd=repo_root)
     if result.returncode == 0:
@@ -579,7 +585,7 @@ def main() -> int:
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
-                  "src/niveshdristi/portfolio",
+                  "src/niveshdristi/portfolio", "src/niveshdristi/execution",
                   "src/niveshdristi/config_loader.py", *test_files,
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)

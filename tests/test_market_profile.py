@@ -106,8 +106,11 @@ class TestVerifyRatesExistInYAML:
     def test_costs_yaml_contains_all_verify_rates(self):
         """All cost rates from VERIFY.md exist in costs.yaml."""
         costs_path = Path("src/niveshdristi/markets/in_nse/costs.yaml")
-        if not costs_path.exists():
-            pytest.skip("costs.yaml not yet created - will be created per spec")
+        # STRENGTHENED in P4-S3: the latent skip guard is replaced by a hard
+        # assertion — the file exists and is loaded by the strict loader.
+        assert costs_path.exists(), f"{costs_path} must exist"
+        from niveshdristi.markets.in_nse.loaders import load_costs
+        load_costs()  # strict load must succeed
 
         import yaml
         with open(costs_path) as f:

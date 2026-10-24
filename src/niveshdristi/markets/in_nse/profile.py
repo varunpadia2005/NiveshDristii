@@ -17,6 +17,40 @@ from niveshdristi.markets.registry import (
 IN_NSE_BASE = Path(__file__).parent
 
 
+def _build_cost_model() -> CostModel:
+    """CostModel from costs.yaml (P4-S3: single source of truth; the values
+    were previously hardcoded here and are pinned equal by tests)."""
+    from niveshdristi.markets.in_nse.loaders import load_costs
+
+    data = load_costs()
+    return CostModel(
+        brokerage_per_order=float(data["brokerage_per_order"]),
+        brokerage_pct=0.0,
+        stt_pct=float(data["stt_delivery_sell_pct"]),
+        exchange_charges_pct=float(data["exchange_charges_pct"]),
+        sebi_fees_pct=float(data["sebi_fees_pct"]),
+        stamp_duty_pct=float(data["stamp_duty_buy_pct"]),
+        gst_pct=float(data["gst_pct"]),
+        slippage_bps=float(data["slippage_bps"]),
+        dp_charge_per_scrip=float(data["dp_charge_per_scrip"]),
+    )
+
+
+def _build_tax_model() -> TaxModel:
+    """TaxModel from tax.yaml (P4-S3)."""
+    from niveshdristi.markets.in_nse.loaders import load_tax
+
+    data = load_tax()
+    return TaxModel(
+        enabled=bool(data["enabled"]),
+        short_term_threshold_days=int(data["short_term_threshold_days"]),
+        short_term_rate=float(data["short_term_rate"]),
+        long_term_rate=float(data["long_term_rate"]),
+        long_term_exemption=float(data["long_term_exemption"]),
+        loss_setoff_years=int(data["loss_setoff_years"]),
+    )
+
+
 IN_NSE_PROFILE = MarketProfile(
     market_id="IN_NSE",
     name="National Stock Exchange of India",
@@ -34,33 +68,8 @@ IN_NSE_PROFILE = MarketProfile(
         default_bands=(0.02, 0.05, 0.10, 0.20),  # 2%, 5%, 10%, 20%
         index_bands=(0.10, 0.15, 0.20),
     ),
-    cost_model=CostModel(
-        # Brokerage (flat fee per order in INR)
-        brokerage_per_order=20.0,  # # VERIFY: Typical discount broker
-        brokerage_pct=0.0,
-        # STT (Securities Transaction Tax) - on sell side for delivery
-        stt_pct=0.001,  # 0.1% # VERIFY: Current STT rate
-        # Exchange transaction charges
-        exchange_charges_pct=0.0000345,  # 0.00345% # VERIFY: NSE circular
-        # SEBI turnover fee
-        sebi_fees_pct=0.000001,  # 0.0001% # VERIFY: SEBI circular
-        # Stamp duty (on buy side)
-        stamp_duty_pct=0.00015,  # 0.015% # VERIFY: Indian Stamp Act
-        # GST on brokerage + exchange charges
-        gst_pct=0.18,  # 18% # VERIFY: GST Council
-        # Slippage (base)
-        slippage_bps=5.0,  # 5 bps # VERIFY: Depends on liquidity
-        # DP charge (per scrip on sell)
-        dp_charge_per_scrip=13.5,  # ~13.5 INR # VERIFY: CDSL/NSDL
-    ),
-    tax_model=TaxModel(
-        enabled=True,
-        short_term_threshold_days=365,  # 12 months
-        short_term_rate=0.20,  # 20% STCG # VERIFY: Finance Act
-        long_term_rate=0.125,  # 12.5% LTCG # VERIFY: Finance Act
-        long_term_exemption=1_25_000,  # 1.25 lakh exemption # VERIFY: Finance Act
-        loss_setoff_years=8,
-    ),
+    cost_model=_build_cost_model(),
+    tax_model=_build_tax_model(),
     shorting_allowed=False,  # Cash segment: no shorting for retail
     intraday_shorting_allowed=True,  # Intraday shorting allowed
     calendar_path=str(IN_NSE_BASE / "holidays_in.yaml"),
