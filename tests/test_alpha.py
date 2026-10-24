@@ -837,3 +837,92 @@ class TestAuxFrameValidation:
         vol = inputs.aux["volatility"]
         assert vol.height == 1
         assert float(vol["value"].tail(1)[0]) == 10.0
+
+
+class TestFundamentalGuardrails:
+    """S8: ported rules maths equality + PIT wiring + NEW quality score."""
+
+    @staticmethod
+    def _pit_records() -> "tuple":
+        from niveshdristi.marketdata.pit import PITRecord
+
+        def rec(metric, value, announced):
+            return PITRecord(
+                symbol="SYN008", metric=metric, value=value,
+                period_end=date(2026, 6, 30), announced_at=announced, source="synthetic",
+            )
+
+        return (
+            rec("pe_ratio", 25.0, date(2026, 7, 20)),
+            rec("roe", 0.18, date(2026, 7, 20)),
+            rec("debt_to_equity", 1.2, date(2026, 7, 20)),
+        )
+
+    def _ctx_inputs(self, as_of_date: date):
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.marketdata.pit import PITStore
+
+        store = PITStore()
+        for r in self._pit_records():
+            store.put(r)
+        records = tuple(store.query("SYN008", as_of=as_of_date))
+        inputs = build_model_inputs(
+            as_of=as_of_date, prices={}, fundamentals={"SYN008": records}
+        )
+        ctx = AsOfContext(
+            as_of=datetime(as_of_date.year, as_of_date.month, as_of_date.day, 15, 0, tzinfo=UTC),
+            universe=(), market_id="TEST_MARKET",
+        )
+        return ctx, inputs
+
+    def test_port_equality_vs_direct_legacy_call(self):
+        """Wrapper's guardrail evaluation == direct legacy check_guardrails."""
+        from niveshdristi.alpha.quant.fundamental_guardrails import FundamentalGuardrails
+
+        model = FundamentalGuardrails()
+        ctx, inputs = self._ctx_inputs(date(2026, 8, 1))
+        fund = model._fund_from_pit("SYN008", inputs.fundamentals["SYN008"])
+        assert fund is not None
+        direct = check_guardrails_legacy(fund)
+        wrapped = model.legacy_report(fund)
+        assert wrapped.max_score_cap == direct.max_score_cap
+        assert [f["metric"] for f in wrapped.flags] == [f["metric"] for f in direct.flags]
+        assert [f["severity"] for f in wrapped.flags] == [f["severity"] for f in direct.flags]
+
+    def test_pit_visibility_controls_input(self):
+        """A result announced tomorrow is invisible today (frozen PIT property)
+        at the model's input boundary."""
+        from niveshdristi.alpha.quant.fundamental_guardrails import FundamentalGuardrails
+
+        model = FundamentalGuardrails()
+
+        ctx_today, inputs_today = self._ctx_inputs(date(2026, 7, 19))
+        ctx_tomorrow, inputs_tomorrow = self._ctx_inputs(date(2026, 7, 21))
+        # Before announcement: no records -> no fundamentals -> no signal
+        assert inputs_today.fundamentals["SYN008"] == ()
+        assert model.predict(ctx_today, inputs_today) == []
+        # After announcement: records present -> signal produced
+        sigs = model.predict(ctx_tomorrow, inputs_tomorrow)
+        assert len(sigs) == 1
+        assert "quality_score" in sigs[0].evidence
+
+    def test_quality_score_and_exclusion_new_maths(self):
+        """NEW: score = 100 - penalties (capped); 'error' flag excludes."""
+        from niveshdristi.alpha.quant.fundamental_guardrails import quality_score
+
+        score, excluded = quality_score(100, [])
+        assert (score, excluded) == (100, False)
+        score, excluded = quality_score(100, [{"severity": "warn"}])
+        assert (score, excluded) == (80, False)
+        score, excluded = quality_score(100, [{"severity": "warn"}, {"severity": "error"}])
+        assert (score, excluded) == (40, True)
+        score, _ = quality_score(30, [{"severity": "warn"}])  # 100-20=80, capped at 30
+        assert score == 30
+
+
+def check_guardrails_legacy(fund):
+    from niveshdristi.fundamentals.loader import check_guardrails
+
+    return check_guardrails(fund)
