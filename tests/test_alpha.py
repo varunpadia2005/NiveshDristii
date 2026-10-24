@@ -1569,3 +1569,66 @@ class TestSectorRotationAsyncSafety:
 
         with pytest.raises(RuntimeError, match="boom-inside-coroutine"):
             _run_async(boom())
+
+
+class TestMarketRules:
+    """P4-S1a: neutral market-rules view — round-trip, units, frozen, verified gate."""
+
+    def test_to_rules_round_trip_from_profile(self):
+        from niveshdristi.markets.in_nse.profile import IN_NSE_PROFILE
+        from niveshdristi.markets.registry import to_rules
+
+        rules = to_rules(IN_NSE_PROFILE)
+        assert rules.market_id == IN_NSE_PROFILE.market_id
+        assert rules.shorting_allowed is False
+        assert rules.settlement_days == 1
+        # rates map across (single stt_pct -> both delivery sides)
+        assert rules.rates.stt_delivery_sell == IN_NSE_PROFILE.cost_model.stt_pct
+        assert rules.rates.stt_delivery_buy == IN_NSE_PROFILE.cost_model.stt_pct
+        assert rules.rates.brokerage_per_order == 20.0
+        assert rules.rates.gst_on_fees == 0.18
+        assert rules.rates.verified is False
+        # tax schedule
+        assert rules.tax is not None
+        assert rules.tax.holding_period_months == 12
+        assert rules.tax.short_term_threshold_days == 365
+        assert rules.tax.long_term_exemption == 125000.0
+        assert rules.tax.verified is False
+
+    def test_crore_to_plain_units_conversion(self):
+        from niveshdristi.markets.registry import CRORE, MarketProfile, to_rules
+
+        profile = MarketProfile(
+            market_id="TEST_M", name="Test", timezone="UTC", currency="XXX",
+            min_adv_crores=2.5,
+        )
+        rules = to_rules(profile)
+        assert rules.min_adv == 2.5 * CRORE == 25_000_000.0
+
+    def test_frozen_immutability(self):
+        from niveshdristi.core.market_rules import RateSchedule
+
+        rates = RateSchedule(brokerage_per_order=20.0)
+        with pytest.raises(Exception, match="frozen|immutable|Instance"):
+            rates.brokerage_per_order = 99.0  # type: ignore[misc]
+
+    def test_verified_true_requires_source_and_date(self):
+        from datetime import date
+
+        from niveshdristi.core.market_rules import RateSchedule
+
+        with pytest.raises(Exception, match="verified=True requires"):
+            RateSchedule(verified=True)  # no source, no date
+        with pytest.raises(Exception, match="verified=True requires"):
+            RateSchedule(verified=True, source="circular")  # no date
+        ok = RateSchedule(
+            verified=True, source="NSE circular 2026", verified_on=date(2026, 10, 1)
+        )
+        assert ok.verified is True
+
+    def test_core_market_rules_does_not_import_markets(self):
+        """Import-boundary: core/market_rules.py must not import markets/."""
+        import niveshdristi.core.market_rules as m
+
+        src = Path(m.__file__).read_text(encoding="utf-8")
+        assert "niveshdristi.markets" not in src

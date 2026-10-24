@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import time
+from typing import TYPE_CHECKING
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,3 +191,71 @@ def get_registry() -> MarketRegistry:
 
 def register_market(profile: MarketProfile) -> None:
     _REGISTRY.register(profile)
+
+
+# Plain-currency conversion: 1 crore = 10,000,000 currency units. Defined
+# HERE (markets/ side) so neutral code never sees crore-suffixed values.
+CRORE: float = 10_000_000.0
+
+
+if TYPE_CHECKING:
+    from niveshdristi.core.market_rules import MarketRules
+
+
+def to_rules(profile: MarketProfile) -> MarketRules:
+    """Convert a MarketProfile into the neutral core MarketRules view (NEW).
+
+    Conversions performed here, on the markets/ side:
+      - CostModel.stt_pct (sell-side delivery fraction) maps to BOTH
+        stt_delivery_sell and stt_delivery_buy (profile carries one value;
+        the YAML records them equal — see units audit in docs/PROGRESS.md).
+      - min_adv_crores -> min_adv in plain currency units (x CRORE).
+    """
+    from niveshdristi.core.market_rules import (
+        ExclusionList,
+        MarketRules,
+        PriceLimitRule,
+        RateSchedule,
+        TaxSchedule,
+    )
+
+    cm = profile.cost_model
+    rates = RateSchedule(
+        brokerage_per_order=cm.brokerage_per_order,
+        stt_delivery_buy=cm.stt_pct,
+        stt_delivery_sell=cm.stt_pct,
+        exchange_fee=cm.exchange_charges_pct,
+        regulator_fee=cm.sebi_fees_pct,
+        stamp_duty_buy=cm.stamp_duty_pct,
+        gst_on_fees=cm.gst_pct,
+        dp_charge_per_scrip=cm.dp_charge_per_scrip,
+        slippage_base_bps=cm.slippage_bps,
+        verified=False,  # every rate carries # VERIFY in the source YAML
+    )
+    tax = None
+    if profile.tax_model is not None:
+        tm = profile.tax_model
+        tax = TaxSchedule(
+            enabled=tm.enabled,
+            holding_period_months=12,  # UNVERIFIED assumption (12m threshold)
+            short_term_threshold_days=tm.short_term_threshold_days,
+            short_term_rate=tm.short_term_rate,
+            long_term_rate=tm.long_term_rate,
+            long_term_exemption=tm.long_term_exemption,
+            loss_setoff_years=tm.loss_setoff_years,
+            verified=False,
+        )
+    return MarketRules(
+        market_id=profile.market_id,
+        shorting_allowed=profile.shorting_allowed,
+        min_price=profile.min_price,
+        min_adv=profile.min_adv_crores * CRORE,
+        settlement_days=profile.settlement.days,
+        rates=rates,
+        tax=tax,
+        price_limits=PriceLimitRule(
+            enabled=profile.price_limits.enabled,
+            bands=tuple(profile.price_limits.default_bands),
+        ),
+        exclusions=ExclusionList(symbols=frozenset(), source="none-loaded-yet"),
+    )
