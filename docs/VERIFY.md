@@ -44,7 +44,7 @@
 | Cost Component | Current Value | Unit | Source to Verify | Status |
 |----------------|---------------|------|------------------|--------|
 | Brokerage (flat per order) | 20.0 | ₹ | Broker schedule / SEBI max | 🔴 Unverified |
-| STT (delivery sell) | 0.1 | % | Finance Act / SEBI | 🔴 DOUBTFUL, CHECK FIRST — STT on delivery is charged on BOTH buy and sell, but config lists only a delivery-sell key; verify the buy-side rate and the current Finance Act schedule before Phase 5 uses costs |
+| STT (delivery sell) | 0.1 | % | Finance Act / SEBI | 🔴 DOUBTFUL, CHECK FIRST — P4 note: costs.yaml now carries BOTH buy and sell delivery keys (0.001 each), so the structural gap is fixed; only the VALUES remain unverified against the current Finance Act before Phase 5 uses costs |
 | STT (intraday sell) | 0.025 | % | Finance Act / SEBI | 🔴 Unverified |
 | Exchange transaction charges | 0.00345 | % | NSE / BSE circular | 🔴 DOUBTFUL, CHECK FIRST — this rate may be outdated; verify against the CURRENT NSE circular before Phase 5 uses costs |
 | SEBI turnover fee | 0.0001 | % | SEBI circular | 🔴 Unverified |

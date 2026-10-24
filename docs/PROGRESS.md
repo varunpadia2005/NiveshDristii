@@ -347,3 +347,81 @@ port).
 - The no-look-ahead property test catches side-channel peeking only; the
   real PIT guard is the builder's DataError on future rows.
 - Blocked data items (holidays/constituents/announced_at) remain blocked.
+
+---
+
+# Phase 4 (complete, 2026-10-25): portfolio, risk, execution, costs
+
+## Tasks and commits (one per task, GATE: PASS after each)
+
+- S0 `2c88c8a` loop-aware _run_async (sector rotation works inside event loops)
+- S1a `182b996` core MarketRules neutral view + profile converter
+- S1 `052b9ea` portfolio/construction (conviction -> weights, long-only clamp)
+- S2 `63ce1c4` risk-gate chain (logged clamps, inert-gate skips, final validation)
+- S3 `147bd25` strict costs/tax YAML loaders; profile now LOADS the YAMLs; execution/costs engine
+- S4 `42e9030` calendar-month capital-gains tax engine with FY-aware set-off
+- S5 `32a624c` gated order builder, Broker protocol, SimBroker (circuit limits, liquidity slippage)
+- S6 `f2f2000` PaperBroker (local persistence) + the two spec tests (gross vs net)
+- S7 `c000b16` strategy blending as fixed linear weights over model signals
+
+## FINDING: the YAMLs were never loaded
+
+Until P4-S3 the rates in markets/in_nse/costs.yaml and tax.yaml had NO
+loader — markets/in_nse/profile.py hardcoded identical values (R2 audit:
+all equal). Now profile.py builds CostModel/TaxModel FROM the YAMLs via the
+strict loaders (unknown keys rejected; percent-style values in fraction
+fields rejected loudly; verified=true requires source+date). SINGLE-SOURCE
+RULE: new code reads only the profile YAMLs; legacy config.yaml is frozen,
+untouched, and carries the SAME key names in PERCENT units (see units
+table) — never read by new code.
+
+## Rate table (from costs.yaml / tax.yaml; EVERY value # VERIFY)
+
+brokerage_per_order 20.0 (currency) | stt_delivery_buy 0.001 | stt_delivery_sell
+0.001 | stt_intraday_sell 0.00025 (IGNORED: v1 delivery-only) |
+exchange_charges 0.0000345 (DOUBTFUL per VERIFY 4) | sebi 0.000001 | stamp
+0.00015 | gst 0.18 | slippage 5.0 bps | dp 13.5 (currency) | tax: threshold
+365d/12m | STCG 0.20 | LTCG 0.125 | exemption 125,000 | setoff 8y. The 2024
+tax rates may have changed in later budgets; all remain unverified.
+
+## Units table (misreading guard: *_pct keys hold FRACTIONS in the YAMLs)
+
+| key | YAML unit | human | legacy config.yaml (PERCENT units) |
+|---|---|---|---|
+| stt_delivery_sell_pct | fraction 0.001 | 0.1% | 0.1 |
+| stt_intraday_sell_pct | fraction 0.00025 | 0.025% | 0.025 |
+| exchange_charges_pct | fraction 0.0000345 | 0.00345% | 0.00345 |
+| sebi_fees_pct | fraction 0.000001 | 0.0001% | 0.0001 |
+| stamp_duty_buy_pct | fraction 0.00015 | 0.015% | 0.015 |
+| gst_pct | fraction 0.18 | 18% | 18.0 |
+| brokerage_per_order / dp | currency | — | 20.0 / absent |
+| slippage_bps | bps | 5 bps | 5.0 |
+
+## RATES UNVERIFIED propagation contract
+
+Every CostBreakdown/TaxResult carries rates_used (fraction AND human form),
+rates_verified (currently always False), and the banner "RATES UNVERIFIED"
+when unverified. Net-of-cost reports cannot hide the flag (tested).
+
+## Documented UNVERIFIED assumptions
+
+Delivery-only (intraday levy field deliberately ignored); levy on both buy
+and sell; stamp duty buy-only; depository per-scrip charge once per SELL
+order; GST base = brokerage + exchange + regulator fees (depository charge
+EXCLUDED); slippage reported separately from fees; circuit bands simulated
+from profile-level config (per-symbol band data has NO source — fixture
+only); settlement T+1 recorded as a NUMBER only (date arithmetic waits for
+the Phase 5 calendar); floats acceptable for v1 simulation (Phase 6 ledger
+must use integer minor units or Decimal).
+
+## Legacy coexistence
+
+The legacy backtest (flat cost_bps=15, dead _compute_cost_bps) is frozen
+and G04/G05 keep certifying it unchanged. New engines live in portfolio/
+and execution/ beside it; nothing in Phase 4 edited any legacy file.
+
+## What Phase 5 still needs
+
+Official 2026 holidays (still blocked); VERIFIED rates (VERIFY 1-5 all
+open); a symbol->sector map source; market-cap data source; per-symbol
+circuit-band data; as-of constituents; announcement-dated fundamentals.
