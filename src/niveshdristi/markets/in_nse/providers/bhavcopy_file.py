@@ -125,3 +125,20 @@ class BhavcopyFileStore:
         return df.filter((pl.col("SYMBOL") == symbol) & (pl.col("SERIES") == series)).select(
             ["SYMBOL", "SERIES", "DATE1", "TTL_TRD_QNTY", "DELIV_QTY", "DELIV_PER"]
         )
+
+
+def to_delivery_frame(df: pl.DataFrame) -> pl.DataFrame:
+    """Map parsed bhavcopy columns to NEUTRAL role names for models.
+
+    NEW (S9a): the market-literal column names (SYMBOL/DATE1/DELIV_PER) are
+    translated HERE — inside this allowlisted adapter — so models under
+    markets/in_nse/models/ can stay literal-free and consume a frame with
+    neutral columns: symbol, date, delivery_pct.
+    """
+    return df.select(
+        [
+            pl.col("SYMBOL").alias("symbol"),
+            pl.col("DATE1").alias("date"),
+            pl.col("DELIV_PER").alias("delivery_pct"),
+        ]
+    )

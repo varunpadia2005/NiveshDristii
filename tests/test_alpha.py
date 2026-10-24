@@ -926,3 +926,88 @@ def check_guardrails_legacy(fund):
     from niveshdristi.fundamentals.loader import check_guardrails
 
     return check_guardrails(fund)
+
+
+class TestDeliveryAnomaly:
+    """S9a: delivery-% anomaly over the neutral 'delivery' role frame."""
+
+    @staticmethod
+    def _delivery_frame(spike: bool = False) -> pl.DataFrame:
+        """21 sessions: constant 40% baseline; optional final spike to 90%."""
+        from datetime import timedelta
+
+        dates = [(date(2026, 9, 1) + timedelta(days=i)).isoformat() for i in range(21)]
+        pct = [40.0] * 21
+        if spike:
+            pct[-1] = 90.0
+        return pl.DataFrame({"symbol": ["SYN009"] * 21, "date": dates, "delivery_pct": pct})
+
+    def _predict(self, spike: bool):
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.markets.in_nse.models.delivery_anomaly import DeliveryAnomaly
+
+        as_of = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
+        inputs = build_model_inputs(
+            as_of=as_of,
+            prices={"SYN009": _syn_frame([100.0] * 30)},
+            aux={"delivery": self._delivery_frame(spike)},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        return DeliveryAnomaly().predict(ctx, inputs)
+
+    def test_no_spike_no_signal(self):
+        """Constant delivery % -> zero variance -> no opinion."""
+        assert self._predict(spike=False) == []
+
+    def test_spike_known_answer(self):
+        """20 baseline 40s + one 90: mean=42.4? window=last 20 of 21 values.
+        Window = [40]*19 + [90]: mean=42.5, var=(19*6.25+2250)/20=118.75,
+        std=10.897, z=(90-42.5)/10.897=4.359 -> clipped to +1.0."""
+        signals = self._predict(spike=True)
+        assert len(signals) == 1
+        assert signals[0].conviction == 1.0
+        assert round(signals[0].evidence["delivery_z"], 3) == 4.359
+
+    def test_adapter_maps_neutral_columns(self):
+        """The allowlisted adapter translates parser columns to neutral names."""
+        from niveshdristi.markets.in_nse.providers.bhavcopy_file import (
+            parse_bhavcopy_csv,
+            to_delivery_frame,
+        )
+
+        df = parse_bhavcopy_csv(Path("tests/fixtures/bhavcopy_SYNTHETIC_sec_bhavdata_full.csv"))
+        neutral = to_delivery_frame(df)
+        assert neutral.columns == ["symbol", "date", "delivery_pct"]
+        assert neutral["symbol"].to_list() == ["TESTA", "TESTB", "TESTC"]
+
+    def test_no_look_ahead(self):
+        """Future-dated delivery rows are invisible via the truncating handle."""
+        from datetime import UTC
+
+        from niveshdristi.core.alpha import AsOfContext
+        from niveshdristi.markets.in_nse.models.delivery_anomaly import DeliveryAnomaly
+
+        base = self._delivery_frame(spike=True)
+        future = pl.DataFrame(
+            {"symbol": ["SYN009"], "date": ["2027-01-01"], "delivery_pct": [5.0]}
+        )
+        full = pl.concat([base, future])
+        as_of = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
+        truncated = build_model_inputs(
+            as_of=as_of,
+            prices={"SYN009": _syn_frame([100.0] * 30)},
+            aux={"delivery": base},
+        )
+        via_handle = build_from_full_frames(
+            as_of=as_of,
+            prices={"SYN009": _syn_frame([100.0] * 30)},
+            aux={"delivery": full},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        m = DeliveryAnomaly()
+        a = [(s.instrument.symbol, s.conviction) for s in m.predict(ctx, truncated)]
+        b = [(s.instrument.symbol, s.conviction) for s in m.predict(ctx, via_handle)]
+        assert a == b
+        assert len(a) == 1
