@@ -336,7 +336,11 @@ def main() -> int:
     print("\n=== G08: Time & dataclass hygiene ===")
     issues = []
     g08_files = []
-    for d in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets", "src/niveshdristi/cli", "src/niveshdristi/marketdata", "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models"):
+    for d in (
+        "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/markets",
+        "src/niveshdristi/cli", "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
+        "src/niveshdristi/markets/in_nse/models", "src/niveshdristi/portfolio",
+    ):
         g08_files.extend((repo_root / d).glob("*.py"))
     g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
     for f in g08_files:
@@ -395,6 +399,7 @@ def main() -> int:
             "src/niveshdristi/marketdata",
             "src/niveshdristi/alpha",
             "src/niveshdristi/markets/in_nse/models",
+            "src/niveshdristi/portfolio",
         ],
     )
     core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
@@ -402,13 +407,17 @@ def main() -> int:
     md_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/marketdata/")]
     alpha_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/alpha/")]
     in_models = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/markets/in_nse/models/")]
-    if core_issues or engine_issues or md_issues or alpha_issues or in_models:
-        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)}")
-        for i in (core_issues + engine_issues + md_issues + alpha_issues + in_models)[:10]:
+    pf_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/portfolio/")]
+    if core_issues or engine_issues or md_issues or alpha_issues or in_models or pf_issues:
+        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)}")
+        for i in (core_issues + engine_issues + md_issues + alpha_issues + in_models + pf_issues)[:10]:
             info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
     else:
-        pass_("G10", "Neutral zones (core/engine/marketdata/alpha/in_nse models) have 0 findings")
+        pass_(
+            "G10",
+            "Neutral zones (core/engine/marketdata/alpha/in_nse models/portfolio) have 0 findings",
+        )
 
     # Market literals are allowed ONLY in this explicit adapter allowlist.
     # Any other file under markets/in_nse/providers/ carrying a literal FAILs.
@@ -434,7 +443,11 @@ def main() -> int:
             pass_("G10", f"Adapter allowlist enforced (present: {present})")
 
     # Non-vacuity: each scan target must contain scannable files
-    for target in ("src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata", "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models"):
+    for target in (
+        "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata",
+        "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models",
+        "src/niveshdristi/portfolio",
+    ):
         scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
         if scannable:
             pass_("G10", f"{target}: scan covers {len(scannable)} files")
@@ -551,6 +564,7 @@ def main() -> int:
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
+                  "src/niveshdristi/portfolio",
                   "src/niveshdristi/config_loader.py",
                   *test_files], cwd=repo_root)
     if result.returncode == 0:
@@ -565,6 +579,7 @@ def main() -> int:
                   "src/niveshdristi/core", "src/niveshdristi/markets",
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
+                  "src/niveshdristi/portfolio",
                   "src/niveshdristi/config_loader.py", *test_files,
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)

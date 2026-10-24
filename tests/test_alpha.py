@@ -166,6 +166,7 @@ class TestImportBoundary:
         "src/niveshdristi/core",
         "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha",
+        "src/niveshdristi/portfolio",
     )
     MARKET_IMPORT = re.compile(r"^\s*(?:from|import)\s+niveshdristi\.markets\b", re.MULTILINE)
 
@@ -1632,3 +1633,88 @@ class TestMarketRules:
 
         src = Path(m.__file__).read_text(encoding="utf-8")
         assert "niveshdristi.markets" not in src
+
+
+class TestPortfolioConstruction:
+    """P4-S1: conviction -> weights. Pure function: no-look-ahead N/A by
+    construction (nothing is fetched; everything arrives as arguments)."""
+
+    @staticmethod
+    def _rules(shorting_allowed: bool = False):
+        from niveshdristi.core.market_rules import MarketRules
+
+        return MarketRules(market_id="TEST_M", shorting_allowed=shorting_allowed)
+
+    @staticmethod
+    def _signal(symbol: str, conviction: float):
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.instrument import Instrument
+        from niveshdristi.core.signal import Signal
+
+        return Signal(
+            instrument=Instrument(
+                symbol=symbol, exchange="TEST_M", market_id="TEST_M", currency="XXX"
+            ),
+            as_of=datetime(2026, 10, 23, 15, 0, tzinfo=UTC),
+            conviction=conviction,
+            horizon_days=10,
+            thesis="Hypothesis: synthetic test signal.",
+            evidence={"conviction": conviction},
+            model_id="test_model",
+        )
+
+    def test_known_answer_two_signals(self):
+        """(0.5, 0.3) -> (0.625, 0.375) — hand-computed."""
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal("SYN020", 0.5), self._signal("SYN021", 0.3)]
+        w = construct_targets(signals, self._rules())
+        assert w["SYN020"] == pytest.approx(0.625)
+        assert w["SYN021"] == pytest.approx(0.375)
+
+    def test_extreme_single_conviction_full_weight(self):
+        from niveshdristi.portfolio.construction import construct_targets
+
+        w = construct_targets([self._signal("SYN020", 1.0)], self._rules())
+        assert w == {"SYN020": 1.0}
+
+    def test_all_negative_long_only_is_all_cash(self):
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal("SYN020", -0.8), self._signal("SYN021", -0.2)]
+        assert construct_targets(signals, self._rules()) == {}
+
+    def test_mixed_negative_dropped_not_netted(self):
+        """A negative conviction does NOT offset a positive one."""
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal("SYN020", 0.5), self._signal("SYN021", -0.9)]
+        assert construct_targets(signals, self._rules()) == {"SYN020": 1.0}
+
+    def test_shorting_allowed_keeps_negative_weights(self):
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal("SYN020", 0.5), self._signal("SYN021", -0.5)]
+        w = construct_targets(signals, self._rules(shorting_allowed=True))
+        assert w["SYN020"] == pytest.approx(0.5)
+        assert w["SYN021"] == pytest.approx(-0.5)
+        assert sum(w.values()) == pytest.approx(0.0)
+
+    def test_inverse_vol_scaling(self):
+        """vols (0.2, 0.1) with equal convictions -> inverse-vol weights
+        (1/0.2, 1/0.1) normalised -> (1/3, 2/3)."""
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal("SYN020", 0.4), self._signal("SYN021", 0.4)]
+        w = construct_targets(signals, self._rules(), vols={"SYN020": 0.2, "SYN021": 0.1})
+        assert w["SYN020"] == pytest.approx(1 / 3)
+        assert w["SYN021"] == pytest.approx(2 / 3)
+
+    def test_weights_never_exceed_one_total(self):
+        from niveshdristi.portfolio.construction import construct_targets
+
+        signals = [self._signal(f"SYN0{i}", 0.9) for i in range(10)]
+        w = construct_targets(signals, self._rules())
+        assert sum(w.values()) <= 1.0 + 1e-12
+        assert all(v > 0 for v in w.values())
