@@ -2121,3 +2121,131 @@ class TestCostEngine:
         b = compute_costs(side="buy", notional=1000.0, rates=rates)
         assert b.banner is None
         assert b.rates_verified is True
+
+
+class TestTaxEngine:
+    """P4-S4: calendar-month holding period, FY set-off, known answers."""
+
+    @staticmethod
+    def _schedule(**over):
+        from niveshdristi.core.market_rules import TaxSchedule
+
+        base = {
+            "enabled": True, "holding_period_months": 12,
+            "short_term_threshold_days": 365,
+            "short_term_rate": 0.20, "long_term_rate": 0.125,
+            "long_term_exemption": 125_000.0, "loss_setoff_years": 8,
+        }
+        base.update(over)
+        return TaxSchedule(**base)
+
+    @staticmethod
+    def _lot(buy: str, sell: str, gain: float = 10_000.0, symbol: str = "SYN040"):
+        from niveshdristi.portfolio.tax import RealisedLot
+
+        return RealisedLot(
+            symbol=symbol,
+            buy_date=date.fromisoformat(buy),
+            sell_date=date.fromisoformat(sell),
+            proceeds_minus_cost=gain,
+        )
+
+    def test_anniversary_boundaries(self):
+        from niveshdristi.portfolio.tax import is_long_term
+
+        s = self._schedule()
+        # day BEFORE 12-month anniversary -> short-term
+        assert is_long_term(date(2025, 3, 10), date(2026, 3, 9), s) is False
+        # ON the anniversary -> long-term
+        assert is_long_term(date(2025, 3, 10), date(2026, 3, 10), s) is True
+
+    def test_leap_year_buy_clamped(self):
+        """2024-02-29 buy: 12-month anniversary clamps to 2025-02-28."""
+        from niveshdristi.portfolio.tax import is_long_term
+
+        s = self._schedule()
+        assert is_long_term(date(2024, 2, 29), date(2025, 2, 27), s) is False
+        assert is_long_term(date(2024, 2, 29), date(2025, 2, 28), s) is True
+
+    def test_month_end_buy_into_shorter_month(self):
+        """Clamp case with a 1-MONTH schedule: Jan 31 buy -> anniversary
+        clamps to Feb 28 (non-leap); day before is short-term."""
+        from niveshdristi.portfolio.tax import is_long_term
+
+        s = self._schedule(holding_period_months=1)
+        assert is_long_term(date(2026, 1, 31), date(2026, 2, 27), s) is False
+        assert is_long_term(date(2026, 1, 31), date(2026, 2, 28), s) is True
+
+    def test_month_rule_differs_from_365_days(self):
+        """2025-03-01 buy -> 2026-03-01 is 365 days AND the month-rule
+        anniversary: long-term. But 2024-03-01 -> 2025-02-28 is 364 days:
+        short-term under BOTH. The interesting case: 2024-03-01 buy sold
+        2025-03-01 = 365 days, month anniversary -> long-term; and
+        2023-03-01 buy sold 2024-02-29 = 365 days but BEFORE the month
+        anniversary -> SHORT-term (a pure day count would say long)."""
+        from niveshdristi.portfolio.tax import is_long_term
+
+        s = self._schedule()
+        # 365 days elapsed but BEFORE the month-rule anniversary:
+        assert is_long_term(date(2023, 3, 1), date(2024, 2, 29), s) is False
+        assert is_long_term(date(2024, 3, 1), date(2025, 3, 1), s) is True  # 365d, anniversary
+
+    def test_known_answer_basic_lt_with_exemption(self):
+        """LTCG 200,000, no losses: exemption 125,000 -> taxable 75,000
+        -> tax = 75,000 x 0.125 = 9,375."""
+        from niveshdristi.portfolio.tax import compute_tax
+
+        lots = [self._lot("2024-01-10", "2025-06-10", 200_000.0)]
+        r = compute_tax(lots, self._schedule(), fy_start_month=4)
+        assert r.tax_due == pytest.approx(9_375.0)
+        assert r.exemption_applied == pytest.approx(125_000.0)
+        assert r.rates_verified is False
+        assert r.banner == "RATES UNVERIFIED"
+
+    def test_known_answer_st(self):
+        """STCG 50,000 -> tax = 10,000 (20%); no exemption for ST."""
+        from niveshdristi.portfolio.tax import compute_tax
+
+        lots = [self._lot("2026-01-10", "2026-06-10", 50_000.0)]
+        r = compute_tax(lots, self._schedule(), fy_start_month=4)
+        assert r.tax_due == pytest.approx(10_000.0)
+        assert r.exemption_applied == 0.0
+
+    def test_setoff_stcl_offsets_both_then_ltcl_ltcg_only(self):
+        """STCG 30k, LTCG 20k, prior STCL 40k: STCL offsets STCG 30k then
+        LTCG 10k -> LTCG 10k remains; exemption min(125k,10k)=10k ->
+        taxable LT 0 -> tax 0; STCL carried 0."""
+        from niveshdristi.portfolio.tax import compute_tax
+
+        lots = [
+            self._lot("2026-01-10", "2026-06-10", 30_000.0),
+            self._lot("2024-01-10", "2026-06-10", 20_000.0),
+        ]
+        r = compute_tax(lots, self._schedule(), fy_start_month=4, prior_stcl=40_000.0)
+        assert r.tax_due == pytest.approx(0.0)
+        assert r.stcl_used == pytest.approx(40_000.0)
+        assert r.exemption_applied == pytest.approx(10_000.0)
+
+    def test_ltcl_cannot_offset_stcg(self):
+        """STCG 30k with prior LTCL 50k: LTCL offsets NOTHING (no LTCG);
+        tax = 30k x 20% = 6,000; LTCL carried 50k."""
+        from niveshdristi.portfolio.tax import compute_tax
+
+        lots = [self._lot("2026-01-10", "2026-06-10", 30_000.0)]
+        r = compute_tax(lots, self._schedule(), fy_start_month=4, prior_ltcl=50_000.0)
+        assert r.tax_due == pytest.approx(6_000.0)
+        assert r.ltcl_used == pytest.approx(0.0)
+        assert r.ltcl_carried == pytest.approx(50_000.0)
+
+    def test_disabled_returns_zero(self):
+        from niveshdristi.portfolio.tax import compute_tax
+
+        lots = [self._lot("2024-01-10", "2025-06-10", 200_000.0)]
+        r = compute_tax(lots, self._schedule(enabled=False), fy_start_month=4)
+        assert r.tax_due == 0.0
+
+    def test_fy_label(self):
+        from niveshdristi.portfolio.tax import financial_year_of
+
+        assert financial_year_of(date(2026, 2, 1), 4) == 2025  # Feb -> prior FY
+        assert financial_year_of(date(2026, 5, 1), 4) == 2026
