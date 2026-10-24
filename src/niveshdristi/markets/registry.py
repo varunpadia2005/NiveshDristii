@@ -128,6 +128,8 @@ class MarketProfile:
     default_universe: str = "default"  # Key in universes/
     benchmark_symbol: str = ""  # e.g., "^NSEI", "^GSPC"
     benchmark_is_total_return: bool = True  # Prefer TRI over price index
+    # Volatility-index symbol for regime models; resolved per market by ROLE.
+    volatility_index_symbol: str = ""  # UNVERIFIED until probed live per market
 
     # Sector taxonomy (loaded from YAML)
     sector_taxonomy_path: str | None = None

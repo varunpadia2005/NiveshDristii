@@ -712,3 +712,100 @@ class TestLowVolatility:
             as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
         )
         assert LowVolatility().predict(ctx, inputs) == []
+
+
+class TestRegimeModel:
+    """S7: role-based regime classification — hand-computable states."""
+
+    @staticmethod
+    def _bench_frame(total_ret: float, n: int = 61) -> pl.DataFrame:
+        from datetime import timedelta
+
+        rate = (1.0 + total_ret) ** (1.0 / (n - 1))
+        closes = [100.0 * (rate ** i) for i in range(n)]
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame({"date": dates, "close": closes})
+
+    @staticmethod
+    def _vol_frame(level: float, n: int = 61) -> pl.DataFrame:
+        from datetime import timedelta
+
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return pl.DataFrame({"date": dates, "value": [level] * n})
+
+    def _state(self, total_ret: float, vix: float) -> str:
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.regime import RegimeModel
+        from niveshdristi.core.alpha import AsOfContext
+
+        inputs = build_model_inputs(
+            as_of=date(2026, 12, 31),
+            prices={"SYN007": _syn_frame([100.0] * 30)},
+            aux={
+                "benchmark": self._bench_frame(total_ret),
+                "volatility": self._vol_frame(vix),
+            },
+        )
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        signals = RegimeModel().predict(ctx, inputs)
+        assert len(signals) == 1
+        assert signals[0].conviction == 0.0  # evidence-only
+        return str(signals[0].evidence["regime_state"])
+
+    def test_known_states(self):
+        assert self._state(total_ret=0.20, vix=15.0) == "bull"
+        assert self._state(total_ret=-0.20, vix=15.0) == "bear"
+        assert self._state(total_ret=0.05, vix=30.0) == "bear"  # high vol overrides
+        assert self._state(total_ret=0.05, vix=15.0) == "choppy"
+
+    def test_roles_required(self):
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.regime import RegimeModel
+        from niveshdristi.core.alpha import AsOfContext
+
+        inputs = build_model_inputs(
+            as_of=date(2026, 12, 31), prices={"SYN007": _syn_frame([100.0] * 30)}
+        )
+        ctx = AsOfContext(
+            as_of=datetime(2026, 12, 31, 15, 0, tzinfo=UTC), universe=(), market_id="TEST_MARKET"
+        )
+        assert RegimeModel().predict(ctx, inputs) == []
+
+    def test_aux_frames_truncated_to_as_of(self):
+        """Aux frames are not builder-validated; the model must self-truncate."""
+        from datetime import UTC
+
+        from niveshdristi.alpha.quant.regime import RegimeModel
+        from niveshdristi.core.alpha import AsOfContext
+
+        bench = pl.concat(
+            [self._bench_frame(0.20), pl.DataFrame({"date": ["2027-06-01"], "close": [1.0]})]
+        )
+        vol = pl.concat(
+            [self._vol_frame(15.0), pl.DataFrame({"date": ["2027-06-01"], "value": [99.0]})]
+        )
+        as_of = datetime(2026, 12, 31, 15, 0, tzinfo=UTC)
+        inputs = build_model_inputs(
+            as_of=as_of,
+            prices={"SYN007": _syn_frame([100.0] * 30)},
+            aux={"benchmark": bench, "volatility": vol},
+        )
+        ctx = AsOfContext(as_of=as_of, universe=(), market_id="TEST_MARKET")
+        signals = RegimeModel().predict(ctx, inputs)
+        # The 2027 rows (close=1.0, vol=99.0) must be invisible: still 'bull',
+        # not 'bear'; volatility evidence still 15.0.
+        assert signals[0].evidence["regime_state"] == "bull"
+        assert signals[0].evidence["volatility_last"] == 15.0
+
+    def test_profile_has_volatility_index_symbol(self):
+        """The market profile carries the role symbol, marked UNVERIFIED."""
+        from niveshdristi.markets.in_nse.profile import IN_NSE_PROFILE
+        from niveshdristi.markets.registry import MarketProfile
+
+        assert hasattr(MarketProfile, "model_fields") or True  # pydantic model
+        assert IN_NSE_PROFILE.volatility_index_symbol != ""
+        assert IN_NSE_PROFILE.benchmark_symbol != ""

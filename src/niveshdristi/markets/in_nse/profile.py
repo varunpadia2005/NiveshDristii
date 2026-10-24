@@ -67,6 +67,9 @@ IN_NSE_PROFILE = MarketProfile(
     default_universe="nifty50",
     benchmark_symbol="^NSEI",
     benchmark_is_total_return=True,  # Prefer Nifty 50 TRI
+    # UNVERIFIED (2026-10-24): this symbol was NOT probed live in P0; fixture
+    # use only — do not use for any live fetch until verified.
+    volatility_index_symbol="^INDIAVIX",
     sector_taxonomy_path=str(IN_NSE_BASE / "sectors.yaml"),
     asm_gsm_path=str(IN_NSE_BASE / "asm_gsm.yaml"),
     fno_ban_path=str(IN_NSE_BASE / "fno_ban.yaml"),
