@@ -2591,3 +2591,89 @@ def compute_sell_costs(qty: int, price: float) -> float:
     regulator = notional * 0.000001
     gst = (20.0 + exchange + regulator) * 0.18
     return levy + 20.0 + exchange + regulator + gst + 13.5
+
+
+class TestBlending:
+    """P4-S7: fixed linear weights over uncalibrated signals."""
+
+    KNOWN = {"ta_ensemble", "momentum_ts", "mean_reversion"}
+
+    @staticmethod
+    def _models():
+        return [
+            {"model_id": "ta_ensemble", "weight": 0.5},
+            {"model_id": "momentum_ts", "weight": 0.5},
+        ]
+
+    def test_known_answer_equal_weights(self):
+        """ta=+0.6, mom=-0.2 -> (0.5*0.6 + 0.5*-0.2)/1.0 = 0.2."""
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        sigs = [
+            TestPortfolioConstruction._signal("SYN080", 0.6),
+            TestPortfolioConstruction._signal("SYN080", -0.2),
+        ]
+        sigs[0] = sigs[0].model_copy(update={"model_id": "ta_ensemble"})
+        sigs[1] = sigs[1].model_copy(update={"model_id": "momentum_ts"})
+        out = blend_convictions(self._models(), sigs, known_model_ids=self.KNOWN)
+        assert out["SYN080"] == pytest.approx(0.2)
+
+    def test_missing_model_weight_redistributed(self):
+        """Only ta signals present (+0.6): its weight dominates alone ->
+        blended = 0.6 (redistribution, not zero)."""
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        sig = TestPortfolioConstruction._signal("SYN080", 0.6)
+        sig = sig.model_copy(update={"model_id": "ta_ensemble"})
+        out = blend_convictions(self._models(), [sig], known_model_ids=self.KNOWN)
+        assert out["SYN080"] == pytest.approx(0.6)
+
+    def test_unknown_model_id_raises(self):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        models = [{"model_id": "ghost", "weight": 1.0}]
+        with pytest.raises(ConfigurationError, match="unknown model_id 'ghost'"):
+            blend_convictions(models, [], known_model_ids=self.KNOWN)
+
+    def test_negative_weight_rejected(self):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        models = [{"model_id": "ta_ensemble", "weight": -0.5}]
+        with pytest.raises(ConfigurationError, match="negative weight"):
+            blend_convictions(models, [], known_model_ids=self.KNOWN)
+
+    def test_weights_normalised(self):
+        """Weights (2, 2) normalise to (0.5, 0.5) -> same as equal weights."""
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        models = [
+            {"model_id": "ta_ensemble", "weight": 2.0},
+            {"model_id": "momentum_ts", "weight": 2.0},
+        ]
+        sigs = [
+            TestPortfolioConstruction._signal("SYN080", 0.6).model_copy(
+                update={"model_id": "ta_ensemble"}
+            ),
+            TestPortfolioConstruction._signal("SYN080", -0.2).model_copy(
+                update={"model_id": "momentum_ts"}
+            ),
+        ]
+        out = blend_convictions(models, sigs, known_model_ids=self.KNOWN)
+        assert out["SYN080"] == pytest.approx(0.2)
+
+    def test_reads_real_strategy_yaml(self):
+        """The REAL strategies/signal_based.yaml loads and blends offline."""
+        from niveshdristi.config_loader import load_strategy
+        from niveshdristi.portfolio.blending import blend_convictions
+
+        strategy = load_strategy("signal_based", strategies_dir=Path("strategies"))
+        ids = {str(m["model_id"]) for m in strategy.models}
+        sig = TestPortfolioConstruction._signal("SYN080", 0.5).model_copy(
+            update={"model_id": "ta_ensemble"}
+        )
+        out = blend_convictions(
+            strategy.models, [sig], known_model_ids=ids | {"ta_ensemble"}
+        )
+        assert out["SYN080"] == pytest.approx(0.5)
