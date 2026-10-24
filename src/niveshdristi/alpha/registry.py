@@ -58,3 +58,4 @@ class ModelRegistry:
                 "refusing live use (pass allow_stub=True to override)"
             )
         return entry
+

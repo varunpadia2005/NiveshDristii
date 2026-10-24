@@ -404,6 +404,72 @@ def version(ctx: typer.Context):
     _output({"version": __version__}, ctx.obj["json_output"])
 
 
+@app.command("models")
+def models(ctx: typer.Context):
+    """List registered alpha models (id, horizon, data, pit_safe, status).
+
+    COMPOSITION POINT: this command builds the registry via
+    alpha.registry.default_registry(), which registers the neutral
+    alpha/quant models and then delegates to market packs
+    (markets/in_nse/models.register_all).
+    """
+    # COMPOSITION POINT (lazy): the CLI wires the neutral alpha/quant models
+    # and the market packs together. alpha/ itself never imports markets/.
+    from niveshdristi.alpha.quant.earnings_drift import EarningsDrift
+    from niveshdristi.alpha.quant.fundamental_guardrails import FundamentalGuardrails
+    from niveshdristi.alpha.quant.low_volatility import LowVolatility
+    from niveshdristi.alpha.quant.mean_reversion import MeanReversion
+    from niveshdristi.alpha.quant.momentum import (
+        CrossSectionalMomentum,
+        TimeSeriesMomentum,
+    )
+    from niveshdristi.alpha.quant.price_range import PriceRangeModel
+    from niveshdristi.alpha.quant.quality_value import QualityValue
+    from niveshdristi.alpha.quant.regime import RegimeModel
+    from niveshdristi.alpha.quant.sector_rotation import SectorRotation
+    from niveshdristi.alpha.quant.ta_ensemble import TaEnsemble
+    from niveshdristi.alpha.registry import ModelRegistry
+    from niveshdristi.markets.in_nse.models import register_all as register_in_nse
+
+    reg = ModelRegistry()
+    reg.register_all(
+        [
+            TaEnsemble().registry_entry(),
+            PriceRangeModel().registry_entry(),
+            TimeSeriesMomentum().registry_entry(),
+            CrossSectionalMomentum().registry_entry(),
+            MeanReversion().registry_entry(),
+            LowVolatility().registry_entry(),
+            RegimeModel().registry_entry(),
+            FundamentalGuardrails().registry_entry(),
+            QualityValue().registry_entry(),
+            EarningsDrift().registry_entry(),
+            SectorRotation().registry_entry(),
+        ]
+    )
+    register_in_nse(reg)
+    entries = [
+        {
+            "model_id": e.model_id,
+            "horizon_days": e.horizon_days,
+            "required_data": list(e.required_data),
+            "pit_safe": e.pit_safe,
+            "data_status": e.data_status,
+        }
+        for e in reg.entries()
+    ]
+    _output(
+        {"count": len(entries), "models": entries},
+        ctx.obj["json_output"],
+    )
+
+
+@app.command("models-list")
+def models_list(ctx: typer.Context):
+    """Typer turns 'models list' into a subcommand; flat alias for humans."""
+    models(ctx)
+
+
 # ============================================================
 # Entry point
 # ============================================================

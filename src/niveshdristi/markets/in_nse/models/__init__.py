@@ -16,6 +16,7 @@ def entries() -> list[ModelRegistryEntry]:
     from niveshdristi.markets.in_nse.models.block_deals import BlockDeals
     from niveshdristi.markets.in_nse.models.delivery_anomaly import DeliveryAnomaly
     from niveshdristi.markets.in_nse.models.fii_dii_regime import FiiDiiRegime
+    from niveshdristi.markets.in_nse.models.macro_overlay import MacroOverlay
     from niveshdristi.markets.in_nse.models.promoter_pledge import PromoterPledge
 
     models: list[AlphaModel] = [
@@ -23,6 +24,7 @@ def entries() -> list[ModelRegistryEntry]:
         PromoterPledge(),
         FiiDiiRegime(),
         BlockDeals(),
+        MacroOverlay(),
     ]
     return [m.registry_entry() for m in models]
 

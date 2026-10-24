@@ -18,6 +18,7 @@ ban; such wrapped code is marked 'legacy, not PIT-safe' in its registry entry
 description where applicable.
 """
 
+import json
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -244,7 +245,8 @@ class TestModelRegistry:
         reg = ModelRegistry()
         register_all(reg)
         assert [e.model_id for e in reg.entries()] == [
-            "block_deals", "delivery_anomaly", "fii_dii_regime", "promoter_pledge",
+            "block_deals", "delivery_anomaly", "fii_dii_regime", "macro_overlay",
+            "promoter_pledge",
         ]
         fake_entries = [self._entry("fake_pack_model", data_status="stub")]
         reg.register_all(fake_entries)
@@ -1091,12 +1093,16 @@ class TestIndiaStubModels:
         reg = ModelRegistry()
         register_all(reg)
         ids = [e.model_id for e in reg.entries()]
-        assert ids == ["block_deals", "delivery_anomaly", "fii_dii_regime", "promoter_pledge"]
+        assert ids == [
+            "block_deals", "delivery_anomaly", "fii_dii_regime", "macro_overlay",
+            "promoter_pledge",
+        ]
         statuses = {e.model_id: e.data_status for e in reg.entries()}
         assert statuses["delivery_anomaly"] == "live"
         assert statuses["promoter_pledge"] == "stub"
         assert statuses["fii_dii_regime"] == "stub"
         assert statuses["block_deals"] == "stub"
+        assert statuses["macro_overlay"] == "stub"
 
     def test_no_look_ahead_stub_models(self):
         """Future-dated aux rows invisible for all three stubs (via handle)."""
@@ -1391,3 +1397,41 @@ class TestEarningsDrift:
         # Here we assert the model ignores an announcement dated after as_of:
         signals = EarningsDrift().predict(ctx, inputs)
         assert signals == []  # days = -11 < 0 -> ignored
+
+
+class TestModelsListCLI:
+    """S11: nd models list — offline, plain width-independent JSON."""
+
+    def test_models_json_offline(self):
+        from typer.testing import CliRunner
+
+        from niveshdristi.cli.main import app
+
+        result = CliRunner().invoke(app, ["--json", "models"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["count"] == 16
+        ids = {m["model_id"] for m in data["models"]}
+        assert "ta_ensemble" in ids
+        assert "macro_overlay" in ids
+        for m in data["models"]:
+            assert m["horizon_days"] >= 1
+            assert m["data_status"] in ("live", "stub")
+
+    def test_models_json_width_independent(self):
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        env = dict(os.environ)
+        env["COLUMNS"] = "40"
+        proc = subprocess.run(
+            [sys.executable, "-m", "niveshdristi.cli.main", "--json", "models"],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8",
+            env=env, timeout=120,
+        )
+        assert proc.returncode == 0
+        data = json.loads(proc.stdout)  # valid at COLUMNS=40
+        assert data["count"] == 16
