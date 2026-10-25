@@ -439,3 +439,87 @@ notional (11.5 fees + 5.0 slippage); (2) daily-switch harness SECONDARY:
 traded notional (shrinks over time as slippage depletes cash — notional
 dependence is explicit). Convention: gross = same fill quantities at the
 UNSLIPPED close with no fees; drag = fees + slippage; taxes separate.
+
+---
+
+# Phase 5 (part 1, 2026-10-25): engine, calendar, backtest, metrics, analysis
+
+## Cost-convention fix (P5-S2a) — before/after
+
+- BEFORE (side-blind SimBroker): SPEC TEST 2 "costs" = fees only (sell legs
+  hand-rolled at flat close, no slippage): 43,707 = 437.1 bps on ~38.0M
+  traded notional; buys embedded slippage in fill prices, sells had none.
+- R4 estimate (534) was an upper heuristic assuming unchanged traded
+  notional — NOT used.
+- AFTER (side-aware SimBroker + consistent convention): gross = same fill
+  quantities at the UNSLIPPED close with no fees; drag = fees + slippage,
+  taxes separate. HEADLINE (V2 fixed schedule, 10+10 legs x 9,999 shares,
+  flat reference 100 — cannot shrink): **32,942.32 = 329.4 bps of 1M NAV**,
+  hand-derived per leg (buy fees 1,215.9667, sell fees 1,078.3649,
+  slippage 499.95/leg both sides) = 16.5 bps per unit of traded notional
+  (11.5 fees + 5.0 slippage). SECONDARY (daily-switch harness): fees
+  25,309.63 + slippage 19,104.05 = 44,413.68 = **444.1 bps of initial NAV**
+  on 38.2M traded notional (shrinks over time — notional dependence
+  explicit). Both reconciled to the paisa in V1 against the fill logs.
+
+## Price-basis DECISION A (user-approved)
+
+Adjusted series everywhere; codes adjusted_price_basis,
+corporate_actions_unavailable, price_level_rules_on_adjusted (added to the
+catalogue with tests). Documented: adjusted prices embed knowledge of
+future dividends/splits (mild look-ahead); price-level rules (min price,
+circuit bands, integer shares) run on adjusted prices. Option B deferred
+until a corporate-actions source exists.
+
+## advance() mechanics (engine/advance.py, engine/fund.py)
+
+reconcile (broker book vs FundState; typed ExecutionError on mismatch) ->
+execute pending from T-1 at T's closes, SELLS FIRST (full sell for dropped
+symbols, PARTIAL TRIM to target value for over-weight held symbols) then
+buys (fee-fit sizing: quantities reduced so notional + estimated fees fit
+cash) -> mark at T close -> assess on rebalance days (models at as_of=T ->
+blend -> construct -> gates -> PendingDecision stored, NOT executed) ->
+hash-chained SessionRecord (created_at stamped at session close for
+determinism). Look-ahead structurally blocked: models receive ONLY
+ModelInputs built at as_of=T (builder raises DataError on future rows);
+fill prices travel through a separate channel to the broker. Orders that
+cannot fill lapse (logged), never carried forward. Lots consumed FIFO;
+realized gains accrue through the tax engine as a LIABILITY next to net
+equity (not deducted from cash in v1); controlled by tax_enabled.
+
+## Metrics conventions (engine/metrics.py)
+
+CAGR sessions/252; vol = sample std (ddof=1) x sqrt(252); Sharpe with
+annual risk-free input; Sortino with full-series downside deviation
+(documented); max drawdown with peak/trough dates; turnover = traded
+notional / (2 x avg NAV) annualized; hit rate over EXPOSED sessions only;
+fees and slippage drag in NAV bps. Edge cases return typed Unavailable
+(flat curve, <2 points, zero equity) — never silent NaN.
+
+## Limitations catalogue (core/limitations.py)
+
+survivorship_universe, approximate_universe, derived_calendar,
+adjusted_price_basis, raw_price_basis, corporate_actions_unavailable,
+rates_unverified, no_pit_fundamentals, benchmark_not_tri,
+regime_vol_proxy, stub_models_used, price_level_rules_on_adjusted.
+BacktestResult REQUIRES DataLimitations; the driver auto-adds
+derived_calendar/adjusted_price_basis/corporate_actions_unavailable/
+price_level_rules_on_adjusted (+ rates_unverified, approximate+
+survivorship when flagged, stub_models_used, benchmark_not_tri); callers
+may ADD codes, never remove; promotable is False while any code exists;
+banner non-droppable.
+
+## Benchmark + regime breakdown (engine/analysis.py)
+
+Benchmark by ROLE; excess/beta/alpha (simple regression, documented)/TE/IR;
+benchmark_not_tri ALWAYS added unless tri_asserted with a source; no
+benchmark frame = typed unavailable (never zero). Regime labels are a
+PROXY (trailing vol/trend, UNVALIDATED thresholds; regime_vol_proxy);
+regimes under 10 sessions report insufficient data (None metrics).
+
+## Still missing for Phase 5 part 2 (S6-S9)
+
+Walk-forward evaluation, parameter sensitivity, validation gate (deflated
+Sharpe, PBO; CPCV if feasible), reports (JSON + Plotly HTML), the overfit-
+toy-strategy gate test, and the Phase 6 prerequisites (2026 holidays,
+verified rates, integer minor units).
