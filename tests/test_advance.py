@@ -455,3 +455,94 @@ class TestMetrics:
                 max_drawdown=None, turnover=None, hit_rate=None, exposure=None,
                 cost_drag_fees_bps=None, cost_drag_slippage_bps=None,
             )
+
+
+class TestAnalysis:
+    """P5-S5: benchmark comparison + regime breakdown (hand-computed)."""
+
+    @staticmethod
+    def _frames(dates: list[str], closes: list[float]):
+        return pl.DataFrame({"date": dates, "close": closes})
+
+    def test_beta_alpha_known_answer(self):
+        """Strategy = 0.5 x benchmark daily moves + 0.001 alpha per day:
+        beta = 0.5, alpha = 0.252 (0.001 x 252), TE small, IR large."""
+        from datetime import timedelta
+
+        from niveshdristi.engine.analysis import compare_to_benchmark
+
+        n = 60
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        bench_closes = [100.0]
+        strat_closes = [100.0]
+        for i in range(1, n):
+            b_ret = 0.01 if i % 2 == 0 else -0.01
+            bench_closes.append(bench_closes[-1] * (1 + b_ret))
+            strat_closes.append(strat_closes[-1] * (1 + 0.5 * b_ret + 0.001))
+        bench = self._frames(dates, bench_closes)
+        curve = tuple(
+            (date.fromisoformat(d), v) for d, v in zip(dates, strat_closes, strict=True)
+        )
+        cmp_result, limitations = compare_to_benchmark(curve, bench)
+        assert limitations.promotable is False  # benchmark_not_tri
+        assert "benchmark_not_tri" in limitations.CODES
+        assert cmp_result.available
+        assert cmp_result.beta == pytest.approx(0.5, abs=0.05)
+        assert cmp_result.alpha == pytest.approx(0.252, abs=0.05)
+        assert cmp_result.tracking_error > 0
+        assert cmp_result.source is None  # not asserted
+
+    def test_tri_asserted_records_source(self):
+        from datetime import timedelta
+
+        from niveshdristi.engine.analysis import compare_to_benchmark
+
+        n = 10
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        bench = self._frames(dates, [100.0] * n)
+        curve = tuple((date.fromisoformat(d), 100.0) for d in dates)
+        cmp_result, limitations = compare_to_benchmark(
+            curve, bench, tri_asserted=True, tri_source="niftyindices TRI (verified copy)"
+        )
+        assert "benchmark_not_tri" not in limitations.CODES
+        assert cmp_result.source == "niftyindices TRI (verified copy)"
+
+    def test_no_benchmark_typed_unavailable(self):
+        from niveshdristi.engine.analysis import compare_to_benchmark
+
+        curve = ((date(2026, 1, 1), 100.0),)
+        cmp_result, limitations = compare_to_benchmark(curve, pl.DataFrame())
+        assert cmp_result.available is False
+        assert "no benchmark frame" in cmp_result.unavailable_reason
+
+    def test_regime_labels_hand_computed(self):
+        """Constant 1% daily moves: trailing vol = 0.01 x sqrt(252) = 0.1588
+        (< 0.20) and trend +252x... -> after TREND_WINDOW: trend_up."""
+        from datetime import timedelta
+
+        from niveshdristi.engine.analysis import label_regimes
+
+        n = 80
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        closes = [100.0 * (1.01 ** i) for i in range(n)]
+        labels = label_regimes(self._frames(dates, closes))
+        late = [labels[dates[i]] for i in range(60, n)]
+        assert set(late) == {"trend_up"}
+        assert labels[dates[0]] == "insufficient_history"
+
+    def test_regime_breakdown_insufficient_data(self):
+        """Fewer than 10 sessions per regime -> None metrics (insufficient)."""
+        from datetime import timedelta
+
+        from niveshdristi.engine.analysis import regime_breakdown
+
+        n = 12
+        dates = [(date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        bench = self._frames(dates, [100.0 + i for i in range(n)])
+        curve = tuple((date.fromisoformat(d), 100.0 + i) for i, d in enumerate(dates))
+        breakdown = regime_breakdown(curve, bench, [1.0] * (n - 1))
+        assert "regime_vol_proxy" in breakdown.limitations.CODES
+        assert breakdown.banner is not None
+        for stat in breakdown.regimes:
+            if stat.sessions < 10:
+                assert stat.annualized_return is None
