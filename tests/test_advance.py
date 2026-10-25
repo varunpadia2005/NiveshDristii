@@ -339,3 +339,119 @@ class TestBacktest:
         tampered = self._run(frames_tampered, model)
         # records 1..3 (sessions before the wild row's date) identical
         assert baseline.record_hashes[:3] == tampered.record_hashes[:3]
+
+
+class TestMetrics:
+    """P5-S4: pure metrics with hand-computed known answers."""
+
+    @staticmethod
+    def _curve(values: list[float], start: str = "2026-01-01"):
+        ds = [
+            (date.fromisoformat(start) + timedelta(days=i)).isoformat()
+            for i in range(len(values))
+        ]
+        return tuple((date.fromisoformat(d), v) for d, v in zip(ds, values, strict=True))
+
+    def test_cagr_known_answer(self):
+        """1,000,000 -> 1,100,000 over 252 sessions (1 year): CAGR = 10%."""
+        from niveshdristi.engine.metrics import cagr
+
+        curve = self._curve(
+            [1_000_000.0] + [1_000_000.0 * (1.10) ** (i / 252) for i in range(1, 253)]
+        )
+        result = cagr(curve)
+        assert result == pytest.approx(0.10, abs=1e-6)
+
+    def test_volatility_known_answer(self):
+        """Returns +1%, -1%, +1%, -1% (4 returns): mean 0, sample var
+        = 4*(0.01^2)/3 = 0.00013333, std = 0.011547; ann = x sqrt(252)
+        = 0.18330."""
+        import math
+
+        from niveshdristi.engine.metrics import annualized_volatility
+
+        vals = [100.0]
+        for r in (0.01, -0.01, 0.01, -0.01):
+            vals.append(vals[-1] * (1 + r))
+        result = annualized_volatility(self._curve(vals))
+        # sample std (ddof=1) of the 4 returns = sqrt(4e-4/3) = 0.0115470
+        assert result == pytest.approx(0.0115470 * math.sqrt(252), rel=1e-3)
+
+    def test_sharpe_flat_curve_unavailable(self):
+        from niveshdristi.engine.metrics import Unavailable, sharpe
+
+        result = sharpe(self._curve([100.0] * 5))
+        assert isinstance(result, Unavailable)
+        assert "flat curve" in result.reason
+
+    def test_sharpe_known_answer(self):
+        """Daily excess +0.001 every session: std 0 -> Unavailable; use two
+        returns (+0.002, 0.0): mean 0.001, sample std 0.0014142 ->
+        sharpe = 0.001/0.0014142*sqrt(252) = 17.82."""
+        import math
+
+        from niveshdristi.engine.metrics import Unavailable, sharpe
+
+        result = sharpe(self._curve([100.0, 100.2, 100.2]))
+        assert isinstance(result, Unavailable) is False
+        assert result == pytest.approx(0.001 / 0.0014142 * math.sqrt(252), rel=1e-3)
+
+    def test_sortino_no_downside_unavailable(self):
+        from niveshdristi.engine.metrics import Unavailable, sortino
+
+        assert isinstance(sortino(self._curve([100.0, 101.0, 102.04])), Unavailable)
+
+    def test_max_drawdown_known_answer(self):
+        from niveshdristi.engine.metrics import max_drawdown
+
+        curve = self._curve([100.0, 120.0, 90.0, 95.0])
+        result = max_drawdown(curve)
+        dd, peak, trough = result
+        assert dd == pytest.approx((120.0 - 90.0) / 120.0)
+        assert peak == date(2026, 1, 2)
+        assert trough == date(2026, 1, 3)
+
+    def test_turnover_known_answer(self):
+        """Traded 500,000 over 20 sessions at NAV 1,000,000:
+        500,000/(2x1,000,000) x (252/20) = 31.5."""
+        from niveshdristi.engine.metrics import turnover_annualized
+
+        result = turnover_annualized(500_000.0, 20, 1_000_000.0)
+        # 500,000/(2x1,000,000) = 0.25 per session; x 252/20 = 3.15x annualized
+        assert result == pytest.approx(3.15)
+
+    def test_hit_rate_excludes_flat_sessions(self):
+        from niveshdristi.engine.metrics import Unavailable, hit_rate
+
+        curve = self._curve([100.0, 101.0, 101.0, 102.0])  # +1%, 0%, +0.99%
+        exposure = [1.0, 1.0, 0.0]  # third session flat (no exposure)
+        result = hit_rate(curve, exposure)
+        # considered: +1% and 0% (excluded 0-exposure session) -> 1 of 2 = 0.5
+        assert result == pytest.approx(0.5)
+        empty = hit_rate(curve, [0.0, 0.0, 0.0])
+        assert isinstance(empty, Unavailable)
+
+    def test_fewer_than_two_points(self):
+        from niveshdristi.engine.metrics import Unavailable, cagr
+
+        assert isinstance(cagr(self._curve([100.0])), Unavailable)
+
+    def test_metrics_report_carries_limitations(self):
+        from niveshdristi.core.limitations import DataLimitations
+        from niveshdristi.engine.metrics import MetricsReport
+
+        report = MetricsReport(
+            limitations=DataLimitations(CODES=frozenset({"rates_unverified"})),
+            rates_verified=False,
+            cagr=0.1, volatility=0.2, sharpe=1.0, sortino=1.5,
+            max_drawdown=0.1, turnover=3.0, hit_rate=0.6, exposure=0.9,
+            cost_drag_fees_bps=11.5, cost_drag_slippage_bps=5.0,
+        )
+        assert report.limitations.promotable is False
+        with pytest.raises(Exception, match="limitations"):
+            MetricsReport(
+                limitations=None, rates_verified=False,  # type: ignore[arg-type]
+                cagr=None, volatility=None, sharpe=None, sortino=None,
+                max_drawdown=None, turnover=None, hit_rate=None, exposure=None,
+                cost_drag_fees_bps=None, cost_drag_slippage_bps=None,
+            )
