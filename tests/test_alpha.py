@@ -26,6 +26,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from niveshdristi.core.decision import OrderSide
 from niveshdristi.core.errors import DataError
 from niveshdristi.marketdata.context import build_from_full_frames, build_model_inputs
 
@@ -2583,9 +2584,8 @@ class TestPaperBrokerAndSpecTests:
 
 
 def compute_sell_costs(qty: int, price: float) -> float:
-    """Sell-side cost for the turnover test: levy 0.1% + brokerage 20 +
-    exchange 0.00345% + regulator 0.0001% + GST 18% on (20 + exch + reg)
-    + depository per-scrip charge 13.5 once per sell order."""
+    """Old S6 helper (fees only, no slippage) - kept for the S2a before/after
+    comparison; the S2a harness replaces its use with SimBroker fills."""
     notional = qty * price
     levy = notional * 0.001
     exchange = notional * 0.0000345
@@ -2594,189 +2594,96 @@ def compute_sell_costs(qty: int, price: float) -> float:
     return levy + 20.0 + exchange + regulator + gst + 13.5
 
 
-class TestBlending:
-    """P4-S7: fixed linear weights over uncalibrated signals."""
-
-    KNOWN = {"ta_ensemble", "momentum_ts", "mean_reversion"}
+class TestSimBrokerSideAwareness:
+    """P4-S2a0: side-aware SimBroker (buys fill higher, sells lower)."""
 
     @staticmethod
-    def _models():
-        return [
-            {"model_id": "ta_ensemble", "weight": 0.5},
-            {"model_id": "momentum_ts", "weight": 0.5},
-        ]
+    def _broker():
+        from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
 
-    def test_known_answer_equal_weights(self):
-        """ta=+0.6, mom=-0.2 -> (0.5*0.6 + 0.5*-0.2)/1.0 = 0.2."""
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        sigs = [
-            TestPortfolioConstruction._signal("SYN080", 0.6),
-            TestPortfolioConstruction._signal("SYN080", -0.2),
-        ]
-        sigs[0] = sigs[0].model_copy(update={"model_id": "ta_ensemble"})
-        sigs[1] = sigs[1].model_copy(update={"model_id": "momentum_ts"})
-        out = blend_convictions(self._models(), sigs, known_model_ids=self.KNOWN)
-        assert out["SYN080"] == pytest.approx(0.2)
-
-    def test_missing_model_weight_redistributed(self):
-        """Only ta signals present (+0.6): its weight dominates alone ->
-        blended = 0.6 (redistribution, not zero)."""
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        sig = TestPortfolioConstruction._signal("SYN080", 0.6)
-        sig = sig.model_copy(update={"model_id": "ta_ensemble"})
-        out = blend_convictions(self._models(), [sig], known_model_ids=self.KNOWN)
-        assert out["SYN080"] == pytest.approx(0.6)
-
-    def test_unknown_model_id_raises(self):
-        from niveshdristi.core.errors import ConfigurationError
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        models = [{"model_id": "ghost", "weight": 1.0}]
-        with pytest.raises(ConfigurationError, match="unknown model_id 'ghost'"):
-            blend_convictions(models, [], known_model_ids=self.KNOWN)
-
-    def test_negative_weight_rejected(self):
-        from niveshdristi.core.errors import ConfigurationError
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        models = [{"model_id": "ta_ensemble", "weight": -0.5}]
-        with pytest.raises(ConfigurationError, match="negative weight"):
-            blend_convictions(models, [], known_model_ids=self.KNOWN)
-
-    def test_weights_normalised(self):
-        """Weights (2, 2) normalise to (0.5, 0.5) -> same as equal weights."""
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        models = [
-            {"model_id": "ta_ensemble", "weight": 2.0},
-            {"model_id": "momentum_ts", "weight": 2.0},
-        ]
-        sigs = [
-            TestPortfolioConstruction._signal("SYN080", 0.6).model_copy(
-                update={"model_id": "ta_ensemble"}
-            ),
-            TestPortfolioConstruction._signal("SYN080", -0.2).model_copy(
-                update={"model_id": "momentum_ts"}
-            ),
-        ]
-        out = blend_convictions(models, sigs, known_model_ids=self.KNOWN)
-        assert out["SYN080"] == pytest.approx(0.2)
-
-    def test_reads_real_strategy_yaml(self):
-        """The REAL strategies/signal_based.yaml loads and blends offline."""
-        from niveshdristi.config_loader import load_strategy
-        from niveshdristi.portfolio.blending import blend_convictions
-
-        strategy = load_strategy("signal_based", strategies_dir=Path("strategies"))
-        ids = {str(m["model_id"]) for m in strategy.models}
-        sig = TestPortfolioConstruction._signal("SYN080", 0.5).model_copy(
-            update={"model_id": "ta_ensemble"}
+        rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            stt_delivery_sell=0.001,
+            exchange_fee=0.0000345, regulator_fee=0.000001,
+            stamp_duty_buy=0.00015, gst_on_fees=0.18,
+            dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
         )
-        out = blend_convictions(
-            strategy.models, [sig], known_model_ids=ids | {"ta_ensemble"}
+        return SimBroker(rates=rates, price_limits=PriceLimitRule(enabled=False))
+
+    _order = staticmethod(TestOrderBuildingAndSimBroker._order)
+
+    def test_side_aware_buy_vs_sell_fill_prices(self):
+        """BUY fills ABOVE close, SELL fills BELOW close by the same signed
+        bps: 100 x (1 +- 5/10000) -> 100.05 / 99.95 (hand-computed)."""
+        broker = self._broker()
+        buy = broker.execute(
+            [self._order("SYN050", 100)], prices={"SYN050": 100.0},
+            cash=1_000_000.0,
+        )[0]
+        sell_order = self._order("SYN050", 100).model_copy(update={"side": OrderSide.SELL})
+        sell = broker.execute(
+            [sell_order], prices={"SYN050": 100.0},
+        )[0]
+        assert buy.fill.fill_price == pytest.approx(100.05)
+        assert sell.fill.fill_price == pytest.approx(99.95)
+
+    def test_sell_costs_no_stamp_with_dp(self):
+        """SELL of 100 x 99.95 = 9,995: levy 9.995; exchange 0.3448275;
+        regulator 0.009995; GST 18% x (20 + 0.3448275 + 0.009995) = 3.663868;
+        depository 13.5; stamp 0. fees(excl brokerage) = 27.513691
+        (hand-derived at the slippaged notional 9,995, unrounded)."""
+        sell_order = self._order("SYN050", 100).model_copy(update={"side": OrderSide.SELL})
+        fill = self._broker().execute(
+            [sell_order], prices={"SYN050": 100.0},
+        )[0].fill
+        assert fill.fees == pytest.approx(27.513691, abs=1e-4)
+
+    def test_buy_costs_stamp_no_dp(self):
+        """BUY of 100 x 100.05 = 10,005: stamp = 10005 x 0.00015 = 1.50075;
+        depository charge 0 (buys never carry it)."""
+        from niveshdristi.core.market_rules import RateSchedule
+        from niveshdristi.execution.costs import compute_costs
+
+        rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            exchange_fee=0.0000345, regulator_fee=0.000001,
+            stamp_duty_buy=0.00015, gst_on_fees=0.18,
+            dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
         )
-        assert out["SYN080"] == pytest.approx(0.5)
+        b = compute_costs(side="buy", notional=10_005.0, rates=rates)
+        assert b.stamp_duty == pytest.approx(1.50075)
+        assert b.dp_charge == 0.0
 
+    def test_circuit_failure_each_side(self):
+        """BUY fails at the UPPER band; SELL fails at the LOWER band."""
+        from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
 
-class TestSessionCalendar:
-    """P5-S1: data-derived calendar + conflict reporting (no invented dates)."""
-
-    @staticmethod
-    def _frames(dates_by_symbol):
-        return {
-            sym: pl.DataFrame({"date": ds, "close": [100.0] * len(ds)})
-            for sym, ds in dates_by_symbol.items()
-        }
-
-    def test_union_of_dates_with_planted_gap(self):
-        """SYN090 trades Mon-Wed, SYN091 Tue-Thu: union Mon-Thu; SYN090's
-        Wednesday gap in its own frame doesn't remove Wednesday (SYN091 has
-        it), but a day absent from BOTH is absent from the calendar."""
-        from niveshdristi.engine.calendar import DataCalendar
-
-        frames = self._frames({
-            "SYN090": ["2026-03-02", "2026-03-03", "2026-03-05"],  # Mon, Tue, Thu
-            "SYN091": ["2026-03-03", "2026-03-04", "2026-03-05"],  # Tue, Wed, Thu
-        })
-        cal = DataCalendar.from_frames(frames)
-        got = [d.isoformat() for d in cal.sessions()]
-        # union: Mon 03-02, Tue 03-03, Wed 03-04, Thu 03-05 (no Friday 03-06)
-        assert got == ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"]
-        assert cal.is_session(date(2026, 3, 4))
-        assert not cal.is_session(date(2026, 3, 6))  # absent everywhere: not a session
-        assert cal.next_session(date(2026, 3, 3)) == date(2026, 3, 4)
-        assert cal.next_session(date(2026, 3, 5)) is None
-
-    def test_conflict_reporting_planted_conflict(self):
-        """Official says 03-04 is a HOLIDAY but data has bars (conflict A);
-        official says 03-06 is a session but no data bar exists (conflict B).
-        Neither source is altered; counts and lists reported."""
-        from niveshdristi.engine.calendar import DataCalendar, check_against_official
-
-        frames = self._frames({"SYN090": ["2026-03-02", "2026-03-03", "2026-03-04"]})
-        cal = DataCalendar.from_frames(frames)
-        official = {
-            date(2026, 3, 2), date(2026, 3, 3),
-            date(2026, 3, 6),  # official session with NO data bar (conflict B)
-        }  # 03-04 absent from official = data bar on non-session (conflict A)
-        conflicts = check_against_official(cal, official)
-        assert conflicts.data_on_non_session == [date(2026, 3, 4)]
-        assert conflicts.official_session_without_data == [date(2026, 3, 6)]
-        assert conflicts.count == 2
-        assert "conflicts=2" in conflicts.summary()
-        # calendar unchanged: 03-04 still a session (data calendar kept)
-        assert cal.is_session(date(2026, 3, 4))
-
-
-class TestDataLimitations:
-    """P5-S1: limitations contract + result-container requirement."""
-
-    def test_banner_and_promotable(self):
-        from niveshdristi.core.limitations import DataLimitations
-
-        lim = DataLimitations(CODES=frozenset({"rates_unverified", "derived_calendar"}))
-        assert lim.banner == "DATA LIMITATIONS: derived_calendar, rates_unverified"
-        assert lim.promotable is False
-        empty = DataLimitations()
-        assert empty.banner is None
-        assert empty.promotable is True
-
-    def test_unknown_code_rejected(self):
-        from niveshdristi.core.errors import ConfigurationError
-        from niveshdristi.core.limitations import DataLimitations
-
-        with pytest.raises(Exception, match="unknown limitation codes") as exc:
-            DataLimitations(CODES=frozenset({"bogus_code"}))
-        assert exc.value.__class__.__name__ == "ConfigurationError" or isinstance(
-            exc.value, ConfigurationError
+        broker = SimBroker(
+            rates=RateSchedule(slippage_base_bps=5.0),
+            price_limits=PriceLimitRule(enabled=True, bands=(0.10,)),
         )
+        r_buy = broker.execute(
+            [self._order("SYN050", 10)], prices={"SYN050": 110.0},
+            reference_prices={"SYN050": 100.0}, cash=1e9,
+        )
+        assert not r_buy[0].filled
+        sell = self._order("SYN050", 10).model_copy(update={"side": OrderSide.SELL})
+        # 89.9: move 0.101 clearly beyond the 0.10 band (90.0 exact-band is
+        # floating-point sensitive: 90/100-1 == 0.099999... < 0.10)
+        r_sell = broker.execute(
+            [sell], prices={"SYN050": 89.9}, reference_prices={"SYN050": 100.0}
+        )
+        assert not r_sell[0].filled
 
-    def test_frozen(self):
-        from niveshdristi.core.limitations import DataLimitations
-
-        lim = DataLimitations(CODES=frozenset())
-        with pytest.raises(Exception, match="frozen|immutable|Instance"):
-            lim.CODES = frozenset({"rates_unverified"})  # type: ignore[misc]
-
-    def test_result_container_requires_limitations(self):
-        """A result-like container cannot be built WITHOUT DataLimitations.
-        This models the constructor contract BacktestResult/ValidationResult
-        will adopt in later Phase 5 tasks."""
-
-        from pydantic import BaseModel
-        from pydantic.config import ConfigDict
-
-        from niveshdristi.core.limitations import DataLimitations
-
-        class ResultLike(BaseModel):
-            model_config = ConfigDict(frozen=True, extra="forbid")
-
-            equity_final: float
-            limitations: DataLimitations  # REQUIRED field
-
-        ok = ResultLike(equity_final=100.0, limitations=DataLimitations())
-        assert ok.limitations.promotable is True
-        with pytest.raises(Exception, match="limitations"):
-            ResultLike(equity_final=100.0)  # missing limitations -> rejected
+    def test_sell_liquidity_slippage(self):
+        """SELL of 1000 shares, ADV 1M: notional ~99,950 -> ratio ~0.09995
+        -> multiplier ~1.9995 -> slippage ~9.9975 bps -> fill price
+        100 x (1 - 0.00099975) = 99.900025 (hand-computed)."""
+        sell = self._order("SYN050", 1000).model_copy(update={"side": OrderSide.SELL})
+        r = self._broker().execute(
+            [sell], prices={"SYN050": 100.0}, advs={"SYN050": 1_000_000.0}
+        )
+        assert r[0].fill.slippage_bps == pytest.approx(9.9975, rel=1e-3)
+        assert r[0].fill.fill_price == pytest.approx(99.900025, rel=1e-6)

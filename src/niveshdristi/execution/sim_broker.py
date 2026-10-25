@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from niveshdristi.core.decision import Fill, Order
+from niveshdristi.core.decision import Fill, Order, OrderSide
 from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
 from niveshdristi.execution.costs import compute_costs
 
@@ -99,14 +99,16 @@ class SimBroker:
                     )
                     continue
 
+            is_buy = order.side == OrderSide.BUY
             notional = order.quantity * price
-            if notional > available:
+            # Cash check side-aware: buys need notional; sells need nothing.
+            if is_buy and notional > available:
                 results.append(
                     ExecutionResult(order, None, "rejected: insufficient cash")
                 )
                 continue
 
-            # Liquidity-scaled slippage
+            # Liquidity-scaled slippage (side-aware below: adverse both ways)
             slippage_bps = self._rates.slippage_base_bps
             adv = (advs or {}).get(symbol)
             if adv and adv > 0:
@@ -114,13 +116,23 @@ class SimBroker:
                 multiplier = min(1.0 + ratio / SLIPPAGE_ADV_REF, SLIPPAGE_SCALE_CAP)
                 slippage_bps = self._rates.slippage_base_bps * multiplier
 
-            fill_price = price * (1.0 + slippage_bps / 10_000.0)  # adverse move
+            # ADVERSE for both sides: buys fill higher, sells fill lower.
+            # PREVIOUSLY (side-blind): fill_price = price * (1 + bps/1e4) for
+            # every order, and costs were hardcoded side="buy".
+            sign = 1.0 if is_buy else -1.0
+            fill_price = price * (1.0 + sign * slippage_bps / 10_000.0)
             breakdown = compute_costs(
-                side="buy",
+                side="buy" if is_buy else "sell",
                 notional=order.quantity * fill_price,
                 rates=self._rates,
+                include_dp_charge=not is_buy,
             )
-            available -= order.quantity * fill_price
+            # Symmetric cash accounting: buys debit notional+fees_total;
+            # sells credit notional-fees_total.
+            if is_buy:
+                available -= order.quantity * fill_price + breakdown.fees_total
+            else:
+                available += order.quantity * fill_price - breakdown.fees_total
             results.append(
                 ExecutionResult(
                     order,
