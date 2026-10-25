@@ -337,11 +337,10 @@ def advance(
         blended = blend_convictions(
             models.as_strategy_models(), signals, known_model_ids=models.known_ids
         )
-        synth_signals = []
-        for symbol, conviction in sorted(blended.items()):
-            synth_signals.append(
-                _SynthSignalView(symbol, conviction, rules.market_id, ctx.as_of)
-            )
+        synth_signals = [
+            _SynthSignalView(symbol, conviction, rules.market_id, ctx.as_of)
+            for symbol, conviction in sorted(blended.items())
+        ]
         targets = construct_targets(synth_signals, rules)  # type: ignore[arg-type]
         gated = run_chain(
             targets, limits=limits, rules=rules, current_weights=positions_now,

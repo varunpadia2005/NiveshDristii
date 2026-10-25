@@ -2425,10 +2425,14 @@ class TestPaperBrokerAndSpecTests:
 
     @staticmethod
     def _rates():
+        """R5b defect fix: stt_delivery_sell was MISSING here (defaults 0.0),
+        so sell legs in SPEC TEST 2 carried NO levy. Both delivery levies are
+        now the YAML rate 0.001 (verify per VERIFY 4)."""
         from niveshdristi.core.market_rules import RateSchedule
 
         return RateSchedule(
             brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            stt_delivery_sell=0.001,
             exchange_fee=0.0000345, regulator_fee=0.000001,
             stamp_duty_buy=0.00015, gst_on_fees=0.18,
             dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
@@ -2559,19 +2563,27 @@ class TestPaperBrokerAndSpecTests:
         cash, so its NAV-bps drag is lower; notional dependence is explicit).
         """
         # HEADLINE: fixed schedule, code must equal the hand derivation
+        # (V2 rates already carried BOTH delivery levies - unchanged by R5b)
         fees_v2, slip_v2 = self._fixed_schedule_costs()
         hand_total = 10 * (1215.9667 + 1078.3649) + 20 * 499.95
         assert fees_v2 + slip_v2 == pytest.approx(hand_total, abs=0.01)
         assert fees_v2 + slip_v2 == pytest.approx(32_942.32, abs=0.01)  # 329.4 bps
 
-        # SECONDARY: daily-switch harness (V1-reconciled: 25,309.63 fees +
-        # 19,104.05 slippage = 444.1 bps; traded notional shrinks over time)
+        # SECONDARY: daily-switch harness. R5b: the harness rates omitted
+        # stt_delivery_sell (0.0 levy on sells). Fixed: fees increment
+        # = sum of V1 sell notionals (9,797,798.65 + 8,817,589.00) x 0.001
+        # = 18,615.3876; new fees = 25,309.63 + 18,615.39 = 43,925.02;
+        # drag = 43,925.02 + 19,104.05 = 63,029.07 = 630.3 bps of initial NAV.
         gross_h, net_h, fees_h, slip_h = self._run_strategy(turnover_days_gap=1, days=20)
         gross_l, net_l, fees_l, slip_l = self._run_strategy(turnover_days_gap=10, days=20)
         assert (fees_h + slip_h) == pytest.approx(gross_h - net_h, rel=1e-6)
-        assert fees_h + slip_h >= 10_000.0
-        assert fees_l + slip_l < (fees_h + slip_h) / 3
-        assert (fees_h + slip_h) / 1_000_000.0 * 10_000 > 400.0  # 444.1 bps actual
+        assert fees_h == pytest.approx(43_925.02, abs=0.02)  # R5b hand-derived
+        assert fees_h + slip_h == pytest.approx(63_029.07, abs=0.02)
+        assert fees_l + slip_l < (fees_h + slip_h) / 3  # control far smaller
+        drag_h_bps = (fees_h + slip_h) / 1_000_000.0 * 10_000
+        assert drag_h_bps == pytest.approx(630.3, abs=0.1)
+        assert drag_h_bps > 444.1  # > the levy-missing figure
+        assert drag_h_bps > 534.0  # > the R4 upper heuristic
 
     @staticmethod
     def _run_strategy(turnover_days_gap: int, days: int = 20):
@@ -2745,3 +2757,84 @@ class TestSimBrokerSideAwareness:
         )
         assert r[0].fill.slippage_bps == pytest.approx(9.9975, rel=1e-3)
         assert r[0].fill.fill_price == pytest.approx(99.900025, rel=1e-6)
+
+
+class TestLevySymmetry:
+    """R5b regression: levy charged on BOTH sides at the YAML rate; stamp
+    duty buy-only; depository charge sell-only; fixed fill log sums to the
+    hand-computed total to the paisa."""
+
+    @staticmethod
+    def _rates():
+        from niveshdristi.core.market_rules import RateSchedule
+
+        return RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            stt_delivery_sell=0.001, exchange_fee=0.0000345,
+            regulator_fee=0.000001, stamp_duty_buy=0.00015,
+            gst_on_fees=0.18, dp_charge_per_scrip=13.5, slippage_base_bps=0.0,
+        )
+
+    def test_buy_and_sell_levy_symmetric(self):
+        from niveshdristi.execution.costs import compute_costs
+
+        rates = self._rates()
+        b = compute_costs(side="buy", notional=100_000.0, rates=rates)
+        s = compute_costs(side="sell", notional=100_000.0, rates=rates)
+        # levy = 0.001 x 100,000 = 100 on BOTH sides (YAML rate)
+        assert b.transaction_levy == pytest.approx(100.0)
+        assert s.transaction_levy == pytest.approx(100.0)
+
+    def test_stamp_buy_only_dp_sell_only(self):
+        from niveshdristi.execution.costs import compute_costs
+
+        rates = self._rates()
+        b = compute_costs(side="buy", notional=100_000.0, rates=rates, include_dp_charge=True)
+        s = compute_costs(side="sell", notional=100_000.0, rates=rates, include_dp_charge=True)
+        assert b.stamp_duty == pytest.approx(15.0)
+        assert b.dp_charge == 0.0
+        assert s.stamp_duty == 0.0
+        assert s.dp_charge == pytest.approx(13.5)
+
+    def test_fixed_fill_log_hand_total(self):
+        """Fixed fill log (V2 schedule, zero slippage): hand-computed total
+        fees to the paisa.
+          buys: 10 legs x [20 + 0.001*999900 + 0.0000345*999900
+                + 0.000001*999900 + 0.00015*999900
+                + 0.18*(20+34.49655+0.9999)] = 10 x 1215.8469
+          sells: 10 legs x [20 + 0.001*999900 + ... + 13.5] = 10 x 1078.2449
+        """
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.decision import Order, OrderSide
+        from niveshdristi.core.instrument import Instrument
+        from niveshdristi.core.market_rules import PriceLimitRule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        rates = self._rates()
+        broker = SimBroker(rates=rates, price_limits=PriceLimitRule(enabled=False))
+
+        def inst(s: str) -> Instrument:
+            return Instrument(symbol=s, exchange="TEST_M", market_id="TEST_M", currency="XXX")
+
+        total = 0.0
+        for _ in range(10):
+            o = Order(instrument=inst("SYN070"), side=OrderSide.BUY, quantity=9999,
+                      placed_at=datetime.now(UTC), client_order_id="gate-b")
+            f = broker.execute([o], prices={"SYN070": 100.0}, cash=1e12)[0].fill
+            total += f.commission + f.fees
+        for _ in range(10):
+            o = Order(instrument=inst("SYN071"), side=OrderSide.SELL, quantity=9999,
+                      placed_at=datetime.now(UTC), client_order_id="gate-s")
+            f = broker.execute([o], prices={"SYN071": 100.0})[0].fill
+            total += f.commission + f.fees
+        notional = 9999 * 100.0
+        buy_leg = (
+            20 + 0.001 * notional + 0.0000345 * notional + 0.000001 * notional
+            + 0.00015 * notional + 0.18 * (20 + 0.0000345 * notional + 0.000001 * notional)
+        )
+        sell_leg = (
+            20 + 0.001 * notional + 0.0000345 * notional + 0.000001 * notional
+            + 0.18 * (20 + 0.0000345 * notional + 0.000001 * notional) + 13.5
+        )
+        assert total == pytest.approx(10 * (buy_leg + sell_leg), abs=0.01)

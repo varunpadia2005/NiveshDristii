@@ -523,3 +523,32 @@ Walk-forward evaluation, parameter sensitivity, validation gate (deflated
 Sharpe, PBO; CPCV if feasible), reports (JSON + Plotly HTML), the overfit-
 toy-strategy gate test, and the Phase 6 prerequisites (2026 holidays,
 verified rates, integer minor units).
+
+
+## R5 (2026-10-25): levy symmetry defect fixed; engine behavior decisions; ignore audit
+
+- **R5b DEFECT FIXED**: the SPEC TEST 2 harness rates omitted
+  stt_delivery_sell — sell legs carried NO levy. Fixed (both levies at the
+  YAML 0.001). Fees 25,309.63 -> 43,925.02 (increment 18,615.39 = V1 sell
+  notionals 18,615,387.65 x 0.001, exact); drag 444.1 -> **630.3 bps of NAV**
+  (> the 444 levy-missing figure and > the 534 R4 heuristic). Regression
+  tests: levy on both sides, stamp buy-only, depository sell-only, fixed
+  fill-log hand total (symbolic, to the paisa).
+- **Engine behavior decisions (P5-S3)**: fee reservation BEFORE buy sizing
+  (quantities reduced so notional + estimated fees fit cash); partial sell
+  TRIMS for over-weight held symbols (ceil to whole shares); FULL
+  liquidation when a symbol's target weight is 0; pending decisions that
+  cannot fill LAPSE (logged), never carried forward; reconcile broker book
+  vs FundState raises typed ExecutionError.
+- **type: ignore audit (R5c)**: exactly ONE in the src/ packages —
+  engine/advance.py:345 `# type: ignore[arg-type]` where construct_targets
+  (typed for core Signal) receives the engine's minimal _SynthSignalView
+  (structural duck-type: symbol/conviction/effective_conviction). Kept as
+  structural-typing glue; the alternative is constructing full Signal
+  objects with fake theses inside the engine. G14's count moved 1 -> 2
+  because G14 also counts the linted NEW test files since G2: the second
+  ignore is in tests/test_alpha.py (a frozen-model type: ignore[misc] on an
+  intentional frozen-violation probe). The count now stands at 4 total
+  (1 src + 3 tests) after R5b additions; each is a deliberate
+  frozen-violation or structural-typing probe, none suppresses a real
+  error.
