@@ -185,3 +185,157 @@ class TestAdvance:
             assert proc.returncode == 0, proc.stderr
             outputs.append(json.loads(proc.stdout.strip().splitlines()[-1]))
         assert outputs[0] == outputs[1]
+
+
+class TestBacktest:
+    """P5-S3: backtest loop — no-trade flat, buy-and-hold hand-computed,
+    drag identity, determinism, auto limitation codes, no look-ahead."""
+
+    @staticmethod
+    def _flat_frames(n=5):
+        ds = [(date(2026, 10, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        return {
+            "SYN095": pl.DataFrame({"date": ds, "close": [100.0] * n}),
+            "SYN096": pl.DataFrame({"date": ds, "close": [100.0] * n}),
+        }
+
+    @staticmethod
+    def _model(signals: dict[str, float]):
+        class M:
+            model_id = "syn_model"
+
+            def predict(self, ctx, inputs):
+                c = signals.get(ctx.as_of.date().isoformat())
+                if c is None or "SYN095" not in inputs.prices:
+                    return []
+                sig = TestPortfolioConstruction._signal("SYN095", c)
+                return [sig.model_copy(update={"model_id": "syn_model"})]
+
+        return M()
+
+    @staticmethod
+    def _run(frames, model, **kw):
+        from niveshdristi.core.market_rules import RateSchedule
+        from niveshdristi.engine.backtest import run_backtest
+
+        # rules MUST carry the same rates the broker charges, or the engine's
+        # fee-fit disagrees with the broker's cash accounting.
+        rules = TestRiskGates._rules()
+        real_rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            stt_delivery_sell=0.001, exchange_fee=0.0000345,
+            regulator_fee=0.000001, stamp_duty_buy=0.00015,
+            gst_on_fees=0.18, dp_charge_per_scrip=13.5, slippage_base_bps=0.0,
+        )
+        rules = rules.model_copy(update={"rates": real_rates})
+        base = {
+            "models": ModelBundle([model]),
+            "rules": rules,
+            "limits": GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0),
+            "rebalance": RebalanceSchedule(),
+            "initial_cash": 1_000_000.0,
+        }
+        base.update(kw)
+        return run_backtest(frames, **base)
+
+    def test_no_trade_flat_equity_zero_drag(self):
+        result = self._run(self._flat_frames(), self._model({}))
+        assert [v for _, v in result.net_equity_curve] == [1_000_000.0] * 5
+        assert result.drag == pytest.approx(0.0)
+        assert result.trade_count == 0
+
+    def test_buy_and_hold_hand_computed(self):
+        """Signal 1.0 on day 1, then HOLD (0.5 on later days — a nonzero
+        conviction keeps the position): buys floor(1M/100)=10,000 shares at
+        100 on day 2; flat prices -> equity = 1,000,000 minus the one buy's
+        fees (slippage 0). An EMPTY assessment (no signals) would liquidate;
+        that behaviour is covered by [0,1,1] in test_decide_at_t."""
+        from niveshdristi.core.market_rules import RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            exchange_fee=0.0000345, regulator_fee=0.000001,
+            stamp_duty_buy=0.00015, gst_on_fees=0.18,
+            dp_charge_per_scrip=13.5, slippage_base_bps=0.0,
+        )
+        broker = SimBroker(rates=rates, price_limits=PriceLimitRule(enabled=False))
+        result = self._run(
+            self._flat_frames(5),
+            self._model({
+                "2026-10-01": 1.0, "2026-10-02": 0.5, "2026-10-03": 0.5,
+                "2026-10-04": 0.5, "2026-10-05": 0.5,
+            }),
+            broker=broker,
+        )
+        # hand (fee-fit active): the engine reserves estimated fees BEFORE
+        # sizing, so qty = int((1,000,000 - 20*1.18) / (100*(1+0.0011855)))
+        #               = int(999,976.4 / 100.11855) = 9,987 shares.
+        # notional = 998,700; fees = 20 + 0.001*998700 + 0.0000345*998700
+        #            + 0.000001*998700 + 0.00015*998700
+        #            + 0.18*(20 + 34.45515 + 0.9987) = 1213.940543
+        expected_fees = 1213.940543
+        assert result.fees_total == pytest.approx(expected_fees, abs=0.02)
+        assert result.slippage_total == pytest.approx(0.0)
+        assert result.drag == pytest.approx(expected_fees, abs=0.02)
+        assert result.trade_count == 1
+        # cash never negative (STRONGER than the old 10,000-share expectation
+        # which spent 1,000,000 + fees and overdrawn cash by 1,215.49)
+        assert min(v for _, v in result.net_equity_curve) > 0
+        # net final = initial - fees (flat prices, 9,987 shares held at close)
+        assert result.net_equity_curve[-1][1] == pytest.approx(
+            1_000_000.0 - expected_fees + 0.0, abs=0.05
+        )
+
+    def test_auto_limitation_codes_and_banner(self):
+        result = self._run(
+            self._flat_frames(), self._model({}),
+            rates_verified=False, universe_approximate=True,
+            stub_models_used=True, benchmark_used=True,
+        )
+        codes = result.limitations.CODES
+        for code in (
+            "derived_calendar", "adjusted_price_basis", "corporate_actions_unavailable",
+            "price_level_rules_on_adjusted", "rates_unverified",
+            "approximate_universe", "survivorship_universe", "stub_models_used",
+            "benchmark_not_tri",
+        ):
+            assert code in codes, code
+        assert result.banner is not None
+        assert "DATA LIMITATIONS" in result.banner
+        assert result.limitations.promotable is False
+
+    def test_caller_can_add_never_remove_auto_codes(self):
+        result = self._run(
+            self._flat_frames(), self._model({}),
+            extra_limitations=frozenset({"no_pit_fundamentals"}),
+        )
+        assert "no_pit_fundamentals" in result.limitations.CODES
+        assert "derived_calendar" in result.limitations.CODES  # auto kept
+        assert result.limitations.promotable is False
+
+    def test_determinism_of_record_hashes(self):
+        model = self._model({"2026-10-01": 0.8, "2026-10-02": 0.4})
+        r1 = self._run(self._flat_frames(), model)
+        r2 = self._run(self._flat_frames(), model)
+        assert r1.record_hashes == r2.record_hashes
+
+    def test_no_look_ahead_future_rows_leave_past_records_unchanged(self):
+        """Perturbing frame rows AFTER session T leaves all records up to T
+        unchanged (planted wild future rows)."""
+        frames = self._flat_frames(5)
+        model = self._model({
+            "2026-10-01": 0.8, "2026-10-02": 0.6, "2026-10-03": 0.4,
+            "2026-10-04": 0.2, "2026-10-05": 0.1,
+        })
+        baseline = self._run(frames, model)
+        wild = pl.DataFrame({
+            "date": ["2026-10-10"], "close": [999_999.0],
+        })
+        frames_tampered = {
+            "SYN095": pl.concat([frames["SYN095"], wild]),
+            "SYN096": frames["SYN096"],
+        }
+        tampered = self._run(frames_tampered, model)
+        # records 1..3 (sessions before the wild row's date) identical
+        assert baseline.record_hashes[:3] == tampered.record_hashes[:3]

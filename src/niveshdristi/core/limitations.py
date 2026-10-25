@@ -29,6 +29,9 @@ class DataLimitations(BaseModel):
     #   no_pit_fundamentals          — no announcement-dated fundamentals
     #   benchmark_not_tri            — benchmark is not a total-return index
     #   regime_vol_proxy             — volatility index is a proxy/fixture
+    #   stub_models_used             — a data_status="stub" model contributed
+    #   price_level_rules_on_adjusted — price-level rules run on adjusted prices
+    #                                   (PRICE-BASIS DECISION A)
     CODES: frozenset[str] = frozenset()
 
     @model_validator(mode="after")
@@ -46,6 +49,8 @@ class DataLimitations(BaseModel):
             "no_pit_fundamentals",
             "benchmark_not_tri",
             "regime_vol_proxy",
+            "stub_models_used",
+            "price_level_rules_on_adjusted",
         }
         unknown = sorted(self.CODES - allowed)
         if unknown:

@@ -168,6 +168,14 @@ def advance(
             f"reconcile failed: broker book {broker_book} != fund positions {fund.positions()}"
         )
 
+    # Mark at T's close BEFORE executing the pending decision: target-value
+    # comparisons must use marked equity, never the (possibly fee-depleted)
+    # cash balance.
+    holdings = fund.positions()
+    nav_mark = fund.cash + sum(
+        qty * closes.get(sym, 0.0) for sym, qty in sorted(holdings.items())
+    )
+
     # 2. Execute pending decision (from T-1): SELLS FIRST then buys
     fills: list[Fill] = []
     realized: list[RealizedSale] = []
@@ -177,7 +185,6 @@ def advance(
     broker_positions: dict[str, int] = {}
     pending = fund.pending_decision
     if pending is not None:
-        holdings = fund.positions()
         instrument_cache: dict[str, Instrument] = {}
 
         def inst_for(symbol: str) -> Instrument:
@@ -188,21 +195,37 @@ def advance(
                 )
             return instrument_cache[symbol]
 
-        # SELLS: held symbols dropped from (or reduced in) the gated targets
+        # SELLS: held symbols dropped from targets sell ENTIRELY; held
+        # symbols still in targets but OVER-WEIGHT vs nav_mark TRIM to the
+        # target value (ceil to whole shares, capped at holdings).
         sell_orders: list[Order] = []
         for symbol in sorted(holdings):
             target_weight = pending.gated.weights.get(symbol, 0.0)
-            held_value = holdings[symbol] * closes.get(symbol, 0.0)
-            target_value = target_weight * fund.cash  # weights are NAV fractions
-            if held_value > target_value:
+            price = closes.get(symbol, 0.0)
+            held_qty = holdings[symbol]
+            held_value = held_qty * price
+            target_value = target_weight * nav_mark  # weights are NAV fractions
+            if target_weight <= 0.0:
                 sell_orders.append(
                     Order(
                         instrument=inst_for(symbol), side=OrderSide.SELL,
-                        quantity=holdings[symbol],
+                        quantity=held_qty,
                         placed_at=_session_close_stamp(session_date),
                         client_order_id=f"gate-sell-{symbol}",
                     )
                 )
+            elif held_value > target_value and price > 0:
+                trim_value = held_value - target_value
+                trim_qty = min(held_qty, -(-int(trim_value * 100) // (int(price * 100))))
+                if trim_qty > 0:
+                    sell_orders.append(
+                        Order(
+                            instrument=inst_for(symbol), side=OrderSide.SELL,
+                            quantity=trim_qty,
+                            placed_at=_session_close_stamp(session_date),
+                            client_order_id=f"gate-sell-{symbol}",
+                        )
+                    )
         sell_results = broker.execute(
             sell_orders, prices=closes, stamp=_session_close_stamp(session_date)
         )
@@ -226,7 +249,7 @@ def advance(
         # BUYS: build_orders sizes against updated cash (sells already in)
         buy_orders, build_logs = build_orders(
             pending.gated,
-            nav=fund.cash,
+            nav=nav_mark,
             cash=cash,
             prices=closes,
             instruments={s: inst_for(s) for s in pending.gated.weights},
@@ -234,6 +257,36 @@ def advance(
             reserve_cash=0.0,
             stamp=_session_close_stamp(session_date),
         )
+        # Fit buy quantities to cash MINUS estimated fees (fees are linear
+        # in notional plus a flat brokerage+GST component; estimate uses the
+        # real RateSchedule so buys never overdraw cash).
+        var_rate = (
+            rules.rates.stt_delivery_buy + rules.rates.exchange_fee
+            + rules.rates.regulator_fee + rules.rates.stamp_duty_buy
+        )
+        flat_fees = rules.rates.brokerage_per_order * (1.0 + rules.rates.gst_on_fees)
+        fitted_orders: list[Order] = []
+        remaining = cash
+        for order in buy_orders:
+            price = closes[order.instrument.symbol]
+            if price <= 0:
+                continue
+            max_qty = int(max(0.0, remaining - flat_fees) / (price * (1.0 + var_rate)))
+            qty = min(order.quantity, max_qty)
+            if qty <= 0:
+                note = (
+                    f"buy dropped: cash {remaining:.2f} below fees for "
+                    f"{order.instrument.symbol}"
+                )
+                events.append(note)
+                continue
+            if qty < order.quantity:
+                events.append(
+                    f"buy reduced: {order.instrument.symbol} {order.quantity}->{qty} (cash fit)"
+                )
+            fitted_orders.append(order.model_copy(update={"quantity": qty}))
+            remaining -= qty * price
+        buy_orders = fitted_orders
         for entry in build_logs:
             events.append(f"build: {entry.symbol} {entry.note}")
         buy_results = broker.execute(
