@@ -426,8 +426,16 @@ Official 2026 holidays (still blocked); VERIFIED rates (VERIFY 1-5 all
 open); a symbol->sector map source; market-cap data source; per-symbol
 circuit-band data; as-of constituents; announcement-dated fundamentals.
 
-**R4a convention finding (2026-10-25, pre-Phase-5):** SPEC TEST 2's "costs"
-counts FEES only; slippage is embedded in fill prices and NOT added back,
-so its "gross" (990,261.70) is before fees but AFTER slippage — it
-understates the true all-in drag (~534 bps of NAV, not 437). No double
-count. Phase 5 must adopt ONE convention: gross = before ALL frictions.
+**R4a convention finding + S2a resolution (2026-10-25):** SPEC TEST 2's
+original "costs" counted FEES only under a side-blind SimBroker (sell legs
+hand-rolled at flat 100.0, no slippage): 43,707 = 437.1 bps of NAV on
+~38.0M traded notional. After the side-aware SimBroker fix, the consistent
+figures are: (1) V2 FIXED-SCHEDULE headline (10 buys + 10 sells of 9,999
+shares, flat reference 100, schedule cannot shrink): 32,942.32 = 329.4 bps
+of 1M NAV, hand-derived per leg (buy fees 1,215.9667, sell fees
+1,078.3649, slippage 499.95/leg both sides) — 16.5 bps per unit of traded
+notional (11.5 fees + 5.0 slippage); (2) daily-switch harness SECONDARY:
+25,309.63 fees + 19,104.05 slippage = 444.1 bps of initial NAV on 38.2M
+traded notional (shrinks over time as slippage depletes cash — notional
+dependence is explicit). Convention: gross = same fill quantities at the
+UNSLIPPED close with no fees; drag = fees + slippage; taxes separate.

@@ -2504,9 +2504,80 @@ class TestPaperBrokerAndSpecTests:
         assert results[0].fill.filled_quantity == 100  # matches clipped size
 
     @staticmethod
+    def _fixed_schedule_costs():
+        """HEADLINE (V2, fixed schedule): 10 buys + 10 sells of 9,999 shares
+        at flat reference 100 (schedule cannot shrink). Hand-derived:
+          buy  fees/leg = 20 + 0.001*1000500 + 0.0000345*1000500
+                          + 0.000001*1000500 + 0.00015*1000500
+                          + 0.18*(20+34.517+1.0005) = 1215.9667
+          sell fees/leg = 0.001*999500 + 20 + 34.48275 + 0.9995
+                          + 0.18*(20+34.48275+0.9995) + 13.5 = 1078.3649
+          slippage/leg  = 9999 * 0.05 = 499.95 (both sides, adverse)
+          total = 10*(1215.9667+1078.3649) + 20*499.95 = 32942.32
+        Returns (fees, slippage) from the code for equality with the hand sum.
+        """
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.decision import Order, OrderSide
+        from niveshdristi.core.instrument import Instrument
+        from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        rates = RateSchedule(
+            brokerage_per_order=20.0, stt_delivery_buy=0.001,
+            stt_delivery_sell=0.001, exchange_fee=0.0000345,
+            regulator_fee=0.000001, stamp_duty_buy=0.00015,
+            gst_on_fees=0.18, dp_charge_per_scrip=13.5, slippage_base_bps=5.0,
+        )
+        broker = SimBroker(rates=rates, price_limits=PriceLimitRule(enabled=False))
+
+        def inst(s: str) -> Instrument:
+            return Instrument(symbol=s, exchange="TEST_M", market_id="TEST_M", currency="XXX")
+
+        fees = slip = 0.0
+        for _ in range(10):
+            o = Order(instrument=inst("SYN070"), side=OrderSide.BUY, quantity=9999,
+                      placed_at=datetime.now(UTC), client_order_id="gate-b")
+            f = broker.execute([o], prices={"SYN070": 100.0}, cash=1e12)[0].fill
+            fees += f.commission + f.fees
+            slip += abs(f.fill_price - 100.0) * f.filled_quantity
+        for _ in range(10):
+            o = Order(instrument=inst("SYN071"), side=OrderSide.SELL, quantity=9999,
+                      placed_at=datetime.now(UTC), client_order_id="gate-s")
+            f = broker.execute([o], prices={"SYN071": 100.0})[0].fill
+            fees += f.commission + f.fees
+            slip += abs(f.fill_price - 100.0) * f.filled_quantity
+        return fees, slip
+
+    def test_spec_2_high_turnover_loses_materially_gross_vs_net(self):
+        """SPEC TEST 2 (S2a convention): BOTH legs through SimBroker fills
+        with slippage; gross = same fill quantities at the UNSLIPPED close
+        with no fees; drag = fees + slippage (taxes separate).
+        HEADLINE = V2 fixed-schedule figure 32,942.32 (329.4 bps of 1M NAV),
+        hand-derived in _fixed_schedule_costs. The daily-switch harness is a
+        secondary line (its traded notional shrinks as slippage depletes
+        cash, so its NAV-bps drag is lower; notional dependence is explicit).
+        """
+        # HEADLINE: fixed schedule, code must equal the hand derivation
+        fees_v2, slip_v2 = self._fixed_schedule_costs()
+        hand_total = 10 * (1215.9667 + 1078.3649) + 20 * 499.95
+        assert fees_v2 + slip_v2 == pytest.approx(hand_total, abs=0.01)
+        assert fees_v2 + slip_v2 == pytest.approx(32_942.32, abs=0.01)  # 329.4 bps
+
+        # SECONDARY: daily-switch harness (V1-reconciled: 25,309.63 fees +
+        # 19,104.05 slippage = 444.1 bps; traded notional shrinks over time)
+        gross_h, net_h, fees_h, slip_h = self._run_strategy(turnover_days_gap=1, days=20)
+        gross_l, net_l, fees_l, slip_l = self._run_strategy(turnover_days_gap=10, days=20)
+        assert (fees_h + slip_h) == pytest.approx(gross_h - net_h, rel=1e-6)
+        assert fees_h + slip_h >= 10_000.0
+        assert fees_l + slip_l < (fees_h + slip_h) / 3
+        assert (fees_h + slip_h) / 1_000_000.0 * 10_000 > 400.0  # 444.1 bps actual
+
+    @staticmethod
     def _run_strategy(turnover_days_gap: int, days: int = 20):
-        """Alternate between two single-name books every `turnover_days_gap`
-        days on flat prices; returns (gross_final, net_final, cost_total)."""
+        """Both legs through SimBroker (side-aware, slippage on buys AND
+        sells). gross = fill quantities x UNSLIPPED close, no fees;
+        net = cash + holdings at close; drag = fees + slippage."""
         from niveshdristi.core.market_rules import PriceLimitRule
         from niveshdristi.execution.orders import build_orders
         from niveshdristi.execution.sim_broker import SimBroker
@@ -2520,11 +2591,12 @@ class TestPaperBrokerAndSpecTests:
                            price_limits=PriceLimitRule(enabled=False))
         cash = 1_000_000.0
         holdings: dict[str, int] = {}
-        cost_total = 0.0
+        fees_total = 0.0
+        slippage_total = 0.0
         current_symbol = "SYN070"
         for day in range(days):
             if day % turnover_days_gap != 0:
-                continue  # hold; trade only on switch days
+                continue
             current_symbol = "SYN070" if (day // turnover_days_gap) % 2 == 0 else "SYN071"
             sig = TestPortfolioConstruction._signal(current_symbol, 1.0)
             weights = construct_targets([sig], rules)
@@ -2532,13 +2604,19 @@ class TestPaperBrokerAndSpecTests:
                 weights, limits=limits, rules=rules, current_weights={},
                 prices={"SYN070": 100.0, "SYN071": 100.0}, nav=1_000_000.0,
             )
-            # sell existing holdings first (full turnover accounting)
+            # SELL existing holdings of the OTHER symbol (full switch)
             for sym in list(holdings):
-                proceeds = holdings[sym] * 100.0
-                sell_costs = compute_sell_costs(holdings[sym], 100.0)
-                cost_total += sell_costs
-                cash += proceeds - sell_costs
-                del holdings[sym]
+                if sym == current_symbol:
+                    continue
+                sell_order = TestOrderBuildingAndSimBroker._order(
+                    sym, holdings[sym]
+                ).model_copy(update={"side": OrderSide.SELL})
+                r = broker.execute([sell_order], prices={sym: 100.0})[0]
+                if r.filled and r.fill is not None:
+                    cash += r.fill.filled_quantity * r.fill.fill_price
+                    fees_total += r.fill.commission + r.fill.fees
+                    slippage_total += (100.0 - r.fill.fill_price) * r.fill.filled_quantity
+                    del holdings[sym]
             orders, _ = build_orders(
                 gated, nav=1_000_000.0, cash=cash,
                 prices={"SYN070": 100.0, "SYN071": 100.0},
@@ -2548,30 +2626,19 @@ class TestPaperBrokerAndSpecTests:
                 },
                 current_holdings={},
             )
-            results = broker.execute(orders, prices={"SYN070": 100.0, "SYN071": 100.0})
+            results = broker.execute(
+                orders, prices={"SYN070": 100.0, "SYN071": 100.0}, cash=cash
+            )
             for r in results:
                 if r.filled and r.fill is not None:
                     spend = r.fill.filled_quantity * r.fill.fill_price
-                    fee = r.fill.commission + r.fill.fees
-                    cash -= spend + fee
-                    cost_total += fee
+                    cash -= spend + r.fill.commission + r.fill.fees
+                    fees_total += r.fill.commission + r.fill.fees
+                    slippage_total += (r.fill.fill_price - 100.0) * r.fill.filled_quantity
                     holdings[r.order.instrument.symbol] = r.fill.filled_quantity
-        gross = (cash + sum(q * 100.0 for q in holdings.values()) + cost_total)
+        gross = cash + sum(q * 100.0 for q in holdings.values()) + fees_total + slippage_total
         net = cash + sum(q * 100.0 for q in holdings.values())
-        return gross, net, cost_total
-
-    def test_spec_2_high_turnover_loses_materially_gross_vs_net(self):
-        """SPEC TEST 2: high-turnover strategy's NET is materially below
-        GROSS. Hand-computed materiality: each round trip of the full
-        ~1,000,000 notional costs >= ~142.79 buy + ~141.29 sell = ~284;
-        10 switches -> >= 2,840 drag. Low-turnover control: 2 switches ->
-        much smaller drag."""
-        gross_h, net_h, costs_h = self._run_strategy(turnover_days_gap=1, days=20)
-        # gross vs net reported SEPARATELY; net materially below gross
-        assert net_h < gross_h
-        assert costs_h >= 2_800.0  # hand-computed minimum drag (see docstring)
-        gross_l, net_l, costs_l = self._run_strategy(turnover_days_gap=10, days=20)
-        assert costs_l < costs_h / 3  # control drag far smaller
+        return gross, net, fees_total, slippage_total
 
     def test_net_report_requires_verified_flag_and_banner(self):
         """A net-of-cost report cannot hide unverified rates: the report
@@ -2583,15 +2650,6 @@ class TestPaperBrokerAndSpecTests:
         assert b.banner == BANNER
 
 
-def compute_sell_costs(qty: int, price: float) -> float:
-    """Old S6 helper (fees only, no slippage) - kept for the S2a before/after
-    comparison; the S2a harness replaces its use with SimBroker fills."""
-    notional = qty * price
-    levy = notional * 0.001
-    exchange = notional * 0.0000345
-    regulator = notional * 0.000001
-    gst = (20.0 + exchange + regulator) * 0.18
-    return levy + 20.0 + exchange + regulator + gst + 13.5
 
 
 class TestSimBrokerSideAwareness:
