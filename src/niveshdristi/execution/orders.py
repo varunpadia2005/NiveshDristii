@@ -37,6 +37,7 @@ def build_orders(
     instruments: dict[str, Instrument],
     current_holdings: dict[str, int],
     reserve_cash: float = 0.0,
+    stamp: datetime | None = None,
 ) -> tuple[list[Order], list[BuildLog]]:
     """GatedTargets -> integer-share Orders (BUY delta only in v1 long-only).
 
@@ -46,7 +47,7 @@ def build_orders(
     orders: list[Order] = []
     logs: list[BuildLog] = []
     available = cash - reserve_cash
-    now = datetime.now(UTC)
+    now = stamp if stamp is not None else datetime.now(UTC)
 
     for symbol in sorted(gated.weights):
         price = prices.get(symbol)

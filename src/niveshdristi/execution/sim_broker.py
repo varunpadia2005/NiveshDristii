@@ -68,6 +68,7 @@ class SimBroker:
         reference_prices: dict[str, float] | None = None,
         advs: dict[str, float] | None = None,
         cash: float | None = None,
+        stamp: datetime | None = None,
     ) -> list[ExecutionResult]:
         results: list[ExecutionResult] = []
         available = cash if cash is not None else float("inf")
@@ -140,7 +141,7 @@ class SimBroker:
                         order=order,
                         filled_quantity=order.quantity,
                         fill_price=round(fill_price, 6),
-                        fill_time=datetime.now(UTC),
+                        fill_time=stamp if stamp is not None else datetime.now(UTC),
                         commission=breakdown.brokerage,
                         fees=round(breakdown.fees_total - breakdown.brokerage, 6),
                         slippage_bps=round(slippage_bps, 6),
