@@ -2569,21 +2569,27 @@ class TestPaperBrokerAndSpecTests:
         assert fees_v2 + slip_v2 == pytest.approx(hand_total, abs=0.01)
         assert fees_v2 + slip_v2 == pytest.approx(32_942.32, abs=0.01)  # 329.4 bps
 
-        # SECONDARY: daily-switch harness. R5b: the harness rates omitted
-        # stt_delivery_sell (0.0 levy on sells). Fixed: fees increment
-        # = sum of V1 sell notionals (9,797,798.65 + 8,817,589.00) x 0.001
-        # = 18,615.3876; new fees = 25,309.63 + 18,615.39 = 43,925.02;
-        # drag = 43,925.02 + 19,104.05 = 63,029.07 = 630.3 bps of initial NAV.
+        # SECONDARY: daily-switch harness (R6d SYMMETRIC cash: sells credit
+        # notional MINUS fees; buys debit notional PLUS fees) with an
+        # INDEPENDENT shadow gross. R6b independent computation matched to
+        # the paisa: gross = 1,000,000.00 EXACTLY (flat prices, no
+        # frictions), net = 937,582.00, drag = 62,418.00 = 624.2 bps of NAV
+        # (fees and slippage split by arithmetic identity drag = fees + slip;
+        # per-leg quantities cascade through cash, so the split is not
+        # closed-form, but the headline numbers are independently derived).
         gross_h, net_h, fees_h, slip_h = self._run_strategy(turnover_days_gap=1, days=20)
         gross_l, net_l, fees_l, slip_l = self._run_strategy(turnover_days_gap=10, days=20)
+        assert gross_h == pytest.approx(1_000_000.0, abs=0.01)  # flat prices
+        assert gross_l == pytest.approx(1_000_000.0, abs=0.01)
+        assert net_h == pytest.approx(937_582.00, abs=0.02)  # R6b independent
         assert (fees_h + slip_h) == pytest.approx(gross_h - net_h, rel=1e-6)
-        assert fees_h == pytest.approx(43_925.02, abs=0.02)  # R5b hand-derived
-        assert fees_h + slip_h == pytest.approx(63_029.07, abs=0.02)
-        assert fees_l + slip_l < (fees_h + slip_h) / 3  # control far smaller
-        drag_h_bps = (fees_h + slip_h) / 1_000_000.0 * 10_000
-        assert drag_h_bps == pytest.approx(630.3, abs=0.1)
-        assert drag_h_bps > 444.1  # > the levy-missing figure
+        drag_h_bps = (gross_h - net_h) / 1_000_000.0 * 10_000
+        assert drag_h_bps == pytest.approx(624.2, abs=0.1)
         assert drag_h_bps > 534.0  # > the R4 upper heuristic
+        assert drag_h_bps > 444.1  # > the levy-missing figure
+        # control far smaller (2 switches vs 20)
+        assert (fees_l + slip_l) < (fees_h + slip_h) / 3
+        assert net_l == pytest.approx(994_994.94, abs=0.02)  # R6b independent
 
     @staticmethod
     def _run_strategy(turnover_days_gap: int, days: int = 20):
@@ -2602,6 +2608,8 @@ class TestPaperBrokerAndSpecTests:
         broker = SimBroker(rates=TestPaperBrokerAndSpecTests._rates(),
                            price_limits=PriceLimitRule(enabled=False))
         cash = 1_000_000.0
+        shadow_cash = 1_000_000.0  # INDEPENDENT gross (R6d): unslipped, no fees
+        shadow_holdings: dict[str, int] = {}
         holdings: dict[str, int] = {}
         fees_total = 0.0
         slippage_total = 0.0
@@ -2625,9 +2633,15 @@ class TestPaperBrokerAndSpecTests:
                 ).model_copy(update={"side": OrderSide.SELL})
                 r = broker.execute([sell_order], prices={sym: 100.0})[0]
                 if r.filled and r.fill is not None:
-                    cash += r.fill.filled_quantity * r.fill.fill_price
+                    # SYMMETRIC cash (R6d): sells credit notional MINUS fees
+                    cash += (
+                        r.fill.filled_quantity * r.fill.fill_price
+                        - r.fill.commission - r.fill.fees
+                    )
                     fees_total += r.fill.commission + r.fill.fees
                     slippage_total += (100.0 - r.fill.fill_price) * r.fill.filled_quantity
+                    shadow_cash += r.fill.filled_quantity * 100.0
+                    shadow_holdings[sym] = shadow_holdings.get(sym, 0) - r.fill.filled_quantity
                     del holdings[sym]
             orders, _ = build_orders(
                 gated, nav=1_000_000.0, cash=cash,
@@ -2647,8 +2661,14 @@ class TestPaperBrokerAndSpecTests:
                     cash -= spend + r.fill.commission + r.fill.fees
                     fees_total += r.fill.commission + r.fill.fees
                     slippage_total += (r.fill.fill_price - 100.0) * r.fill.filled_quantity
+                    shadow_cash -= r.fill.filled_quantity * 100.0
+                    shadow_holdings[r.order.instrument.symbol] = (
+                        shadow_holdings.get(r.order.instrument.symbol, 0)
+                        + r.fill.filled_quantity
+                    )
                     holdings[r.order.instrument.symbol] = r.fill.filled_quantity
-        gross = cash + sum(q * 100.0 for q in holdings.values()) + fees_total + slippage_total
+        # INDEPENDENT gross (R6d): shadow cash + shadow holdings at close
+        gross = shadow_cash + sum(q * 100.0 for q in shadow_holdings.values())
         net = cash + sum(q * 100.0 for q in holdings.values())
         return gross, net, fees_total, slippage_total
 

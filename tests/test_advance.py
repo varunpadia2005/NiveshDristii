@@ -287,6 +287,42 @@ class TestBacktest:
             1_000_000.0 - expected_fees + 0.0, abs=0.05
         )
 
+    def test_gross_invariant_to_rates_and_net_levy_sensitive(self):
+        """R6d regression: gross is the INDEPENDENT shadow track (changing
+        rates must NOT change gross); net DROPS by sell_notional x levy when
+        the sell-side levy is enabled."""
+        from niveshdristi.core.market_rules import RateSchedule
+        from niveshdristi.execution.sim_broker import SimBroker
+
+        model = self._model({
+            "2026-10-01": 1.0, "2026-10-02": 0.5,
+            "2026-10-03": 1.0,  # switch (sell SYN095 buy SYN096) at session 3
+        })
+        def make_rates(levy_sell: float):
+            return RateSchedule(
+                brokerage_per_order=20.0, stt_delivery_buy=0.001,
+                stt_delivery_sell=levy_sell, exchange_fee=0.0000345,
+                regulator_fee=0.000001, stamp_duty_buy=0.00015,
+                gst_on_fees=0.18, dp_charge_per_scrip=13.5,
+                slippage_base_bps=5.0,
+            )
+        frames = self._flat_frames(5)
+        r_low = self._run(frames, model, broker=SimBroker(
+            rates=make_rates(0.0), price_limits=PriceLimitRule(enabled=False)))
+        r_high = self._run(frames, model, broker=SimBroker(
+            rates=make_rates(0.001), price_limits=PriceLimitRule(enabled=False)))
+        # gross INVARIANT: identical curves under different rates
+        assert r_low.gross_equity_curve == r_high.gross_equity_curve
+        # flat prices: gross is exactly the initial cash
+        assert all(v == pytest.approx(1_000_000.0) for _, v in r_low.gross_equity_curve)
+        # net DROPS by sell_notional x levy (sell at session 3 or 4)
+        net_low = r_low.net_equity_curve[-1][1]
+        net_high = r_high.net_equity_curve[-1][1]
+        assert net_low > net_high
+        drop = net_low - net_high
+        # the switch sells ~10,000 shares x ~100 -> drop ~ 10,000 x 0.001 x 100 = ~1000
+        assert 900.0 < drop < 1100.0, f"levy drop {drop}"
+
     def test_auto_limitation_codes_and_banner(self):
         result = self._run(
             self._flat_frames(), self._model({}),
@@ -711,7 +747,7 @@ class TestValidationGate:
 
         same = tuple(0.001 for _ in range(24))
         pbo = probability_of_backtest_overfit([same, same])
-        assert pbo == 0.0
+        assert pbo is None  # undefined: no discriminating combinations
 
     def test_pbo_hand_built_matrix(self):
         """4 trials x 8 sessions, 4 blocks of 2 (C(4,2)=6 combinations).
@@ -760,7 +796,7 @@ class TestValidationGate:
         result_overfit = run_validation_gate(rec_overfit)
         print(f"overfit-toy: status={result_overfit.status} "
               f"best_sharpe={result_overfit.best_sharpe_annual:.3f} "
-              f"dsr={result_overfit.deflated_threshold_annual:.3f} "
+              f"dsr={result_overfit.sr_threshold_deflated_annual:.3f} "
               f"psr={result_overfit.psr:.3f} pbo={result_overfit.pbo:.3f} "
               f"trials={result_overfit.trial_count}")
         # 40 noise trials: PBO 0.447 (coin flip), PSR 0.706 < 0.95 -> the
@@ -780,11 +816,12 @@ class TestValidationGate:
         result_edge = run_validation_gate(rec_edge)
         print(f"control   : status={result_edge.status} "
               f"best_sharpe={result_edge.best_sharpe_annual:.3f} "
-              f"dsr={result_edge.deflated_threshold_annual:.3f} "
+              f"dsr={result_edge.sr_threshold_deflated_annual:.3f} "
               f"psr={result_edge.psr:.3f} pbo={result_edge.pbo:.3f} "
               f"trials={result_edge.trial_count}")
         assert result_edge.status == STATUS_PASS  # control genuinely passes
         assert result_edge.psr >= 0.95
+        assert result_edge.pbo is None  # 2 identical trials: undefined (R6e)
 
     def test_result_promotable_always_false_and_requires_limitations(self):
         """ promotable is ALWAYS False on this data (pipeline demonstration)."""
@@ -861,3 +898,53 @@ class TestReports:
         assert str(json_path).startswith(str(tmp_path))
         assert str(html_path).startswith(str(tmp_path))
         assert html_path.stat().st_size > 100_000  # inline plotly.js size
+
+
+class TestValidationNamingAndUndefinedPBO:
+    """R6e: threshold naming + PBO undefined for degenerate logs."""
+
+    def test_threshold_field_renamed_not_a_probability(self):
+        """sr_threshold_deflated_annual holds the E[maxZ]-scaled Sharpe
+        THRESHOLD (can exceed 1); the probability is `psr` in [0,1]."""
+        import random
+
+        from niveshdristi.engine.validation import run_validation_gate
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        rng = random.Random(11)
+        rec = TrialRecorder()
+        for k in range(40):
+            rec.record(f"noise_{k}", {"k": str(k)},
+                       [rng.gauss(0.0, 0.01) for _ in range(120)])
+        result = run_validation_gate(rec)
+        # threshold is a Sharpe scale, not a probability
+        assert result.sr_threshold_deflated_annual > 1.0
+        assert 0.0 <= result.psr <= 1.0
+        assert not hasattr(result, "deflated_threshold_annual")
+
+    def test_pbo_undefined_for_single_trial(self):
+        from niveshdristi.engine.validation import run_validation_gate
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        rec = TrialRecorder()
+        rec.record("only", {"param": "a"}, [0.001] * 50)
+        result = run_validation_gate(rec)
+        assert result.pbo is None
+        assert "undefined" in (result.pbo_undefined_reason or "")
+
+    def test_control_two_identical_trials_pbo_undefined(self):
+        """The R6e control (2 identical trials): full ties carry no
+        discriminating information -> PBO UNDEFINED (None), not 0.0."""
+        from niveshdristi.engine.validation import run_validation_gate
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        edge = [0.0008] * 60
+        rec = TrialRecorder()
+        rec.record("edge_1", {"param": "a"}, edge)
+        rec.record("edge_2", {"param": "b"}, edge)
+        result = run_validation_gate(rec)
+        assert result.pbo is None
+        assert result.pbo_undefined_reason is not None
+        # PSR still 1.0 (persistent edge), status PASS
+        assert result.psr == 1.0
+        assert result.status == "passed_statistical_screen_pipeline_demonstration_only"

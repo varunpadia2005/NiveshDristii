@@ -55,9 +55,22 @@ class PendingDecision:
 
 
 @dataclass(frozen=True, slots=True)
+class GrossLot:
+    """Shadow-track lot: filled at the UNSLIPPED close, no fees."""
+
+    symbol: str
+    quantity: int
+    cost_per_share: float
+
+
+@dataclass(frozen=True, slots=True)
 class FundState:
     cash: float
     lots: tuple[Lot, ...] = ()
+    # Independent GROSS shadow track (R6d): fills at the UNSLIPPED session
+    # close with NO fees. Never derived from net.
+    gross_cash: float = 0.0
+    gross_lots: tuple[GrossLot, ...] = ()
     realized: tuple[RealizedSale, ...] = ()
     tax_accrued: float = 0.0
     pending_decision: PendingDecision | None = None

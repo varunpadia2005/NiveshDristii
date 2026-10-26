@@ -29,6 +29,9 @@ from niveshdristi.execution.costs import compute_costs
 
 # UNVALIDATED DEFAULTS (hypotheses, not calibrated)
 GATE_MARKER = "gate-"
+# R6f: exact-band circuit comparisons use an explicit tolerance instead
+# of floating-point luck (a move of exactly the band MUST fail).
+CIRCUIT_TOLERANCE = 1e-9
 SLIPPAGE_SCALE_CAP = 3.0  # liquidity multiplier capped at 3x base bps
 SLIPPAGE_ADV_REF = 0.10  # order value at 10% of ADV -> 1x base slippage
 
@@ -91,7 +94,7 @@ class SimBroker:
             ref = reference_prices.get(symbol)
             if ref is not None and ref > 0:
                 move = abs(price / ref - 1.0)
-                if self._limits.enabled and move >= band:
+                if self._limits.enabled and move >= band - CIRCUIT_TOLERANCE:
                     results.append(
                         ExecutionResult(
                             order, None,

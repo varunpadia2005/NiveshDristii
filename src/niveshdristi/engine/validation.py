@@ -122,7 +122,7 @@ def probabilistic_sharpe(
 
 def probability_of_backtest_overfit(
     trial_returns: Sequence[tuple[float, ...]], blocks: int = CSCV_MAX_BLOCKS
-) -> float:
+) -> float | None:
     """PBO via CSCV (formula block above). Ties count against (documented)."""
     if len(trial_returns) < 2:
         raise ConfigurationError("PBO needs at least 2 trials")
@@ -179,9 +179,11 @@ def probability_of_backtest_overfit(
         total += 1
         if logit <= 0:
             logit_below_zero += 1
-    # A log with NO discriminating combinations (all full ties) returns
-    # 0.0: exact-duplicate trials carry no overfit evidence.
-    return logit_below_zero / total if total else 0.0
+    # A log with NO discriminating combinations (all full ties) carries
+    # no overfit evidence either way: UNDEFINED (None), never a silent 0.0.
+    if total == 0:
+        return None
+    return logit_below_zero / total
 
 
 class ValidationResult(BaseModel):
@@ -194,9 +196,13 @@ class ValidationResult(BaseModel):
     rates_verified: bool
     trial_count: int
     best_sharpe_annual: float
-    deflated_threshold_annual: float
+    # sr_threshold_deflated_annual = E[maxZ under N trials] x sqrt(var of
+    # trial Sharpes): the ANNUALIZED Sharpe THRESHOLD the best trial must
+    # beat. It is NOT a probability — the probability is `psr` (formula 4).
+    sr_threshold_deflated_annual: float
     psr: float
-    pbo: float
+    pbo: float | None  # None = undefined (fewer than 2 trials/blocks)
+    pbo_undefined_reason: str | None = None
     status: str
 
     @property
@@ -225,18 +231,25 @@ def run_validation_gate(recorder: TrialRecorder) -> ValidationResult:
     dsr_threshold_annual = em * math.sqrt(var_trials)
     dsr_threshold_session = dsr_threshold_annual / math.sqrt(252)
     psr = probabilistic_sharpe(best_returns, dsr_threshold_session)
-    # Single-trial logs carry no selection bias: PBO defined 0.0 (documented).
-    pbo = (
-        probability_of_backtest_overfit([t.net_returns for t in trials])
-        if n_trials >= 2
-        else 0.0
-    )
+    # PBO is UNDEFINED (None, never a silent 0.0) when the log cannot
+    # support the CSCV: fewer than 2 trials, or no discriminating
+    # combinations (all full ties).
+    if n_trials < 2:
+        pbo = None
+        pbo_reason = "undefined: fewer than 2 recorded trials"
+    else:
+        pbo = probability_of_backtest_overfit([t.net_returns for t in trials])
+        pbo_reason = (
+            None if pbo is not None
+            else "undefined: no discriminating combinations (all full ties)"
+        )
     # Status logic: the DSR screen is the primary overfit detector — if the
     # BEST observed Sharpe does not clear the deflated threshold (E[maxZ]
     # scaled by trial-Sharpe variance), the selection bias made it look good
     # and the strategy is FLAGGED. High PBO also flags. Only then can the
     # PSR confidence and a low PBO produce a pass.
-    if pbo > PBO_MAX_FLAG:
+    pbo_flagged = pbo is not None and pbo > PBO_MAX_FLAG
+    if pbo_flagged:
         status = STATUS_FLAGGED
     elif best.sharpe <= dsr_threshold_annual:
         status = STATUS_FLAGGED
@@ -251,9 +264,10 @@ def run_validation_gate(recorder: TrialRecorder) -> ValidationResult:
         rates_verified=False,
         trial_count=n_trials,
         best_sharpe_annual=round(best.sharpe, 6),
-        deflated_threshold_annual=round(dsr_threshold_annual, 6),
+        sr_threshold_deflated_annual=round(dsr_threshold_annual, 6),
         psr=round(psr, 6),
-        pbo=round(pbo, 6),
+        pbo=round(pbo, 6) if pbo is not None else None,
+        pbo_undefined_reason=pbo_reason,
         status=status,
     )
 

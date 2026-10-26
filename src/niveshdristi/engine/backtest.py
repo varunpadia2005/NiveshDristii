@@ -89,7 +89,7 @@ def run_backtest(
         )
     calendar = DataCalendar.from_frames(frames)
     sessions = list(calendar.sessions())
-    fund = FundState(cash=initial_cash)
+    fund = FundState(cash=initial_cash, gross_cash=initial_cash)
     net_curve: list[tuple[date, float]] = []
     gross_curve: list[tuple[date, float]] = []
     fees_total = slippage_total = 0.0
@@ -114,8 +114,11 @@ def run_backtest(
         trade_count += len(record.fills)
 
         net_curve.append((session_date, record.equity_after))
-        wedge = fees_total + slippage_total
-        gross_curve.append((session_date, record.equity_after + wedge))
+        # INDEPENDENT gross track (R6d): from the shadow cash/lots in the
+        # record, NEVER derived from net.
+        gross_curve.append(
+            (session_date, float(record.risk_metrics["gross_equity_after"]))
+        )
 
     codes: set[str] = set(AUTO_CODES_BASE)
     if not rates_verified:

@@ -47,7 +47,13 @@ from niveshdristi.core.errors import ExecutionError
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.market_rules import MarketRules
 from niveshdristi.core.session import PositionSnapshot, SessionRecord
-from niveshdristi.engine.fund import FundState, Lot, PendingDecision, RealizedSale
+from niveshdristi.engine.fund import (
+    FundState,
+    GrossLot,
+    Lot,
+    PendingDecision,
+    RealizedSale,
+)
 from niveshdristi.execution.orders import build_orders
 from niveshdristi.marketdata.context import build_from_full_frames
 from niveshdristi.portfolio.blending import blend_convictions
@@ -108,6 +114,30 @@ def _close_map(frames: Mapping[str, pl.DataFrame], day: date) -> dict[str, float
         if rows.height:
             out[symbol] = float(rows["close"].to_list()[-1])
     return out
+
+
+def _gross_positions(gross_lots: tuple[GrossLot, ...]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for lot in gross_lots:
+        out[lot.symbol] = out.get(lot.symbol, 0) + lot.quantity
+    return out
+
+
+def _consume_gross_lots(
+    gross_lots: tuple[GrossLot, ...], symbol: str, quantity: int
+) -> tuple[GrossLot, ...]:
+    """Shadow-track lot consumption: flat reduction, FIFO order kept."""
+    remaining: list[GrossLot] = []
+    to_sell = quantity
+    for lot in gross_lots:
+        if lot.symbol != symbol or to_sell <= 0:
+            remaining.append(lot)
+            continue
+        take = min(to_sell, lot.quantity)
+        to_sell -= take
+        if lot.quantity > take:
+            remaining.append(GrossLot(lot.symbol, lot.quantity - take, lot.cost_per_share))
+    return tuple(remaining)
 
 
 def _consume_lots_fifo(
@@ -182,6 +212,8 @@ def advance(
     fees = slippage = 0.0
     lots = fund.lots
     cash = fund.cash
+    gross_cash = fund.gross_cash
+    gross_lots = fund.gross_lots
     broker_positions: dict[str, int] = {}
     pending = fund.pending_decision
     if pending is not None:
@@ -243,6 +275,10 @@ def advance(
                 realized.extend(slices)
                 cash += proceeds - fill.commission - fill.fees
                 broker_positions[symbol] = broker_positions.get(symbol, 0) - fill.filled_quantity
+                # INDEPENDENT gross shadow track (R6d): unslipped close, no fees
+                unslipped = closes.get(symbol, fill.fill_price)
+                gross_cash += fill.filled_quantity * unslipped
+                gross_lots = _consume_gross_lots(gross_lots, symbol, fill.filled_quantity)
             else:
                 events.append(f"sell lapse: {r.reason}")
 
@@ -305,6 +341,12 @@ def advance(
                 lots = lots + (
                     Lot(symbol, fill.filled_quantity, session_date, fill.fill_price),
                 )
+                # INDEPENDENT gross shadow track (R6d): unslipped close, no fees
+                unslipped = closes.get(symbol, fill.fill_price)
+                gross_cash -= fill.filled_quantity * unslipped
+                gross_lots = gross_lots + (
+                    GrossLot(symbol, fill.filled_quantity, unslipped),
+                )
             else:
                 events.append(f"buy lapse: {r.reason}")
     else:
@@ -318,6 +360,15 @@ def advance(
     ).positions()
     market_value = sum(qty * closes.get(sym, 0.0) for sym, qty in positions_now.items())
     equity = cash + market_value
+    # INDEPENDENT gross equity (R6d): shadow cash + shadow lots at close
+    gross_positions_now = FundState(
+        cash=gross_cash, lots=(), gross_cash=gross_cash,
+        gross_lots=gross_lots,
+    ).positions() if False else _gross_positions(gross_lots)
+    gross_market_value = sum(
+        qty * closes.get(sym, 0.0) for sym, qty in sorted(gross_positions_now.items())
+    )
+    gross_equity = gross_cash + gross_market_value
 
     # Shadow GROSS track (P5-S2a convention): same fill quantities at the
     # UNSLIPPED close with NO fees. The wedge between gross and net equity
@@ -393,6 +444,7 @@ def advance(
             "session_fees": round(fees, 6),
             "session_slippage": round(slippage, 6),
             "tax_accrued": round(tax_accrued, 6),
+            "gross_equity_after": round(gross_equity, 6),
         },
         events=tuple(events),
         created_at=_session_close_stamp(session_date),
@@ -402,6 +454,7 @@ def advance(
         tax_accrued=tax_accrued, pending_decision=new_pending,
         session_seq=seq + 1, last_session=session_date,
         last_hash=record.compute_hash(),
+        gross_cash=gross_cash, gross_lots=gross_lots,
     )
     return new_fund, record
 
