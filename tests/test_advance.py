@@ -798,3 +798,66 @@ class TestValidationGate:
         assert result.promotable is False  # ALWAYS: pipeline demonstration only
         assert result.limitations.banner is not None
         assert result.rates_verified is False
+
+
+class TestReports:
+    """P5-S8: deterministic JSON + self-contained Plotly HTML reports."""
+
+    @staticmethod
+    def _result_and_limitations():
+        from tests.test_advance import TestBacktest
+
+        frames = TestBacktest._flat_frames(5)
+        model = TestBacktest._model({"2026-10-01": 1.0, "2026-10-02": 0.5,
+                                     "2026-10-03": 0.5, "2026-10-04": 0.5,
+                                     "2026-10-05": 0.5})
+        result = TestBacktest._run(frames, model)
+        limitations = result.limitations
+        return result, limitations
+
+    @staticmethod
+    def _write(tmp_path, label="synthetic"):
+        from niveshdristi.engine.reports import write_report_files
+
+        result, limitations = TestReports._result_and_limitations()
+        return write_report_files(
+            result,
+            out_dir=tmp_path,
+            limitations=limitations,
+            rates_verified=False,
+            calendar_source="derived-from-prices",
+            as_of=result.net_equity_curve[-1][0],
+            label=label,
+        )
+
+    def test_json_round_trip_and_deterministic(self, tmp_path):
+        json_path, _ = self._write(tmp_path)
+        text1 = json_path.read_text(encoding="utf-8")
+        data = json.loads(text1)
+        assert data["rates_verified"] is False
+        assert data["rates_banner"] == "RATES UNVERIFIED"
+        assert "DATA LIMITATIONS" in data["banner"]
+        assert data["calendar_source"] == "derived-from-prices"
+        assert data["as_of"] == "2026-10-05"  # last SESSION date, not the clock
+        # byte-identical on a second run
+        _, json_path2 = None, None
+        json_path2, _ = self._write(tmp_path, label="synthetic2")
+        assert json_path2.read_text(encoding="utf-8").replace("synthetic2", "synthetic") == text1
+
+    def test_html_contains_banners_and_as_of_no_cdn(self, tmp_path):
+        _, html_path = self._write(tmp_path)
+        html = html_path.read_text(encoding="utf-8")
+        assert "DATA LIMITATIONS" in html
+        assert "RATES UNVERIFIED" in html
+        assert "as of 2026-10-05" in html
+        assert "derived-from-prices" in html
+        # plotly.js is INLINE: no external CDN script TAG may exist (the
+        # embedded bundle contains the URL as a config default string)
+        assert '<script src="https://cdn.plot.ly' not in html
+        assert "plotly.js" in html or "Plotly.newPlot" in html
+
+    def test_reports_written_only_to_caller_path(self, tmp_path):
+        json_path, html_path = self._write(tmp_path)
+        assert str(json_path).startswith(str(tmp_path))
+        assert str(html_path).startswith(str(tmp_path))
+        assert html_path.stat().st_size > 100_000  # inline plotly.js size
