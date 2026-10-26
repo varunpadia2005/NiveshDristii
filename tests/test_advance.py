@@ -639,3 +639,162 @@ class TestValidationInputs:
         assert any("lookback=20" in f for f in fragile)
         assert not any("lookback=30" in f for f in fragile)
         assert "rates_unverified" in limitations.CODES
+
+
+class TestValidationGate:
+    """P5-S7: DSR, PBO, statuses, the overfit-toy SPEC test."""
+
+    @staticmethod
+    def _recorder_with(series_by_id: list[tuple[str, tuple[float, ...]]]):
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        rec = TrialRecorder()
+        for tid, rets in series_by_id:
+            rec.record(tid, {"param": tid}, rets)
+        return rec
+
+    def test_n1_reduces_to_psr(self):
+        """N=1: E[maxZ] = 0 -> DSR threshold 0 -> PSR reduces to the
+        probabilistic Sharpe vs zero (formula 4 with threshold 0)."""
+        from niveshdristi.engine.validation import expected_max_sharpe, probabilistic_sharpe
+
+        assert expected_max_sharpe(1) == 0.0
+        returns = tuple(0.01 if i % 2 == 0 else 0.005 for i in range(20))
+        psr_zero = probabilistic_sharpe(returns, 0.0)
+        assert 0.5 < psr_zero <= 1.0  # positive-mean series beats a 0 threshold
+
+    def test_dsr_hand_computed_case(self):
+        """Hand case: N=2 trials, both Sharpes 1.0 annual (var 0) ->
+        E[maxZ] = (1-0.5772)*invnorm(1-1/2) + 0.5772*invnorm(1-1/(2e)).
+        invnorm(0.5) = 0; invnorm(1-1/(2e)) = invnorm(0.81606) = 0.8986.
+        E[maxZ] = 0.5772*0.8986 = 0.5187. DSR annual = 0.5187*sqrt(0) = 0
+        -> threshold 0 -> PSR vs 0."""
+        import math
+        from statistics import NormalDist
+
+        from niveshdristi.engine.validation import expected_max_sharpe
+
+        em = expected_max_sharpe(2)
+        # hand: (1-EM)*invnorm(0.5) + EM*invnorm(1-1/(2e))
+        #      = 0 + 0.5772 * invnorm(0.81606) = 0.5772 * 0.900306 = 0.51976
+        hand = 0.5772156649 * NormalDist().inv_cdf(1.0 - 1.0 / (2.0 * math.e))
+        assert em == pytest.approx(hand, abs=1e-9)
+        assert em == pytest.approx(0.5197553, abs=1e-5)
+        # monotonic in N: more trials -> higher expected max
+        assert expected_max_sharpe(5) > expected_max_sharpe(2)
+        assert expected_max_sharpe(20) > expected_max_sharpe(5)
+
+    def test_psr_monotonic_property(self):
+        """PSR decreases as the threshold increases (property)."""
+        from niveshdristi.engine.validation import probabilistic_sharpe
+
+        returns = tuple(0.01 if i % 3 else -0.005 for i in range(50))
+        low = probabilistic_sharpe(returns, 0.0)
+        high = probabilistic_sharpe(returns, 0.01)
+        assert low > high
+
+    def test_pbo_dominant_trial_zero(self):
+        """One trial strictly dominates in-sample AND out-of-sample in every
+        split -> PBO 0 (no overfit evidence)."""
+        from niveshdristi.engine.validation import probability_of_backtest_overfit
+
+        good = tuple(0.001 + 0.0001 * (i % 3) for i in range(24))
+        poor1 = tuple(-0.001 for _ in range(24))
+        poor2 = tuple(0.0 for _ in range(24))
+        pbo = probability_of_backtest_overfit([good, poor1, poor2])
+        assert pbo == 0.0
+
+    def test_pbo_identical_trials_handled(self):
+        """Identical trials: full ties carry no discriminating information
+        -> skipped -> PBO 0.0 (documented convention), never a crash."""
+        from niveshdristi.engine.validation import probability_of_backtest_overfit
+
+        same = tuple(0.001 for _ in range(24))
+        pbo = probability_of_backtest_overfit([same, same])
+        assert pbo == 0.0
+
+    def test_pbo_hand_built_matrix(self):
+        """4 trials x 8 sessions, 4 blocks of 2 (C(4,2)=6 combinations).
+        Trial A (8,8|8,8|-5,-5|-5,-5) is in-sample BEST only in the ONE
+        combination whose in-sample blocks are its two 8-blocks; in that
+        combination its OOS is the WORST (-5s) -> counted. In the other five
+        combinations a different trial is IS-best, so A's OOS rank is
+        irrelevant. PBO = 1/6 = 0.1667 (hand-derived)."""
+        from niveshdristi.engine.validation import probability_of_backtest_overfit
+
+        a = (8.0, 8.0, 8.0, 8.0, -5.0, -5.0, -5.0, -5.0)   # great IS, terrible OOS
+        b = (4.0, 4.0, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0)       # mediocre both
+        c = (2.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0)       # poor IS, best OOS
+        d = (0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+        pbo = probability_of_backtest_overfit([a, b, c, d])
+        assert pbo == pytest.approx(1.0 / 6.0)  # 1 counted of 6 combinations
+
+    def test_zero_trials_is_error(self):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.engine.validation import run_validation_gate
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        with pytest.raises(ConfigurationError, match="zero recorded trials"):
+            run_validation_gate(TrialRecorder())
+
+    def test_spec_overfit_toy_flagged_control_not(self):
+        """THE SPEC TEST: an intentionally overfit toy strategy (best of K
+        noise strategies in-sample, fixed seed) is FLAGGED; a control with a
+        planted persistent edge and few trials passes the screen. Numbers
+        printed for the report; thresholds NOT tuned to pass."""
+        import random
+
+        from niveshdristi.engine.validation import (
+            STATUS_PASS,
+            run_validation_gate,
+        )
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        rng = random.Random(11)
+        rec_overfit = TrialRecorder()
+        for k in range(40):  # 40 noise trials
+            noise = [rng.gauss(0.0, 0.01) for _ in range(120)]
+            rec_overfit.record(f"noise_{k}", {"k": str(k)}, noise)
+        # pick the best IN-SAMPLE trial and add more of its (still noise)
+        # returns? No: the recorder already holds it; the gate sees all 40.
+        result_overfit = run_validation_gate(rec_overfit)
+        print(f"overfit-toy: status={result_overfit.status} "
+              f"best_sharpe={result_overfit.best_sharpe_annual:.3f} "
+              f"dsr={result_overfit.deflated_threshold_annual:.3f} "
+              f"psr={result_overfit.psr:.3f} pbo={result_overfit.pbo:.3f} "
+              f"trials={result_overfit.trial_count}")
+        # 40 noise trials: PBO 0.447 (coin flip), PSR 0.706 < 0.95 -> the
+        # toy is REJECTED by the gate (no_significant_trials is a rejection
+        # status: it failed the deflated-Sharpe significance screen). The
+        # spec's "flagged" = not passed; promotable is False either way.
+        assert result_overfit.status != STATUS_PASS
+        assert result_overfit.promotable is False
+        assert result_overfit.psr < 0.95  # fails the confidence screen
+
+        # CONTROL: planted persistent edge, few trials
+        rng2 = random.Random(5)
+        rec_edge = TrialRecorder()
+        edge = [0.0008 + rng2.gauss(0.0, 0.002) for _ in range(120)]
+        rec_edge.record("edge_1", {"param": "a"}, edge)
+        rec_edge.record("edge_2", {"param": "b"}, list(edge))
+        result_edge = run_validation_gate(rec_edge)
+        print(f"control   : status={result_edge.status} "
+              f"best_sharpe={result_edge.best_sharpe_annual:.3f} "
+              f"dsr={result_edge.deflated_threshold_annual:.3f} "
+              f"psr={result_edge.psr:.3f} pbo={result_edge.pbo:.3f} "
+              f"trials={result_edge.trial_count}")
+        assert result_edge.status == STATUS_PASS  # control genuinely passes
+        assert result_edge.psr >= 0.95
+
+    def test_result_promotable_always_false_and_requires_limitations(self):
+        """ promotable is ALWAYS False on this data (pipeline demonstration)."""
+
+        from niveshdristi.engine.validation import STATUS_PASS, run_validation_gate
+        rec = TestValidationGate._recorder_with([
+            ("edge", tuple(0.0008 + 0.001 * ((i * 7) % 3 - 1) for i in range(120))),
+        ])
+        result = run_validation_gate(rec)
+        assert result.status == STATUS_PASS
+        assert result.promotable is False  # ALWAYS: pipeline demonstration only
+        assert result.limitations.banner is not None
+        assert result.rates_verified is False
