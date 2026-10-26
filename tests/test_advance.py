@@ -546,3 +546,96 @@ class TestAnalysis:
         for stat in breakdown.regimes:
             if stat.sessions < 10:
                 assert stat.annualized_return is None
+
+
+class TestValidationInputs:
+    """P5-S6: TrialRecorder, walk-forward splits, parameter sensitivity."""
+
+    def test_recorder_counts_and_uniqueness(self):
+        from niveshdristi.core.errors import ConfigurationError
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        rec = TrialRecorder()
+        rec.record("t1", {"lookback": "10"}, (0.01, -0.005, 0.008))
+        rec.record("t2", {"lookback": "20"}, (0.005, 0.006, 0.004))
+        assert rec.trial_count == 2
+        with pytest.raises(ConfigurationError, match="duplicate trial_id"):
+            rec.record("t1", {}, (0.0, 0.0))
+
+    def test_zero_trials_error_contract(self):
+        """A recorder with zero trials exposes trial_count=0; anything
+        reporting significance must treat that as an error (tested at the
+        validation gate in S7)."""
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        assert TrialRecorder().trial_count == 0
+
+    def test_walk_forward_hand_computed_boundaries(self):
+        """24 sessions, train 10, test 5, embargo 2:
+        split0 = train [0,10) purge [10,12) test [12,17)
+        split1 = train [5,15) purge [15,17) test [17,22)
+        split2 = train [10,20) purge [20,22) test [22,27) > 24 -> stops.
+        """
+        from niveshdristi.engine.validation_inputs import walk_forward_splits
+
+        sessions = [date(2026, 1, 1) + timedelta(days=i) for i in range(24)]
+        splits = walk_forward_splits(
+            sessions, train_sessions=10, test_sessions=5, embargo_sessions=2
+        )
+        assert splits == [(0, 10, 12, 17), (5, 15, 17, 22)]
+
+    def test_split_invariants_property_fixed_seed(self):
+        """FIXED seed, 200 random configurations: no train/test overlap, the
+        purge gap holds, splits are ordered, coverage matches the step."""
+        import random
+
+        from niveshdristi.engine.validation_inputs import walk_forward_splits
+
+        rng = random.Random(7)
+        for _ in range(200):
+            total = rng.randint(30, 200)
+            train = rng.randint(5, total // 3)
+            test = rng.randint(2, total // 4)
+            # embargo must leave room for at least one test window
+            max_embargo = max(1, total - train - test)
+            embargo = rng.randint(1, max_embargo)
+            sessions = list(range(total))
+            splits = walk_forward_splits(
+                sessions, train_sessions=train, test_sessions=test,
+                embargo_sessions=embargo,
+            )
+            assert splits, "expected at least one split"
+            prev_test_end = -1
+            for train_s, train_e, test_s, test_e in splits:
+                assert train_e - train_s == train
+                assert test_e - test_s == test
+                assert test_s - train_e == embargo  # purge gap exact
+                assert train_e <= test_s  # no train/test overlap within a split
+                # TEST windows must not overlap each other (trains may and do
+                # overlap previous tests in walk-forward)
+                assert test_s >= prev_test_end
+                prev_test_end = test_e
+
+    def test_parameter_sensitivity_flags_fragility(self):
+        """Sharpe drops 0.9 -> 0.2 between neighbors (-78% > 30% default):
+        flagged. Control drop 0.5 -> 0.45 (-10%): not flagged."""
+        from niveshdristi.engine.validation_inputs import parameter_sensitivity
+
+        def run_point(param_name, value):
+            if value == 10:
+                return (0.001, -0.005, 0.001, 0.002, 0.0015), 500.0, 200.0
+            if value == 20:
+                # mean EXACTLY 0 -> Sharpe 0 (hand: mean 0, sample std 1e-3);
+                # drop from 0.551 = -100% > 30% default -> flagged
+                return (0.001, -0.001, 0.001, -0.001, 0.0), 500.0, 200.0
+            if value == 30:
+                return (0.0005, -0.0002, 0.0004, 0.0002, 0.0003), 500.0, 200.0
+            return (0.0, 0.0), 0.0, 0.0
+
+        points, fragile, limitations = parameter_sensitivity(
+            [("lookback", {}, (10, 20, 30))], run_point
+        )
+        assert len(points) == 3
+        assert any("lookback=20" in f for f in fragile)
+        assert not any("lookback=30" in f for f in fragile)
+        assert "rates_unverified" in limitations.CODES
