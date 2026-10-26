@@ -529,11 +529,23 @@ verified rates, integer minor units).
 
 - **R5b DEFECT FIXED**: the SPEC TEST 2 harness rates omitted
   stt_delivery_sell — sell legs carried NO levy. Fixed (both levies at the
-  YAML 0.001). Fees 25,309.63 -> 43,925.02 (increment 18,615.39 = V1 sell
-  notionals 18,615,387.65 x 0.001, exact); drag 444.1 -> **630.3 bps of NAV**
-  (> the 444 levy-missing figure and > the 534 R4 heuristic). Regression
+  YAML 0.001).
+- **R6 DEFECTS FIXED (gross/net integrity)**: (1) the harness and
+  engine/backtest.py derived GROSS from net + wedge (net + fees + slippage)
+  instead of an independent track — on flat prices "gross" showed 1,020,100
+  (nonsense); now advance() carries an INDEPENDENT shadow track (gross_cash
+  + gross_lots filled at the UNSLIPPED close, no fees) and backtest's gross
+  curve comes from it; gross is INVARIANT to rate changes (regression
+  test). (2) the harness credited sell proceeds WITHOUT debiting sell fees
+  (overstating net and drag: 630.3 bps claimed vs 624.2 true); now cash is
+  symmetric (sells credit notional minus fees). CORRECTED HEADLINE
+  (high-turnover, flat prices): gross = 1,000,000.00 EXACTLY, net =
+  937,582.00, drag = 62,418.00 = **624.2 bps of NAV** — both matched to the
+  paisa by an independent R6b computation from the fill log. Control:
+  gross 1,000,000.00, net 994,994.94, drag 5,005.06 = 50.1 bps. Regression
   tests: levy on both sides, stamp buy-only, depository sell-only, fixed
-  fill-log hand total (symbolic, to the paisa).
+  fill-log hand total (symbolic, to the paisa), gross-invariant-to-rates,
+  net-levy-sensitivity (~1,000 drop on a ~1M sell).
 - **Engine behavior decisions (P5-S3)**: fee reservation BEFORE buy sizing
   (quantities reduced so notional + estimated fees fit cash); partial sell
   TRIMS for over-weight held symbols (ceil to whole shares); FULL

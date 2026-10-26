@@ -109,12 +109,16 @@ def probabilistic_sharpe(
         raise ConfigurationError("PSR needs at least 2 returns")
     mean = sum(returns) / n
     var = sum((r - mean) ** 2 for r in returns) / (n - 1)
-    sr = mean / math.sqrt(var) if var > 0 else 0.0
+    if var == 0:
+        # Zero-variance series: deterministic. A positive mean beats ANY
+        # finite threshold (PSR 1.0); a non-positive mean beats none (0.0).
+        return 1.0 if mean > threshold_sharpe else 0.0
+    sr = mean / math.sqrt(var)
     # skewness (population) and kurtosis (non-excess; normal = 3)
     m3 = sum((r - mean) ** 3 for r in returns) / n
     m4 = sum((r - mean) ** 4 for r in returns) / n
-    skew = m3 / math.sqrt(var) ** 3 if var > 0 else 0.0
-    kurt = m4 / var ** 2 if var > 0 else 3.0
+    skew = m3 / math.sqrt(var) ** 3
+    kurt = m4 / var ** 2
     denom = math.sqrt(max(1e-18, 1.0 - skew * sr + (kurt - 1.0) / 4.0 * sr * sr))
     psr = NormalDist().cdf((sr - threshold_sharpe) * math.sqrt(n - 1) / denom)
     return psr
@@ -234,6 +238,7 @@ def run_validation_gate(recorder: TrialRecorder) -> ValidationResult:
     # PBO is UNDEFINED (None, never a silent 0.0) when the log cannot
     # support the CSCV: fewer than 2 trials, or no discriminating
     # combinations (all full ties).
+    pbo_reason: str | None
     if n_trials < 2:
         pbo = None
         pbo_reason = "undefined: fewer than 2 recorded trials"

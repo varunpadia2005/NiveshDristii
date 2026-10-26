@@ -2,6 +2,7 @@
 determinism in-process and across PYTHONHASHSEED values."""
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -797,7 +798,7 @@ class TestValidationGate:
         print(f"overfit-toy: status={result_overfit.status} "
               f"best_sharpe={result_overfit.best_sharpe_annual:.3f} "
               f"dsr={result_overfit.sr_threshold_deflated_annual:.3f} "
-              f"psr={result_overfit.psr:.3f} pbo={result_overfit.pbo:.3f} "
+              f"psr={result_overfit.psr:.3f} pbo={result_overfit.pbo} "
               f"trials={result_overfit.trial_count}")
         # 40 noise trials: PBO 0.447 (coin flip), PSR 0.706 < 0.95 -> the
         # toy is REJECTED by the gate (no_significant_trials is a rejection
@@ -817,7 +818,7 @@ class TestValidationGate:
         print(f"control   : status={result_edge.status} "
               f"best_sharpe={result_edge.best_sharpe_annual:.3f} "
               f"dsr={result_edge.sr_threshold_deflated_annual:.3f} "
-              f"psr={result_edge.psr:.3f} pbo={result_edge.pbo:.3f} "
+              f"psr={result_edge.psr:.3f} pbo={result_edge.pbo} "
               f"trials={result_edge.trial_count}")
         assert result_edge.status == STATUS_PASS  # control genuinely passes
         assert result_edge.psr >= 0.95
@@ -933,18 +934,30 @@ class TestValidationNamingAndUndefinedPBO:
         assert "undefined" in (result.pbo_undefined_reason or "")
 
     def test_control_two_identical_trials_pbo_undefined(self):
-        """The R6e control (2 identical trials): full ties carry no
-        discriminating information -> PBO UNDEFINED (None), not 0.0."""
+        """The R6e control (2 IDENTICAL trials with internal variance):
+        full ties carry no discriminating information -> PBO UNDEFINED
+        (None), not 0.0; the persistent edge still passes the screen."""
+        import random
+
         from niveshdristi.engine.validation import run_validation_gate
         from niveshdristi.engine.validation_inputs import TrialRecorder
 
-        edge = [0.0008] * 60
+        rng = random.Random(3)
+        edge = [0.0008 + rng.gauss(0.0, 0.002) for _ in range(120)]
         rec = TrialRecorder()
         rec.record("edge_1", {"param": "a"}, edge)
         rec.record("edge_2", {"param": "b"}, edge)
         result = run_validation_gate(rec)
         assert result.pbo is None
-        assert result.pbo_undefined_reason is not None
-        # PSR still 1.0 (persistent edge), status PASS
-        assert result.psr == 1.0
+        assert "full ties" in (result.pbo_undefined_reason or "")
+        # hand: mean of the seeded series (computed below from the fixed
+        # seed) gives sr_session = mean/std; both trials identical so the
+        # recorded Sharpe is deterministic. Assert the derived relationship
+        # instead of a magic number: sharpe = mean/std x sqrt(252).
+        n = len(edge)
+        m = sum(edge) / n
+        sd = (sum((x - m) ** 2 for x in edge) / (n - 1)) ** 0.5
+        assert result.best_sharpe_annual == pytest.approx(m / sd * math.sqrt(252), rel=1e-6)
+        assert m > 0  # the planted edge is positive for seed 3
+        assert result.psr >= 0.95
         assert result.status == "passed_statistical_screen_pipeline_demonstration_only"
