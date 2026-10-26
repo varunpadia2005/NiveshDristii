@@ -552,3 +552,79 @@ verified rates, integer minor units).
   (1 src + 3 tests) after R5b additions; each is a deliberate
   frozen-violation or structural-typing probe, none suppresses a real
   error.
+
+---
+
+# Phase 5 (part 2, 2026-10-26): validation gate and reports — PIPELINE DEMONSTRATIONS ONLY
+
+## R5 cost reconciliation result
+
+DEFECT confirmed and fixed: the SPEC TEST 2 harness rates omitted
+stt_delivery_sell — sell legs carried NO levy. After the fix: SPEC TEST 2
+fees 43,925.02 (sell-levy increment 18,615.39 = V1 sell notionals
+18,615,387.65 x 0.001 EXACT), slippage 19,104.05, drag 63,029.07 =
+**630.3 bps of initial NAV** (> the 444 levy-missing figure and > the 534
+R4 heuristic). Regression tests: levy both sides, stamp buy-only,
+depository sell-only, fixed fill-log symbolic hand total.
+
+## Validation gate (engine/validation.py) — spec semantics
+
+Spec quotes (verbatim sources): PROMPT — "deflated Sharpe and probability
+of backtest overfitting (implement CPCV if feasible, otherwise document
+the simplified approach used and why)"; C10 — "a strategy is 'promotable'
+only if it passes the gate"; "an intentionally overfit toy strategy is
+flagged by the gate". The spec gives NO numeric thresholds — all below are
+named UNVALIDATED DEFAULTS (PSR_CONFIDENCE 0.95, PBO_MAX_FLAG 0.50,
+CSCV_MAX_BLOCKS 12).
+
+- Deflated Sharpe (Bailey & Lopez de Prado 2014, formulas cited in the
+  module docstring): E[maxZ] = (1-gamma)*invnorm(1-1/N) +
+  gamma*invnorm(1-1/(N*e)); DSR threshold = E[maxZ] x sqrt(var of trial
+  Sharpes); PSR of the best trial vs that threshold with skew/kurtosis
+  adjustments. N comes from the MANDATORY TrialRecorder (never by hand;
+  zero trials is an error).
+- PBO via simplified CSCV (balanced half-block combinations); partial ties
+  weight half-against; FULL ties skipped (no discriminating information);
+  a log with no discriminating combinations returns PBO 0.0. CPCV full
+  combinatorial recombination DEFERRED (rationale in cpcv_deferral_note:
+  C(S,S/2)^2 paths exceed practical runtime here — the spec says "if
+  feasible").
+- Status logic: PBO > 0.5 OR best Sharpe <= DSR threshold -> FLAGGED;
+  PSR >= 0.95 and PBO <= 0.5 -> passed_statistical_screen_pipeline_
+  demonstration_only; otherwise no_significant_trials (a rejection).
+  promotable is ALWAYS False on this data.
+
+## Overfit-toy vs control (verbatim numbers, fixed seeds)
+
+- OVERFIT TOY (40 noise trials, seed 11): status=no_significant_trials
+  (REJECTED — failed the deflated-Sharpe significance screen: PSR 0.706 <
+  0.95); best Sharpe 3.537 vs DSR threshold 2.753; PBO 0.447.
+- CONTROL (planted persistent edge, 2 trials, seed 5):
+  status=passed_statistical_screen_pipeline_demonstration_only; best
+  Sharpe 6.112; DSR 0.000 (2 identical trials -> no selection variance);
+  PSR 1.000; PBO 0.000 (full ties skipped). The gate separated them: the
+  toy is rejected for lack of significance, the control passes the screen.
+
+## PLAIN STATEMENT
+
+No result on this data is evidence of real-world performance. Everything
+runs on synthetic frames with unverified rates and approximate universes;
+the best possible status is a pipeline demonstration
+(passed_statistical_screen_pipeline_demonstration_only), and promotable is
+always False.
+
+## Reports (engine/reports.py)
+
+Deterministic JSON (sorted keys, fixed 6-dp floats, byte-identical across
+runs) and self-contained Plotly HTML (plotly.js INLINE — no CDN, no
+network at view time; ~4.9 MB per file). Every report shows the
+DataLimitations banner, the RATES UNVERIFIED banner, the calendar source,
+and an "as of" date from the LAST SESSION DATE of the data (never the
+system clock). Files are written only under a caller-supplied path.
+
+## Phase 6 needs
+
+Integer-paise or Decimal ledger decision; hash-chain verification and the
+paper-replay byte-equality property (C5 done-when); scheduler; 2026
+holidays (blocked); verified rates; TrialRecorder integration into every
+real backtest run.
