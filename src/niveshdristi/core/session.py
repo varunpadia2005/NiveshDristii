@@ -58,24 +58,59 @@ class SessionRecord(BaseModel):
     events: tuple[str, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    def compute_hash(self) -> str:
-        """Compute SHA256 hash of this record (excluding the hash itself)."""
-        # Deterministic serialization
+    @staticmethod
+    def _to_paise(value: float) -> int:
+        """Canonical paise conversion for hash inputs (ROUND_HALF_UP)."""
+        from decimal import ROUND_HALF_UP, Decimal
+
+        return int(
+            (Decimal(str(value)) * 100).to_integral_value(rounding=ROUND_HALF_UP)
+        )
+
+    def _canonical(self) -> dict:
+        """Amendment B (P6-S1): canonical hash form — ALL money fields as
+        integer paise, fixed key order (json sort_keys). Additions only:
+        the model fields themselves are unchanged."""
+        def money_map(entries):
+            out = []
+            for item in entries:
+                d = dict(item)
+                if "fill_price" in d:
+                    d["fill_price"] = self._to_paise(d["fill_price"])
+                if "commission" in d:
+                    d["commission"] = self._to_paise(d["commission"])
+                if "fees" in d:
+                    d["fees"] = self._to_paise(d["fees"])
+                out.append(d)
+            return out
+
         data = {
             "session_id": self.session_id,
             "session_date": self.session_date.isoformat(),
             "previous_hash": self.previous_hash,
             "decisions": [d.model_dump() for d in self.decisions],
-            "fills": [f.model_dump() for f in self.fills],
-            "positions_after": [p.model_dump() for p in self.positions_after],
-            "cash_after": self.cash_after,
-            "equity_after": self.equity_after,
+            "fills": money_map(f.model_dump() for f in self.fills),
+            "positions_after": [
+                {**p.model_dump(), "avg_cost": self._to_paise(p.avg_cost),
+                 "market_value": self._to_paise(p.market_value)}
+                for p in self.positions_after
+            ],
+            "cash_after": self._to_paise(self.cash_after),
+            "equity_after": self._to_paise(self.equity_after),
             "risk_metrics": self.risk_metrics,
             "events": self.events,
             "created_at": self.created_at.isoformat(),
         }
-        # Sort keys for determinism
-        serialized = json.dumps(data, sort_keys=True, default=str)
+        return data
+
+    def compute_hash(self) -> str:
+        """Compute SHA256 hash of this record (excluding the hash itself).
+
+        Amendment B (P6-S1): the hash input is the CANONICAL form — all
+        money fields as integer paise, fixed key order — so a live tick, a
+        backtest and a replay of the same session hash identically even if
+        their float paths differ in the last bits."""
+        serialized = json.dumps(self._canonical(), sort_keys=True, default=str)
         return sha256(serialized.encode()).hexdigest()
 
     def verify_chain(self, previous_record: SessionRecord | None) -> bool:

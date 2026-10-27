@@ -116,9 +116,11 @@ class TestAdvance:
     def test_fifo_consumption_hand_computed(self):
         """Buy 10 @100 (d1), 10 @110 (d2); sell 10 @120 (d3): FIFO consumes
         the d1 lot -> gain (120-100)*10 = 200; d2 lot untouched."""
+        # Paise cost basis (amendment A): 10 sh @ 100.00 = 100,000 paise;
+        # 10 sh @ 110.00 = 110,000 paise.
         lots = (
-            Lot("SYN090", 10, date(2026, 1, 1), 100.0),
-            Lot("SYN090", 10, date(2026, 1, 2), 110.0),
+            Lot("SYN090", 10, date(2026, 1, 1), 100_000),
+            Lot("SYN090", 10, date(2026, 1, 2), 110_000),
         )
         remaining, realized, proceeds = _consume_lots_fifo(
             lots, "SYN090", 10, date(2026, 1, 3), 120.0
@@ -126,7 +128,7 @@ class TestAdvance:
         assert proceeds == pytest.approx(1_200.0)
         assert len(realized) == 1
         assert realized[0].gain == pytest.approx(200.0)
-        assert remaining == (Lot("SYN090", 10, date(2026, 1, 2), 110.0),)
+        assert remaining == (Lot("SYN090", 10, date(2026, 1, 2), 110_000),)
 
     def test_reconcile_mismatch_raises(self):
         class RogueBroker(SimBroker):
@@ -961,3 +963,143 @@ class TestValidationNamingAndUndefinedPBO:
         assert m > 0  # the planted edge is positive for seed 3
         assert result.psr >= 0.95
         assert result.status == "passed_statistical_screen_pipeline_demonstration_only"
+
+
+class TestPaperLedger:
+    """P6-S1: JSONL ledger — format, chain verification, tamper detection."""
+
+    @staticmethod
+    def _header():
+        from niveshdristi.core.limitations import DataLimitations
+        from niveshdristi.core.market_rules import MarketRules
+        from niveshdristi.paper.ledger import build_header
+
+        return build_header(
+            fund_id="paper_test",
+            created=date(2026, 10, 1),
+            config_digest="deadbeef",
+            rules=MarketRules(market_id="TEST_M"),
+            limitations=DataLimitations(CODES=frozenset({"rates_unverified"})),
+            rates_verified=False,
+        )
+
+    @staticmethod
+    def _record(seq: int, prev: str, day: date):
+        from datetime import UTC, datetime
+
+        from niveshdristi.core.session import SessionRecord
+
+        return SessionRecord(
+            session_id=seq, session_date=day, previous_hash=prev,
+            cash_after=1_000.0, equity_after=1_000.0,
+            created_at=datetime(2026, 10, 2, 15, 30, tzinfo=UTC),
+        )
+
+    def test_create_append_verify_chain(self, tmp_path):
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        r0 = self._record(0, "0" * 64, date(2026, 10, 1))
+        h0 = ledger.append(r0, "0" * 64)
+        r1 = self._record(1, h0, date(2026, 10, 2))
+        h1 = ledger.append(r1, h0)
+        assert ledger.verify() == []
+        assert ledger.last_session_date() == date(2026, 10, 2)
+        assert ledger.last_hash() == h1
+
+    def test_tamper_flip_byte_fails_verification(self, tmp_path):
+        """SPEC TEST (P6): corrupting one ledger line fails verification
+        LOUDLY, naming the line."""
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        h0 = ledger.append(self._record(0, "0" * 64, date(2026, 10, 1)), "0" * 64)
+        ledger.append(self._record(1, h0, date(2026, 10, 2)), h0)
+        raw = ledger.path.read_bytes()
+        # flip ONE numeric character inside record line 2 (cash 1000.0 ->
+        # 1001.0 rupees): the stored hash no longer matches the content
+        tampered = raw.replace(b'"cash_after":1000.0', b'"cash_after":1001.0')
+        assert tampered != raw  # the byte flip landed
+        ledger.path.write_bytes(tampered)
+        problems = ledger.verify()
+        assert problems
+        assert any("line 3" in p or "line 2" in p for p in problems)
+
+    def test_swap_two_lines_fails(self, tmp_path):
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        h0 = ledger.append(self._record(0, "0" * 64, date(2026, 10, 1)), "0" * 64)
+        ledger.append(self._record(1, h0, date(2026, 10, 2)), h0)
+        lines = ledger.lines()
+        swapped = [lines[0], lines[2], lines[1]]  # swap the two records
+        newline = b"\n"
+        raw = newline.join(
+            json.dumps(line, sort_keys=True, separators=(",", ":"), default=str).encode()
+            for line in swapped
+        ) + newline
+        ledger.path.write_bytes(raw)
+        problems = ledger.verify()
+        assert problems  # chain links break after the swap
+
+    def test_delete_middle_line_fails(self, tmp_path):
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        h0 = ledger.append(self._record(0, "0" * 64, date(2026, 10, 1)), "0" * 64)
+        h1 = ledger.append(self._record(1, h0, date(2026, 10, 2)), h0)
+        ledger.append(self._record(2, h1, date(2026, 10, 3)), h1)
+        lines = ledger.lines()
+        deleted = [lines[0], lines[2]]  # drop record 1
+        newline = b"\n"
+        raw = newline.join(
+            json.dumps(line, sort_keys=True, separators=(",", ":"), default=str).encode()
+            for line in deleted
+        ) + newline
+        ledger.path.write_bytes(raw)
+        problems = ledger.verify()
+        assert problems  # previous-hash link breaks
+
+    def test_partial_tail_refused(self, tmp_path):
+        from niveshdristi.core.errors import LedgerError
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        ledger.append(self._record(0, "0" * 64, date(2026, 10, 1)), "0" * 64)
+        raw = ledger.path.read_bytes()
+        ledger.path.write_bytes(raw[: -10])  # simulate a crash mid-write
+        with pytest.raises(LedgerError, match="partial trailing line"):
+            ledger.lines()
+
+    def test_crlf_free_bytes(self, tmp_path):
+        """Amendment C: binary mode, UTF-8, "
+" line endings ONLY — no CRLF
+        translation may occur even on Windows."""
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        ledger.append(self._record(0, "0" * 64, date(2026, 10, 1)), "0" * 64)
+        raw = ledger.path.read_bytes()
+        crlf = b"\r\n"
+        newline = b"\n"
+        assert crlf not in raw
+        assert raw.count(newline) == 2  # header + record
+
+    def test_header_fields(self, tmp_path):
+        from niveshdristi.paper.ledger import PaperLedger
+
+        ledger = PaperLedger(tmp_path / "ledger.jsonl")
+        ledger.create(self._header())
+        header = ledger.header()
+        assert header["fund_id"] == "paper_test"
+        assert header["ledger_format_version"] == 1
+        assert header["rates_verified"] is False
+        assert "rates_unverified" in header["limitation_codes"]
+        assert "python" in header["library_versions"]
+        assert "polars" in header["library_versions"]

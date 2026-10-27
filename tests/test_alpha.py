@@ -170,6 +170,7 @@ class TestImportBoundary:
         "src/niveshdristi/alpha",
         "src/niveshdristi/portfolio",
         "src/niveshdristi/execution",
+        "src/niveshdristi/paper",
     )
     MARKET_IMPORT = re.compile(r"^\s*(?:from|import)\s+niveshdristi\.markets\b", re.MULTILINE)
 

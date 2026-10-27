@@ -46,6 +46,7 @@ from niveshdristi.core.decision import Fill, Order, OrderSide
 from niveshdristi.core.errors import ExecutionError
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.market_rules import MarketRules
+from niveshdristi.core.money import from_paise, snap, to_paise
 from niveshdristi.core.session import PositionSnapshot, SessionRecord
 from niveshdristi.engine.fund import (
     FundState,
@@ -136,7 +137,9 @@ def _consume_gross_lots(
         take = min(to_sell, lot.quantity)
         to_sell -= take
         if lot.quantity > take:
-            remaining.append(GrossLot(lot.symbol, lot.quantity - take, lot.cost_per_share))
+            remaining.append(
+                GrossLot(lot.symbol, lot.quantity - take, lot.cost_basis_paise)
+            )
     return tuple(remaining)
 
 
@@ -156,14 +159,25 @@ def _consume_lots_fifo(
         realized.append(
             RealizedSale(
                 symbol=symbol, quantity=take, buy_date=lot.buy_date,
-                sell_date=sell_date, cost_per_share=lot.cost_per_share,
+                sell_date=sell_date,
+                cost_per_share=snap(from_paise(lot.cost_paise_total) / lot.quantity),
                 sell_price=sell_price,
             )
         )
         proceeds += take * sell_price
         to_sell -= take
         if lot.quantity > take:
-            remaining.append(Lot(symbol, lot.quantity - take, lot.buy_date, lot.cost_per_share))
+            consumed_paise = to_paise(
+                lot.cost_paise_total * take / lot.quantity
+            )
+            remaining.append(
+                Lot(
+                    symbol,
+                    lot.quantity - take,
+                    lot.buy_date,
+                    lot.cost_paise_total - consumed_paise,
+                )
+            )
     if to_sell > 0:
         raise ExecutionError(
             f"sell of {quantity} {symbol} exceeds held lots (short by {to_sell})"
@@ -339,13 +353,22 @@ def advance(
                 cash -= fill.filled_quantity * fill.fill_price + fill.commission + fill.fees
                 broker_positions[symbol] = broker_positions.get(symbol, 0) + fill.filled_quantity
                 lots = lots + (
-                    Lot(symbol, fill.filled_quantity, session_date, fill.fill_price),
+                    Lot(
+                        symbol,
+                        fill.filled_quantity,
+                        session_date,
+                        to_paise(fill.filled_quantity * fill.fill_price),
+                    ),
                 )
                 # INDEPENDENT gross shadow track (R6d): unslipped close, no fees
                 unslipped = closes.get(symbol, fill.fill_price)
                 gross_cash -= fill.filled_quantity * unslipped
                 gross_lots = gross_lots + (
-                    GrossLot(symbol, fill.filled_quantity, unslipped),
+                    GrossLot(
+                        symbol,
+                        fill.filled_quantity,
+                        to_paise(fill.filled_quantity * unslipped),
+                    ),
                 )
             else:
                 events.append(f"buy lapse: {r.reason}")
@@ -449,6 +472,13 @@ def advance(
         events=tuple(events),
         created_at=_session_close_stamp(session_date),
     )
+    # Amendment A (P6-S1): snap the money state to the PAISE GRID at the END
+    # of every advance() — live ticks, backtests and replays then carry
+    # byte-identical, drift-free numbers (float cash carried from session to
+    # session would drift from ledger-rebuilt cash by up to half a paisa per
+    # fill). Lot cost bases are already integer paise at creation.
+    cash = snap(cash)
+    gross_cash = snap(gross_cash)
     new_fund = FundState(
         cash=cash, lots=lots, realized=fund.realized + tuple(realized),
         tax_accrued=tax_accrued, pending_decision=new_pending,
