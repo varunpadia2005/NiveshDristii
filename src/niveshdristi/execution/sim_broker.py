@@ -22,6 +22,7 @@ Behaviours:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from niveshdristi.core.decision import Fill, Order, OrderSide
 from niveshdristi.core.market_rules import PriceLimitRule, RateSchedule
@@ -67,13 +68,15 @@ class SimBroker:
         self,
         orders: list[Order],
         *,
-        prices: dict[str, float],
+        prices: dict[str, float] | None = None,
         reference_prices: dict[str, float] | None = None,
         advs: dict[str, float] | None = None,
         cash: float | None = None,
         stamp: datetime | None = None,
+        **kwargs: Any,
     ) -> list[ExecutionResult]:
         results: list[ExecutionResult] = []
+        prices = prices if prices is not None else {}
         available = cash if cash is not None else float("inf")
         band = max(self._limits.bands) if self._limits.bands else 1.0
         reference_prices = reference_prices or prices

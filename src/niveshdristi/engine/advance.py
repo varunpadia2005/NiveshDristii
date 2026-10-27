@@ -66,9 +66,12 @@ SETTLEMENT_DAYS_DEFAULT = 1
 
 
 class Broker(Protocol):
-    """Execution interface (matches execution.broker)."""
+    """Execution interface (matches execution.broker).
 
-    def execute(self, orders: list[Order], **kwargs: Any) -> list[Any]:
+    Returns Sequence[Any] (covariant) so concrete brokers may return their
+    own result types; callers consume .filled/.reason/.fill duck-typed."""
+
+    def execute(self, orders: list[Order], **kwargs: Any) -> Sequence[Any]:
         ...
 
 
