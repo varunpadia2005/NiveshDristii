@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import subprocess
+import sys
 from datetime import date
 
 from niveshdristi.llm import (
@@ -163,7 +163,6 @@ class TestProbeLlmDryRun:
     FAKE_KEY = "sk-or-v1-PROBEprobePROBEprobe0000000000"
 
     def _run(self, *extra):
-        import subprocess
 
         env = dict(os.environ)
         env["NDR_LLM_KEY"] = self.FAKE_KEY
@@ -190,7 +189,6 @@ class TestProbeLlmDryRun:
 
     def test_live_flag_without_key_still_offline(self):
         # flag set but no key -> typed refusal, still no network call made
-        import subprocess
 
         env = dict(os.environ)
         env.pop("NDR_LLM_KEY", None)
