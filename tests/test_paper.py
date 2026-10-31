@@ -260,7 +260,11 @@ class TestReplayByteEquality:
 
         self._seed_and_tick(tmp_path, days=3)
         snaps = tmp_path / "paper_test" / "snapshots"
-        target = sorted(snaps.rglob("SYN090_*.parquet"))[0]
+        # The LAST session: a position exists there and is marked to market
+        # on close. Tampering the FIRST session's snapshot would be vacuous
+        # (no position yet, and the synthetic models ignore frame content),
+        # so the record hash could not feel it.
+        target = sorted(snaps.rglob("SYN090_*.parquet"))[-1]
         tampered = pl.read_parquet(target)
         tampered = tampered.with_columns(pl.lit(999.0).alias("close"))
         tampered.write_parquet(target)

@@ -94,6 +94,12 @@ class GatedTargets(BaseModel):
             )
         super().__init__(**data)
 
+    @classmethod
+    def _deserialize(cls, data: dict[str, Any]) -> GatedTargets:
+        """Module-private deserialization (ledger cache round trip); the
+        direct-construction convention check still applies to callers."""
+        return cls(_token=_TOKEN, **data)
+
 
 def _remove_empty(weights: dict[str, float]) -> None:
     for sym in [s for s, w in weights.items() if w <= 0.0]:

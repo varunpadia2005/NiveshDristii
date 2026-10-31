@@ -52,6 +52,7 @@ from niveshdristi.engine.advance import (
     RebalanceSchedule,
     advance,
 )
+from niveshdristi.engine.fund import GrossLot, Lot, PendingDecision
 from niveshdristi.paper.ledger import PaperLedger, build_header
 from niveshdristi.portfolio.risk_gates import GateLimits
 
@@ -276,10 +277,7 @@ def tick(
         return outcome
 
     processed = 0
-    cash = _rebuild_cash_from_ledger(ledger, header)
-    last_hash = ledger.last_hash()
-    fund = FundState(cash=cash, session_seq=len(ledger.records()),
-                     last_session=last_session, last_hash=last_hash)
+    fund = _rebuild_state(ledger, header, paths.broker_cache)
     for session in candidates:
         valid, total = coverage_for_session(frames, session, universe)
         if valid == 0:
@@ -314,7 +312,10 @@ def tick(
                 models=models, rules=rules, limits=limits,
                 rebalance=rebalance, tax_enabled=tax_enabled,
             )
-            ledger.append(record, fund.last_hash)
+            linked_hash = ledger.append(record, fund.last_hash)
+            fund = fund.with_(last_hash=linked_hash)
+            # cache written AFTER the ledger fsync (C2 commit order); it
+            # carries the PENDING decision created by this session's assess
             _write_cache_atomic(paths.broker_cache, record, fund)
             save_snapshot(paths, session, snapshots_for_session)
             processed += 1
@@ -360,32 +361,112 @@ def _halt(paths: FundDirectory, fund_id: str, session: date, reason: str) -> Non
     paths.halt_flag.write_text(json.dumps(flag, sort_keys=True), encoding="utf-8")
 
 
-def _rebuild_cash_from_ledger(ledger: PaperLedger, header: dict) -> float:
+def _rebuild_state(
+    ledger: PaperLedger, header: dict, cache_path: Path
+) -> FundState:
+    """Shared by tick() and replay: rebuild FundState from the LEDGER
+    (cash, lots via FIFO from the fill history) + the CACHE (pending
+    decision). The ledger is the source of truth for money; the cache only
+    carries the pending decision between sessions."""
+
     records = ledger.records()
-    if not records:
-        return float(header.get("initial_cash_paise", 0)) / 100.0
-    return float(records[-1]["cash_after"])
+    initial_cash = float(header.get("initial_cash_paise", 0)) / 100.0
+    cash = initial_cash
+    lots: list[Lot] = []
+    seq = 0
+    last_hash = "0" * 64
+    last_session: date | None = None
+    for record in records:
+        session = date.fromisoformat(record["session_date"])
+        for fill in record.get("fills", []):
+            symbol = fill["order"]["instrument"]["symbol"]
+            qty = int(fill["filled_quantity"])
+            side = fill["order"]["side"]
+            price = float(fill["fill_price"])
+            if side == "buy":
+                lots.append(
+                    Lot(symbol, qty, session, to_paise(qty * price))
+                )
+            else:
+                to_sell = qty
+                kept: list[Lot] = []
+                for lot in lots:
+                    if lot.symbol != symbol or to_sell <= 0:
+                        kept.append(lot)
+                        continue
+                    take = min(to_sell, lot.quantity)
+                    to_sell -= take
+                    consumed = to_paise(lot.cost_paise_total * take / lot.quantity)
+                    if lot.quantity > take:
+                        kept.append(
+                            Lot(
+                                symbol, lot.quantity - take, lot.buy_date,
+                                lot.cost_paise_total - consumed,
+                            )
+                        )
+                lots = kept
+        cash = float(record["cash_after"])
+        last_hash = record["hash"]
+        last_session = session
+        seq = int(record["session_id"]) + 1
+
+    # GROSS shadow track rebuild (R6d continuation): quantities from the
+    # ledger fills (identical to the net path), cash path walked at each
+    # session's UNSLIPPED close from that session's stored snapshot.
+    gross_cash = initial_cash
+    gross_qty: dict[str, int] = {}
+    for record in records:
+        session = date.fromisoformat(record["session_date"])
+        session_closes = {}
+        snap_dir = Path(str(cache_path)).parent / "snapshots" / session.isoformat()
+        manifest_path = snap_dir / "manifest.json"
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            import polars as _pl
+
+            for sym, digest in manifest.items():
+                matches = sorted(snap_dir.glob(f"{sym}_{digest[:16]}.parquet"))
+                if matches:
+                    frame = _pl.read_parquet(matches[0])
+                    if frame.height:
+                        session_closes[sym] = float(frame["close"].to_list()[-1])
+        for fill in record.get("fills", []):
+            symbol = fill["order"]["instrument"]["symbol"]
+            qty = int(fill["filled_quantity"])
+            side = fill["order"]["side"]
+            close = session_closes.get(symbol, 0.0)
+            if side == "buy":
+                gross_qty[symbol] = gross_qty.get(symbol, 0) + qty
+                gross_cash -= qty * close
+            else:
+                gross_qty[symbol] = gross_qty.get(symbol, 0) - qty
+                gross_cash += qty * close
+
+    pending = None
+    if cache_path.exists():
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        pending_data = cache.get("pending")
+        if pending_data:
+
+            from niveshdristi.portfolio.risk_gates import GatedTargets
+
+            pending = PendingDecision(
+                decision_date=date.fromisoformat(pending_data["decision_date"]),
+                gated=GatedTargets._deserialize(pending_data["gated"]),
+            )
+    return FundState(
+        cash=cash, lots=tuple(lots), pending_decision=pending,
+        session_seq=seq, last_session=last_session, last_hash=last_hash,
+        gross_cash=gross_cash,
+        gross_lots=tuple(
+            GrossLot(sym, qty, 0) for sym, qty in sorted(gross_qty.items())
+        ),
+    )
 
 
 def records_cash(ledger: PaperLedger) -> float:
     records = ledger.records()
     return float(records[-1]["cash_after"]) if records else 0.0
-
-
-def _rebuild_fund_from_ledger(ledger: PaperLedger, initial_cash: float) -> FundState:
-    """Rebuild FundState from the ledger records (amendment C2)."""
-    records = ledger.records()
-    cash = initial_cash
-    last_hash = "0" * 64
-    last_session = None
-    seq = 0
-    for record in records:
-        cash = float(record["cash_after"])
-        last_hash = record["hash"]
-        last_session = date.fromisoformat(record["session_date"])
-        seq = int(record["session_id"]) + 1
-    return FundState(cash=cash, session_seq=seq, last_session=last_session,
-                     last_hash=last_hash)
 
 
 def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:

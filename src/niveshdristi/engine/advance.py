@@ -378,7 +378,11 @@ def advance(
     else:
         broker_positions = dict(fund.positions())
 
-    # 3. Mark to market at T close
+    # 3. Mark to market at T close. Amendment A: cash is snapped to the
+    # paise grid BEFORE the record is created, so the LEDGER stores the
+    # snapped value (the record is the end-of-advance state).
+    cash = snap(cash)
+    gross_cash = snap(gross_cash)
     positions_now = FundState(
         cash=cash, lots=lots, realized=fund.realized,
         tax_accrued=fund.tax_accrued, pending_decision=None,
@@ -482,11 +486,14 @@ def advance(
     # fill). Lot cost bases are already integer paise at creation.
     cash = snap(cash)
     gross_cash = snap(gross_cash)
+    # last_hash is NOT updated here: the DRIVER (tick/replay) owns the
+    # hash chain — it links the record via ledger.append and carries the
+    # returned hash into the next session's FundState.
     new_fund = FundState(
         cash=cash, lots=lots, realized=fund.realized + tuple(realized),
         tax_accrued=tax_accrued, pending_decision=new_pending,
         session_seq=seq + 1, last_session=session_date,
-        last_hash=record.compute_hash(),
+        last_hash=fund.last_hash,
         gross_cash=gross_cash, gross_lots=gross_lots,
     )
     return new_fund, record
