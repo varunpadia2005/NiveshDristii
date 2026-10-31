@@ -889,3 +889,11 @@ benchmark, constituents, announcement-dated fundamentals.
   control is structural — only caller-built EvidenceItems are ever included
   in a prompt, and an LlmView is display-only text that no decision, signal,
   weight, gate, order or ledger record ever consumes.
+
+## Push record (R8, second batch)
+
+All Phase 7 + R8 commits pushed to origin/rebuild/v2 in 15 milestone
+fast-forward pushes (e09c5f1 .. 1183233, each verified equal to origin
+after the push). Final: rebuild/v2 == origin/rebuild/v2 == 1183233.
+HISTORY RULE in force: pushed commits are never amended/rebased/reset;
+defects fixed with follow-up commits; future work stays LOCAL until review.
