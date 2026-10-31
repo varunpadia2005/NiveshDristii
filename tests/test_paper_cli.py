@@ -308,7 +308,6 @@ class TestOutgoingDataProof:
                                                       fake_provider,
                                                       monkeypatch):
         from niveshdristi.llm.fake import FakeLLM
-        from niveshdristi.llm.factory import PROVIDER_REGISTRY
 
         class RecordingFake(FakeLLM):
             pass  # FakeLLM.records already keeps every request
@@ -330,7 +329,8 @@ class TestOutgoingDataProof:
             str(tmp_path), "--session", "2026-10-02",
         ])
         assert result.exit_code == 0, result.output
-        assert created and created[0].requests, "the flow must have built a request"
+        assert created, "the flow must have built an LLM"
+        assert created[0].requests, "the flow must have built a request"
         request = created[0].requests[0]
         prompt_text = request.system_prompt + "\n" + "\n".join(request.data_blocks)
         print("EXACT OUTGOING PROMPT (after redaction):")
