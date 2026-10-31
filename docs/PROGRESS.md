@@ -744,3 +744,37 @@ benchmark_not_tri, regime_vol_proxy, stub_models_used, price_level_rules
 _on_adjusted, derived_calendar, adjusted_price_basis). Still blocked:
 official 2026 NSE holiday list (single strict xfail stays), verified fee
 rates, TRI benchmark, constituent list, announcement-dated fundamentals.
+
+## R7 verification (pre-push)
+
+- Full gate WITH --phase0: G04 (Config MD5 00fb409a...) and G05 (Backtest
+  equality) RAN and PASSED; GATE: PASS at 99974d2~1 and re-confirmed after.
+- Four SPEC TESTS, raw pytest -v, all PASSED:
+  1. TestPaperFund::test_tick_idempotent_noop_byte_for_byte (ledger bytes
+     identical before/after a repeated tick).
+  2. TestPaperLedger::test_tamper_flip_byte_fails_verification (one flipped
+     byte -> verification fails naming the line).
+  3. TestBacktestPaperEquality::test_backtest_records_equal_paper_ledger
+     (NEW): run_backtest on the same stored frames/config as the paper fund;
+     every paper record matched by session_date to its backtest twin, hash
+     AND canonical bytes equal. run_backtest gained `tax_enabled` (default
+     True, unchanged) and BacktestResult.records. Test fund is created the
+     day BEFORE the first data session, otherwise the pending-decision
+     timelines are offset by one session and records cannot correspond.
+  4. TestBacktestPaperEquality::test_backtest_paper_equality_across_hash_seeds
+     (NEW): the same comparison in subprocesses under PYTHONHASHSEED 3/777.
+- Phase 5 backtest NEVER had the self-referencing previous_hash defect: at
+  99686c3~1 backtest.py already linked via model_copy(previous_hash=prev)
+  with prev carried locally. The defect was only in the paper tick path.
+  No Phase 5 expectation changed.
+- 52421e3 -> c6371f8: the second R6 commit added validation.py PBO-undefined
+  handling (11 lines), 29 test lines, and the PROGRESS.md note; the first
+  carried the advance/fund/sim_broker gross-track fixes.
+- type: ignore inventory (src/ + tests/): advance.py:425 [arg-type];
+  test_alpha.py:1618, 2112 [misc]; test_advance.py:492 [arg-type]. NONE was
+  removed in Phase 6 (last change was P5-S4, 80c2934) — the "two removed"
+  premise does not hold; nothing was removed.
+- Safety re-check: zero order-placement code in new packages; network I/O
+  only in legacy folders and markets/in_nse/providers/yfinance_adapter.py
+  (lazy import, provider chain) composed in cli/main.py. Tests and the gate
+  never touch the network or the default fund directory.
