@@ -215,3 +215,82 @@ class TestPaperCLI:
         data = json.loads(r.output)
         assert data["rates_banner"] == "RATES UNVERIFIED" or data["rates_verified"]
         assert len(data["limitations"]) > 0
+
+
+class TestPaperExplain:
+    """P7-S5: `nd paper explain` — validated, cited, disclaimed, degrading."""
+
+    @staticmethod
+    def _seed(tmp_path, fake_provider):
+        """A ticked fund using the shared fake-provider fixture (no network)."""
+        create = runner.invoke(app, [
+            "--json", "paper", "create", "paper_test", "--created",
+            "2026-10-01", "--universe", "SYN090,SYN091", "--base", str(tmp_path),
+        ])
+        assert create.exit_code == 0, create.output
+        tick = runner.invoke(app, [
+            "--json", "paper", "tick", "paper_test", "--as-of", "2026-10-02",
+            "--base", str(tmp_path),
+        ])
+        assert tick.exit_code == 0, tick.output
+
+    def test_explain_degrades_cleanly_with_default_fake(self, tmp_path, fake_provider):
+        """The factory FakeLLM outputs '{}' — schema-invalid — so the
+        command must print a DEGRADED no-op, exit 0 (R11)."""
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["status"] == "degraded"
+        assert "LlmSchemaError" in data["detail"]
+
+    def test_explain_no_such_session_is_noop(self, tmp_path, fake_provider):
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "1999-01-01",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["status"] == "no-op"
+        assert "1999-01-01" in data["detail"]
+
+    def test_explain_ok_with_scripted_provider(self, tmp_path, fake_provider,
+                                               monkeypatch):
+        """A scripted provider whose output is grounded in the CLI's
+        evidence (no numbers -> always traceable) prints a validated view
+        carrying the official disclaimer and the session as_of."""
+        from niveshdristi.llm.factory import PROVIDER_REGISTRY
+        from niveshdristi.llm.fake import FakeLLM
+
+        class ScriptedFake(FakeLLM):
+            def __init__(self, **kw):
+                super().__init__([(
+                    '{"summary": "session summary", "claims": [{"text": '
+                    '"no fills this session", "evidence_ids": ["fill_count"]}]}'
+                )], **kw)
+
+        monkeypatch.setitem(PROVIDER_REGISTRY, "fake", ScriptedFake)
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["status"] == "ok", data
+        view = data["view"]
+        assert "NOT investment advice" in view["disclaimer"]
+        assert view["as_of"] == "2026-10-02"  # session date, NOT the clock
+        assert view["claims"][0]["evidence_ids"] == ["fill_count"]
+
+    def test_explain_unknown_fund_is_noop(self, tmp_path, fake_provider):
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "ghost_fund", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0
+        assert json.loads(result.output)["status"] == "no-op"

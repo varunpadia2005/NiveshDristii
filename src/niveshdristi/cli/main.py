@@ -583,6 +583,99 @@ def paper_unlock(
     _output({"status": "unlocked"}, ctx.obj["json_output"])
 
 
+@paper_app.command("explain")
+def paper_explain(
+    ctx: typer.Context,
+    fund_id: str = typer.Argument(..., help="Fund ID"),
+    session: str = typer.Option(..., "--session", help="Session date (YYYY-MM-DD)"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+    provider: str = typer.Option("fake", "--provider", help="LLM provider (registered only)"),
+    model: str = typer.Option("fake-model", "--model", help="Model id (unverified; VERIFY note)"),
+    cache_dir: str | None = typer.Option(None, "--cache-dir", help="Response cache directory"),
+):
+    """Educational explanation of a stored session (R2: evidence text only).
+
+    Builds evidence from the stored SessionRecord, calls the LLM through
+    make_llm with the safety pipeline (delimited data blocks, redaction by
+    default) and prints a validated, cited, disclaimed explanation. ANY
+    failure degrades to a clear no-op (R11); the LLM never enters the
+    trading path (R1/R10).
+    """
+    from datetime import date as _date
+
+    from niveshdristi.llm import (
+        Budget,
+        EvidenceItem,
+        RunBudget,
+        data_block,
+        make_llm,
+        run_llm,
+    )
+    from niveshdristi.llm.safety import SYSTEM_RULES, redact
+    from niveshdristi.paper.ledger import LedgerError, PaperLedger
+
+    try:
+        ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+        record = next(
+            (r for r in ledger.records() if r.get("session_date") == session),
+            None,
+        )
+    except LedgerError as exc:
+        _output({"status": "no-op", "detail": str(exc)}, ctx.obj["json_output"])
+        return
+    if record is None:
+        _output(
+            {"status": "no-op", "detail": f"no stored session {session}"},
+            ctx.obj["json_output"],
+        )
+        return
+
+    evidence = (
+        EvidenceItem(id="session_date", text=f"session date {session}"),
+        EvidenceItem(
+            id="cash_after",
+            text="cash after the session (rupees)",
+            numbers=(float(record["cash_after"]),),
+        ),
+        EvidenceItem(
+            id="equity_after",
+            text="equity after the session (rupees)",
+            numbers=(float(record["equity_after"]),),
+        ),
+        EvidenceItem(
+            id="fill_count",
+            text="number of fills this session",
+            numbers=(float(len(record.get("fills", []))),),
+        ),
+    )
+    raw_text = json.dumps(record, sort_keys=True, default=str)
+    # R6: redact fund id, cash, equity and any path unless opted in (no
+    # opt-in flags are exposed in this command; defaults are the safe ones).
+    outgoing = redact(
+        raw_text,
+        {"fund_ids": fund_id, "cash": str(record["cash_after"]),
+         "paths": str(_fund_paths(fund_id, base).root)},
+    )
+    llm = make_llm(provider, model)
+    outcome = run_llm(
+        llm,
+        data_blocks=(data_block("session_record", outgoing),),
+        evidence=evidence,
+        model_id=model,
+        as_of=_date.fromisoformat(session),  # caller-supplied, from the record
+        budget=Budget(),
+        run=RunBudget(Budget()),
+        cache_dir=cache_dir,
+        extra_system=SYSTEM_RULES,
+    )
+    payload: dict[str, Any] = {"status": outcome.status}
+    if outcome.view is not None:
+        payload["view"] = outcome.view.model_dump(mode="json")
+    if outcome.detail:
+        payload["detail"] = outcome.detail
+    _output(payload, ctx.obj["json_output"])
+
+
 # ============================================================
 # Validation commands
 # ============================================================
