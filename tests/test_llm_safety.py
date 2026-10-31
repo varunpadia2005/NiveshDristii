@@ -10,14 +10,17 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from niveshdristi.llm import (
     DISCLAIMER_TEXT,
     EvidenceItem,
     FakeLLM,
     LlmGroundingError,
+    LlmProviderError,
     LlmRequest,
     LlmSchemaError,
+    LlmView,
     data_block,
     make_llm,
     validate_output,
@@ -109,8 +112,10 @@ class TestInjectionR5:
             {"disclaimer": "no disclaimer"},
             {"schema_version": "9"},
         ):
-            with pytest.raises(Exception):
-                v.model_copy(attempt).model_validate(dict(v))  # frozen contract
+            # privileged fields are pinned at CONSTRUCTION: rebuilding the
+            # view with an overridden disclaimer/schema is rejected
+            with pytest.raises(ValidationError, match="DISCLAIMER_TEXT|schema_version"):
+                LlmView(**{**v.model_dump(), **attempt})
 
 
 class TestRedactionR6:
@@ -177,10 +182,9 @@ class TestSecretsR7:
         FakeLLM never sees keys (they live in a real adapter at call time);
         prove the error text is clean even when the prompt contained one."""
         llm = FakeLLM([])
-        try:
+        with pytest.raises(LlmProviderError) as raised:
             llm.complete(LlmRequest(
                 system_prompt=SYSTEM_RULES,
                 data_blocks=(data_block("k", self.FAKE_KEY),),
             ))
-        except Exception as exc:  # noqa: BLE001 - the test IS the check
-            assert self.FAKE_KEY not in str(exc)
+        assert self.FAKE_KEY not in str(raised.value)

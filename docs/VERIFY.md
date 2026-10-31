@@ -167,3 +167,15 @@ backtest:
 ---
 
 *Last updated: 2026-10-24 — Sections 1–8 remain unverified. Section 9 reflects the live P0 probe of 2026-10-23/24 (see that section for per-source verdicts); items 4 (STT delivery, exchange charges) are marked DOUBTFUL pending Finance Act / NSE circular checks.*
+## 11. LLM Providers (UNVERIFIED — Phase 7)
+
+No live LLM call was made during Phase 7. The only registered provider in
+make_llm is the test double ("fake"). The spec names Anthropic, OpenAI,
+Google and Ollama — their model ids, terms of use, pricing and endpoints
+are UNVERIFIED and none is asserted to exist anywhere in the code. Real
+HTTP exists only in the opt-in operator script tools/probe_llm.py (stdlib
+urllib; key read from NDR_LLM_KEY at call time; redacted summary output).
+Before registering any real provider: accept its terms, verify model ids
+manually (they change), set explicit budgets, and keep pytest/the gate
+offline. Personas (spec C9) are NOT implemented in Phase 7; LlmView is
+evidence text only (binding rule R2).

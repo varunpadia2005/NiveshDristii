@@ -94,6 +94,13 @@ class LlmView(BaseModel):
             )
         return v
 
+    @field_validator("schema_version")
+    @classmethod
+    def _schema_version_pinned(cls, v: str) -> str:
+        if v != SCHEMA_VERSION:
+            raise ValueError(f"unsupported schema_version: {v!r}")
+        return v
+
 
 # UNVALIDATED DEFAULT caps (R8): chosen for tests, not measured against any
 # real provider's pricing or latency; change deliberately, never silently.
