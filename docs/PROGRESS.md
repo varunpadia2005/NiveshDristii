@@ -640,3 +640,107 @@ Integer-paise or Decimal ledger decision; hash-chain verification and the
 paper-replay byte-equality property (C5 done-when); scheduler; 2026
 holidays (blocked); verified rates; TrialRecorder integration into every
 real backtest run.
+
+---
+
+# Phase 6 — Paper fund, ledger, scheduler (amendments A–K)
+
+Commits (branch rebuild/v2): R6 fixes c6371f8/52421e3; P6-S1 3f4cfa4;
+P6-S2 1d080c1; P6-S3 02384da; P6-S4 d859f79; P6-S5 99686c3/91477c6/74a06ba.
+Final gate: PASS (428 passed, 1 xfailed — the strict holidays xfail).
+
+## Money representation (amendment A)
+
+`core/money.py`: `to_paise(rupees)` = `Decimal(str(rupees)) * 100`,
+`ROUND_HALF_UP` (ties away from zero: 0.005 -> 1, -0.005 -> -1);
+`from_paise(p) = p / 100.0`; `snap(rupees)` rounds to the paise at the
+ledger boundary. FundState is snapped at the END of every advance().
+Lot cost basis is stored as whole-lot integer paise (`cost_paise_total`);
+FIFO partial consumption splits proportionally in paise.
+
+Changed expectations (old -> new, all hand-derived):
+- Lot.cost_per_share float -> cost_paise_total int; cost_per_share is now
+  a derived property. Derivation: 3 sh @ 86.059457 -> total 258.178371 ->
+  to_paise = 25818 paise; property returns 86.06.
+- to_paise(0.005) = 1, to_paise(0.015) = 2, to_paise(-0.005) = -1,
+  to_paise(-1.234) = -123 (half-up away from zero, not banker's).
+- snap(86.059457) = 86.06.
+- RealizedSale.gain is snapped: (sell - cost_per_share) * qty, snapped.
+
+## Canonical record hash (amendment B)
+
+`SessionRecord._canonical()` converts ALL money fields (cash_after,
+equity_after, fill prices/commissions/fees, position avg_cost/market_value)
+to integer paise with a fixed key order; the stored JSONL line keeps raw
+floats for readability but the hash is over the canonical form. Replay
+byte equality therefore does not depend on float serialization.
+
+## Hash-chain ownership (defect found and fixed)
+
+advance() does NOT set last_hash; the DRIVER (tick / replay) links records
+via `ledger.append(record, fund.last_hash)` and carries the returned hash.
+Before the fix, each stored line's previous_hash was its own hash — replay
+would have caught it (it did: the byte-equality test failed).
+
+## Commit protocol (C2) and locking (C3)
+
+Per tick: lock the fund for the whole tick -> compute -> write the ledger
+line with flush + os.fsync (THE commit point) -> broker cache updated
+atomically (temp file + replace). The ledger is truth; the cache is
+derivable. Cache/ledger mismatch halts (never auto-repairs);
+`nd paper recover` is operator-only. Lock file via os.open(O_CREAT|O_EXCL)
+(cross-platform); a stale lock is cleared only by `nd paper unlock`.
+
+## Tick semantics (amendment E)
+
+Valid bar = finite close AND volume > 0. Coverage threshold 0.60 (default).
+Zero valid bars -> non-session no-op. Idempotent (last_session >= candidate
+-> no-op). Catch-up <= 10 sessions; stale (> 5) -> no-op. Provider fetch
+failure is a no-op, not a halt; an exception INSIDE the tick is a halt
+(amendment F: kill-switch flag + non-zero exit).
+
+## Kill switch, events, notifier (F/G/H)
+
+`halt()` writes a JSON flag; `is_halted()` fails SAFE (corrupt/mismatched
+flag -> halted); `resume()` requires a non-empty operator note.
+`EventLog` takes an INJECTED clock (no wall-clock reads in the package);
+wall-clock timestamps appear only in events.jsonl/heartbeat. `Notifier` is
+a Protocol with NullNotifier / LogOnlyNotifier — no network code.
+
+## Replay (C5 done-when)
+
+`nd paper replay` re-runs advance() from STORED per-session snapshot
+parquets (content-hashed filenames, manifest.json per session) — never a
+refetch. Every regenerated record hash must equal the stored hash. The
+tamper regression proved the check is live: tampering the LAST session's
+close breaks byte equality (a held position is marked to market there);
+tampering the FIRST session is vacuous because no position exists yet and
+the synthetic models ignore frame content.
+
+## R6 gross/net integrity (superseding numbers)
+
+The gross curve was derived (net + fee wedge) and the harness credited
+sell proceeds without debiting fees. Fixed: independent gross shadow track
+in advance() (gross_cash / gross_lots filled at the UNSLIPPED session
+close, no fees) + symmetric harness cash. Corrected SPEC TEST 2 headline:
+gross 1,000,000.00 EXACTLY (invariant to fee rates), net 937,582.00,
+drag 62,418.00 = 624.2 bps. Earlier figures (630.3 / 437 / 444) are
+superseded.
+
+## CLI + scheduler
+
+`nd paper create/tick/status/list/halt/resume/verify/replay/recover/unlock`
+(typer subcommands; `--created`, `--universe` on create; halt-on-exception
+wrapper in tick). Fund directories default to `~/niveshdristi/funds`.
+docs/SCHEDULER.md documents MANUAL Windows Task Scheduler setup (exact
+command line; nothing is registered automatically). No automated NSE
+requests; the CLI composition point imports the yfinance adapter only.
+
+## Limitations carried / still blocked
+
+DataLimitations codes ride in the ledger header (rates_unverified,
+corporate_actions_unavailable, approximate/survivorship universe,
+benchmark_not_tri, regime_vol_proxy, stub_models_used, price_level_rules
+_on_adjusted, derived_calendar, adjusted_price_basis). Still blocked:
+official 2026 NSE holiday list (single strict xfail stays), verified fee
+rates, TRI benchmark, constituent list, announcement-dated fundamentals.
