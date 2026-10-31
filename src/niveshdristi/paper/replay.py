@@ -17,12 +17,7 @@ from typing import Any
 import polars as pl
 
 from niveshdristi.core.market_rules import MarketRules
-from niveshdristi.engine.advance import (
-    FundState,
-    ModelBundle,
-    RebalanceSchedule,
-    advance,
-)
+from niveshdristi.engine.advance import FundState, ModelBundle, RebalanceSchedule, advance
 from niveshdristi.execution.sim_broker import SimBroker
 from niveshdristi.paper.fund import FundPaths
 from niveshdristi.paper.ledger import PaperLedger
@@ -45,9 +40,13 @@ def replay_fund(
         return {"byte_identical": True, "sessions": [], "note": "no records to replay"}
 
     rules = MarketRules.model_validate(json.loads(header["market_rules_digest"]))
+    # The replay starts FRESH (cash from the header): each replayed session
+    # re-creates its own pending decision via the deterministic assess, so
+    # the cache's pending (which belongs to the LAST live session) must NOT
+    # seed the first replayed session.
     initial_cash = float(header.get("initial_cash_paise", 0)) / 100.0
+    fund = FundState(cash=initial_cash, gross_cash=initial_cash)
     broker = SimBroker(rates=rules.rates, price_limits=rules.price_limits)
-    fund = FundState(cash=initial_cash)
     comparisons: list[dict] = []
     byte_identical = True
 
@@ -85,6 +84,8 @@ def replay_fund(
             models=models, rules=rules, limits=limits,
             rebalance=rebalance, tax_enabled=False,
         )
+        # carry the chain: the record's previous_hash came from fund.last_hash
+        fund = fund.with_(last_hash=record.compute_hash())
         regenerated_hash = record.compute_hash()
         stored_hash = stored.get("hash", "")
         matches = regenerated_hash == stored_hash

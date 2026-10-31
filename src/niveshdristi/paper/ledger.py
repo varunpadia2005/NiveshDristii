@@ -51,7 +51,8 @@ def build_header(
         "fund_id": fund_id,
         "created": created.isoformat(),
         "config_digest": config_digest,
-        "market_rules_digest": _dump(rules.model_dump()),
+        # mode="json" handles frozensets (list) and dates — JSON-safe round trip
+        "market_rules_digest": _dump(rules.model_dump(mode="json")),
         "limitation_codes": sorted(limitations.CODES),
         "rates_verified": rates_verified,
         "library_versions": {

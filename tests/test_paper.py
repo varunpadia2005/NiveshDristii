@@ -6,7 +6,10 @@ written. No clock reads: the candidate date is an explicit argument.
 """
 
 import json
-from datetime import date
+import os
+import subprocess
+import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -179,12 +182,128 @@ class TestPaperFund:
         assert "recover" in result["reason"]
         assert (fund_dir / "halt.flag").exists()  # halted by the tick driver
 
-    def _tick(self, tmp_path, frames, clock_now, signals=None, fund_id="paper_test",
-              fetch=None):
+    @staticmethod
+    def _tick(tmp_path, frames, clock_now, signals=None, fund_id="paper_test",
+              fetch=None, models=None):
+        from niveshdristi.engine.advance import ModelBundle as MB
+
+        bundle = models or MB([TestAdvance._model(signals or {})])
         return tick(
             fund_id, base=tmp_path, fetch_bars=fetch or (lambda u, d: frames),
             clock_now=clock_now,
-            models=ModelBundle([TestAdvance._model(signals or {})]),
-            rules=TestRiskGates._rules(), limits=self._limits(),
+            models=bundle,
+            rules=TestRiskGates._rules(), limits=TestPaperFund._limits(),
             rebalance=RebalanceSchedule(), universe=["SYN090", "SYN091"],
         )
+
+
+class TestReplayByteEquality:
+    """P6-S5: the C5 done-when — replay equals the ledger records."""
+
+    @staticmethod
+    def _seed_and_tick(tmp_path, days=3):
+        ledger_path = TestPaperFund._create(tmp_path)
+        dates = [
+            (date(2026, 10, 1) + timedelta(days=i)).isoformat() for i in range(days)
+        ]
+        c = [100.0 + 5.0 * ((i * 13) % 7) / 7 for i in range(len(dates))]
+        common = {
+            "date": dates, "close": c, "high": [v * 1.01 for v in c],
+            "low": [v * 0.99 for v in c], "adj_close": c,
+            "adj_high": [v * 1.01 for v in c], "adj_low": [v * 0.99 for v in c],
+            "volume": [1_000_000] * len(dates),
+        }
+        frames = {"SYN090": pl.DataFrame(common), "SYN091": pl.DataFrame(common)}
+        signals = {d: 0.5 + 0.1 * (i % 2) for i, d in enumerate(dates)}
+
+        bundle = ModelBundle([TestAdvance._model(signals)])
+        result = TestPaperFund._tick(
+            tmp_path, frames, date(2026, 10, days), signals, models=bundle
+        )
+        return result, frames, ledger_path, bundle
+
+    @staticmethod
+    def _synth_bundle():
+        """The SAME synthetic model bundle the tick used (rebuilt from the
+        same signals — deterministic)."""
+        from datetime import timedelta as _td
+
+        from tests.test_advance import TestAdvance
+
+        dates = [
+            (date(2026, 10, 1) + _td(days=i)).isoformat() for i in range(3)
+        ]
+        signals = {d: 0.5 + 0.1 * (i % 2) for i, d in enumerate(dates)}
+        return ModelBundle([TestAdvance._model(signals)])
+
+    @staticmethod
+    def _limits_v1():
+        return GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0)
+
+    def test_replay_byte_identical(self, tmp_path):
+        from niveshdristi.paper.replay import replay_fund
+
+        self._seed_and_tick(tmp_path, days=3)
+        result = replay_fund(
+            "paper_test", base=tmp_path,
+            models=self._synth_bundle(), limits=self._limits_v1(),
+            rebalance=RebalanceSchedule(),
+        )
+        assert result["byte_identical"] is True
+        for entry in result["sessions"]:
+            assert entry["match"] is True
+
+    def test_replay_detects_snapshot_tampering(self, tmp_path):
+        """A tampered snapshot breaks byte equality (the ledger stays right)."""
+        from niveshdristi.engine.advance import RebalanceSchedule
+        from niveshdristi.paper.replay import replay_fund
+
+        self._seed_and_tick(tmp_path, days=3)
+        snaps = tmp_path / "paper_test" / "snapshots"
+        target = sorted(snaps.rglob("SYN090_*.parquet"))[0]
+        tampered = pl.read_parquet(target)
+        tampered = tampered.with_columns(pl.lit(999.0).alias("close"))
+        tampered.write_parquet(target)
+        result = replay_fund(
+            "paper_test", base=tmp_path,
+            models=self._synth_bundle(), limits=self._limits_v1(),
+            rebalance=RebalanceSchedule(),
+        )
+        assert result["byte_identical"] is False
+        assert any(e.get("match") is False for e in result["sessions"])
+
+    @staticmethod
+    def _replay(tmp_path):
+        from niveshdristi.paper.replay import replay_fund
+
+        return replay_fund(
+            "paper_test", base=tmp_path,
+            models=TestReplayByteEquality._synth_bundle(),
+            limits=TestReplayByteEquality._limits_v1(),
+            rebalance=RebalanceSchedule(),
+        )
+
+    def test_replay_across_hash_seeds(self, tmp_path):
+        """PYTHONHASHSEED variant: replay in a subprocess with a different
+        hash seed still matches the ledger."""
+
+
+        self._seed_and_tick(tmp_path, days=3)
+        script = (
+            "import sys, json; "
+            "sys.path.insert(0, 'src'); sys.path.insert(0, 'tests'); "
+            "from tests.test_paper import TestReplayByteEquality; "
+            "r = TestReplayByteEquality._replay(tmp_path=sys.argv[1]); "
+            "print(json.dumps({'byte_identical': r['byte_identical']}))"
+        )
+        outputs = []
+        for seed in ("3", "777"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = seed
+            proc = subprocess.run(
+                [sys.executable, "-c", script, str(tmp_path)],
+                capture_output=True, text=True, env=env, timeout=240,
+            )
+            assert proc.returncode == 0, proc.stderr
+            outputs.append(json.loads(proc.stdout.strip().splitlines()[-1]))
+        assert outputs[0] == outputs[1] == {"byte_identical": True}
