@@ -16,6 +16,7 @@ from pydantic.config import ConfigDict
 
 from niveshdristi.core.limitations import DataLimitations
 from niveshdristi.core.market_rules import MarketRules
+from niveshdristi.core.session import SessionRecord
 from niveshdristi.engine.advance import FundState, ModelBundle, RebalanceSchedule, advance
 from niveshdristi.engine.calendar import DataCalendar
 from niveshdristi.portfolio.risk_gates import GateLimits
@@ -43,6 +44,9 @@ class BacktestResult(BaseModel):
     clamp_count: int
     calendar_source: str = "derived-from-prices"
     record_hashes: tuple[str, ...] = ()
+    # Full linked SessionRecords (previous_hash applied); NEW for R7 SPEC
+    # TEST 3 (paper-replay vs backtest record-by-record comparison).
+    records: tuple[SessionRecord, ...] = ()
 
     @property
     def drag(self) -> float:
@@ -72,6 +76,7 @@ def run_backtest(
     rebalance: RebalanceSchedule,
     initial_cash: float = 1_000_000.0,
     broker=None,
+    tax_enabled: bool = True,
     rates_verified: bool = False,
     universe_approximate: bool = False,
     stub_models_used: bool = False,
@@ -97,17 +102,19 @@ def run_backtest(
     trade_count = 0
     clamp_count = 0
     hashes: list[str] = []
+    records: list[SessionRecord] = []
     prev_hash = "0" * 64
 
     for session_date in sessions:
         fund, record = advance(
             fund, session_date, broker, frames,
             models=models, rules=rules, limits=limits,
-            rebalance=rebalance, tax_enabled=True,
+            rebalance=rebalance, tax_enabled=tax_enabled,
         )
         linked = record.model_copy(update={"previous_hash": prev_hash})
         prev_hash = linked.compute_hash()
         hashes.append(prev_hash)
+        records.append(linked)
         fees_total += float(record.risk_metrics.get("session_fees", 0.0))
         slippage_total += float(record.risk_metrics.get("session_slippage", 0.0))
         tax_total = fund.tax_accrued
@@ -140,4 +147,5 @@ def run_backtest(
         trade_count=trade_count,
         clamp_count=clamp_count,
         record_hashes=tuple(hashes),
+        records=tuple(records),
     )

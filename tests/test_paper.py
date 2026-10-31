@@ -51,9 +51,9 @@ class TestPaperFund:
         return GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0)
 
     @staticmethod
-    def _create(tmp_path, fund_id="paper_test"):
+    def _create(tmp_path, fund_id="paper_test", created=date(2026, 10, 1)):
         return create_fund(
-            fund_id, base=tmp_path, created=date(2026, 10, 1),
+            fund_id, base=tmp_path, created=created,
             config_digest="cfg", rules=MarketRules(market_id="TEST_M"),
             limitations=DataLimitations(CODES=frozenset({"rates_unverified"})),
             rates_verified=False, initial_cash=1_000_000.0,
@@ -202,7 +202,10 @@ class TestReplayByteEquality:
 
     @staticmethod
     def _seed_and_tick(tmp_path, days=3):
-        ledger_path = TestPaperFund._create(tmp_path)
+        # created the day BEFORE the first data session, so the paper
+        # pipeline assesses from the same first session as a backtest over
+        # the same frames (R7 SPEC TEST 3 alignment).
+        ledger_path = TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
         dates = [
             (date(2026, 10, 1) + timedelta(days=i)).isoformat() for i in range(days)
         ]
@@ -292,7 +295,9 @@ class TestReplayByteEquality:
         hash seed still matches the ledger."""
 
 
-        self._seed_and_tick(tmp_path, days=3)
+        # each subprocess replays its OWN seeded copy (fresh fund per run)
+        self._seed_and_tick(tmp_path / "seed3", days=3)
+        self._seed_and_tick(tmp_path / "seed777", days=3)
         script = (
             "import sys, json; "
             "sys.path.insert(0, 'src'); sys.path.insert(0, 'tests'); "
@@ -305,9 +310,88 @@ class TestReplayByteEquality:
             env = dict(os.environ)
             env["PYTHONHASHSEED"] = seed
             proc = subprocess.run(
-                [sys.executable, "-c", script, str(tmp_path)],
+                [sys.executable, "-c", script, str(tmp_path / f"seed{seed}")],
                 capture_output=True, text=True, env=env, timeout=240,
             )
             assert proc.returncode == 0, proc.stderr
             outputs.append(json.loads(proc.stdout.strip().splitlines()[-1]))
         assert outputs[0] == outputs[1] == {"byte_identical": True}
+
+
+def _backtest_matches_paper(tmp_path) -> dict:
+    """R7 SPEC TEST 3 helper: run run_backtest on the SAME stored frames and
+    configuration as the paper fund (same synthetic models, rules, limits,
+    rebalance, initial cash, broker construction, tax_enabled=False) and
+    compare every SessionRecord one by one with the paper ledger — hash and
+    canonical bytes. Module-level so a subprocess can call it."""
+    from niveshdristi.core.session import SessionRecord
+    from niveshdristi.engine.backtest import run_backtest
+    from niveshdristi.execution.sim_broker import SimBroker
+    from niveshdristi.paper.ledger import PaperLedger
+
+    result, frames, ledger_path, bundle = TestReplayByteEquality._seed_and_tick(
+        tmp_path, days=3
+    )
+    rules = TestRiskGates._rules()
+    bt = run_backtest(
+        frames, models=bundle, rules=rules,
+        limits=TestPaperFund._limits(), rebalance=RebalanceSchedule(),
+        initial_cash=1_000_000.0, tax_enabled=False,
+        broker=SimBroker(rates=rules.rates, price_limits=rules.price_limits),
+    )
+    stored = PaperLedger(ledger_path).records()
+    # The backtest covers the full data calendar (including the fund's
+    # created date); the paper period starts the day AFTER created. The
+    # SPEC comparison is over the PAPER PERIOD: match backtest records by
+    # session_date and require every paper record to have a twin.
+    by_date = {r.session_date.isoformat(): r for r in bt.records}
+    mismatches: list[dict] = []
+    for i, line in enumerate(stored):
+        b = by_date.get(line["session_date"])
+        if b is None:
+            return {"identical": False,
+                    "reason": f"no backtest record for {line['session_date']}"}
+        rec = SessionRecord.model_validate(
+            {k: v for k, v in line.items() if k != "hash"}
+        )
+        same_hash = b.compute_hash() == line["hash"]
+        same_bytes = (
+            json.dumps(b._canonical(), sort_keys=True, default=str)
+            == json.dumps(rec._canonical(), sort_keys=True, default=str)
+        )
+        if not (same_hash and same_bytes):
+            mismatches.append({"i": i, "same_hash": same_hash, "same_bytes": same_bytes})
+    return {"identical": not mismatches, "mismatches": mismatches,
+            "sessions": len(stored)}
+
+
+class TestBacktestPaperEquality:
+    """R7 SPEC TESTS 3+4: replay of a past period equals the BACKTEST
+    records for the same period, hash and canonical bytes, one by one."""
+
+    def test_backtest_records_equal_paper_ledger(self, tmp_path):
+        result = _backtest_matches_paper(tmp_path)
+        assert result["identical"] is True, result
+        assert result["sessions"] > 0
+
+    def test_backtest_paper_equality_across_hash_seeds(self, tmp_path):
+        """R7 SPEC TEST 4: the same comparison in a subprocess under two
+        different PYTHONHASHSEED values."""
+        script = (
+            "import sys, json; "
+            "sys.path.insert(0, 'src'); sys.path.insert(0, '.'); "
+            "from tests.test_paper import _backtest_matches_paper; "
+            "print(json.dumps(_backtest_matches_paper(sys.argv[1])))"
+        )
+        outputs = []
+        for seed in ("3", "777"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = seed
+            proc = subprocess.run(
+                [sys.executable, "-c", script, str(tmp_path / f"seed{seed}")],
+                capture_output=True, text=True, env=env, timeout=240,
+            )
+            assert proc.returncode == 0, proc.stderr
+            outputs.append(json.loads(proc.stdout.strip().splitlines()[-1]))
+        assert outputs[0] == outputs[1]
+        assert outputs[0]["identical"] is True, outputs
