@@ -20,7 +20,7 @@ from niveshdristi.llm.errors import (
 )
 from niveshdristi.llm.factory import PROVIDER_REGISTRY, make_llm
 from niveshdristi.llm.fake import FakeLLM
-from niveshdristi.llm.validation import validate_output
+from niveshdristi.llm.runtime import LlmOutcome, RunBudget, cache_key, run_llm, store_artifact
 from niveshdristi.llm.types import (
     DISCLAIMER_TEXT,
     LLM,
@@ -33,6 +33,7 @@ from niveshdristi.llm.types import (
     LlmView,
     data_block,
 )
+from niveshdristi.llm.validation import validate_output
 
 __all__ = [
     "BudgetExceeded",
@@ -56,4 +57,9 @@ __all__ = [
     "data_block",
     "make_llm",
     "validate_output",
+    "run_llm",
+    "LlmOutcome",
+    "RunBudget",
+    "store_artifact",
+    "cache_key",
 ]
