@@ -289,6 +289,23 @@ def tick(
         outcome["reason"] = f"provider chain exhausted: {exc}"
         return outcome
 
+    # F7: REPORT-only data-quality flags to events.jsonl. This never
+    # changes records, hashes or decisions — the report is observational.
+    from niveshdristi.marketdata.quality import check_prices
+    from niveshdristi.paper.events import EventLog
+
+    quality_flags: dict[str, dict[str, int]] = {}
+    for symbol in sorted(frames):
+        report = check_prices(frames[symbol], symbol, reference_date=clock_now)
+        quality_flags[symbol] = {
+            check: report.count(check)
+            for check in ("nan_ohl", "zero_volume", "gaps", "stale",
+                          "split_discontinuity")
+        }
+        if any(i.check == "schema" for i in report.issues):
+            quality_flags[symbol]["schema"] = 1
+    EventLog(paths.events).append("quality", fund_id=fund_id, flags=quality_flags)
+
     processed = 0
     fund = _rebuild_state(ledger, header, paths.broker_cache)
     for session in candidates:

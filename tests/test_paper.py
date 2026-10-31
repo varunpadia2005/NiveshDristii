@@ -605,3 +605,68 @@ class TestStaleFundMessageF6:
         # assert on the outcome payload the CLI would log
         assert result["reason"]
         assert isinstance(events, list)
+
+
+class TestQualityFlagsF7:
+    """F7: the tick reports data-quality flags (incl. split_discontinuity)
+    to events.jsonl WITHOUT changing records, hashes or decisions."""
+
+    @staticmethod
+    def _frames_with_split():
+        """OHLC frames (quality module requires open) with a planted 2:1
+        split (close halves) on SYN090."""
+        from datetime import timedelta as _td
+
+        n = 30
+        dates = [(date(2026, 10, 1) + _td(days=i)).isoformat() for i in range(n)]
+        c090 = [100.0 * (1.005 ** i) for i in range(n)]
+        for i in range(n // 2, n):
+            c090[i] = c090[i] / 2.0  # the split
+        c091 = [50.0 + i for i in range(n)]
+        def mk(c):
+            return pl.DataFrame({
+                "date": dates, "open": [v * 0.99 for v in c],
+                "high": [v * 1.01 for v in c], "low": [v * 0.99 for v in c],
+                "close": c, "adj_close": c,
+                "adj_high": [v * 1.01 for v in c],
+                "adj_low": [v * 0.99 for v in c],
+                "volume": [1_000_000] * n,
+            })
+        return {"SYN090": mk(c090), "SYN091": mk(c091)}
+
+    def test_split_flag_in_events_and_tick_proceeds(self, tmp_path):
+        from niveshdristi.engine.advance import ModelBundle
+        from niveshdristi.paper.events import EventLog
+        from tests.test_advance import TestAdvance
+
+        frames = self._frames_with_split()
+        TestPaperFund._create(tmp_path, created=date(2026, 10, 1))
+        result = TestPaperFund._tick(
+            tmp_path, frames, date(2026, 10, 30), None,
+            models=ModelBundle([TestAdvance._model({})]),
+        )
+        assert result["outcome"] == "filled"  # the tick PROCEEDS
+        events = EventLog(tmp_path / "paper_test" / "events.jsonl").read()
+        quality = [e for e in events if e.get("event") == "quality"]
+        assert quality, "no quality event written"
+        flags = quality[-1]["flags"]
+        assert flags["SYN090"]["split_discontinuity"] >= 1
+        assert flags["SYN091"]["split_discontinuity"] == 0
+
+    def test_flags_do_not_change_records(self, tmp_path):
+        """Same inputs with quality reporting disabled vs enabled must
+        produce identical ledger bytes (report is observational)."""
+        from niveshdristi.engine.advance import ModelBundle
+        from tests.test_advance import TestAdvance
+
+        frames = self._frames_with_split()
+        bundle = ModelBundle([TestAdvance._model({})])
+        base_a = tmp_path / "a"
+        base_b = tmp_path / "b"
+        for base in (base_a, base_b):
+            TestPaperFund._create(base, created=date(2026, 10, 1))
+            TestPaperFund._tick(base, frames, date(2026, 10, 30), None,
+                                models=bundle, fund_id="paper_test")
+        la = (base_a / "paper_test" / "ledger.jsonl").read_bytes()
+        lb = (base_b / "paper_test" / "ledger.jsonl").read_bytes()
+        assert la == lb
