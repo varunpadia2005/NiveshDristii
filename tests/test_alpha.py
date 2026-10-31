@@ -2859,3 +2859,57 @@ class TestLevySymmetry:
             + 0.18 * (20 + 0.0000345 * notional + 0.000001 * notional) + 13.5
         )
         assert total == pytest.approx(10 * (buy_leg + sell_leg), abs=0.01)
+
+
+class TestLongOnlyGuardF1:
+    """F1 (review M6): the long-only guard has TWO layers —
+    Signal.effective_conviction (clamps negatives to 0) and the
+    construction-layer drop. Both are pinned here; a duck-typed signal that
+    does NOT clamp proves the construction layer is not redundant."""
+
+    @staticmethod
+    def _rules(shorting_allowed: bool = False):
+        from niveshdristi.core.market_rules import MarketRules
+
+        return MarketRules(market_id="TEST_M", shorting_allowed=shorting_allowed)
+
+    def test_effective_conviction_clamps_negative_when_long_only(self):
+        """Hand-computed: raw -0.9 -> 0.0 long-only; -0.9 kept when shorting."""
+        from tests.test_portfolio_construction_helpers import make_signal
+
+        s = make_signal("SYN020", -0.9)
+        assert s.effective_conviction(long_only=True) == 0.0
+        assert s.effective_conviction(long_only=False) == -0.9
+
+    def test_non_clamping_duck_signal_still_dropped_by_construction(self):
+        """The construction-layer drop (M6 mutation target): a signal whose
+        effective_conviction returns the RAW negative value must still be
+        dropped by construct_targets under long-only."""
+        from niveshdristi.portfolio.construction import construct_targets
+        from tests.test_portfolio_construction_helpers import DuckSignal, make_signal
+
+        duck = DuckSignal("SYN090", -0.9)
+        real = make_signal("SYN091", 0.5)
+        w = construct_targets([duck, real], self._rules(shorting_allowed=False))
+        assert w == {"SYN091": 1.0}  # negative DROPPED, not netted
+
+    def test_fixed_seed_property_no_negative_weights_long_only(self):
+        """Fixed-seed property over 200 random conviction sets: under
+        shorting_allowed=False no weight is ever negative and weights are
+        each <= 1.0."""
+        import random
+
+        from niveshdristi.portfolio.construction import construct_targets
+        from tests.test_portfolio_construction_helpers import make_signal
+
+        rng = random.Random(20261101)
+        for trial in range(200):
+            n = rng.randint(1, 6)
+            convs = [rng.uniform(-1.0, 1.0) for _ in range(n)]  # Signal domain
+            signals = [
+                make_signal(f"SYN{i:03d}", c) for i, c in enumerate(convs)
+            ]
+            w = construct_targets(signals, self._rules(shorting_allowed=False))
+            for sym, weight in w.items():
+                assert weight >= 0.0, (trial, sym, weight, convs)
+                assert weight <= 1.0, (trial, sym, weight, convs)
