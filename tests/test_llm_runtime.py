@@ -178,8 +178,6 @@ class TestProbeLlmDryRun:
         assert proc.returncode == 0, proc.stderr
         assert "DRY RUN" in proc.stdout
         assert "Dry run only" in proc.stderr
-        data = json.loads(proc.stdout.split("===\n", 1)[-1].split("}", 1)[0] + "}"
-                         ) if False else None
         # key VALUE never printed; presence only
         assert self.FAKE_KEY not in proc.stdout
         assert self.FAKE_KEY not in proc.stderr
