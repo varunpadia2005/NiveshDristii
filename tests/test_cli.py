@@ -152,3 +152,28 @@ class TestJSONSubprocess:
         assert "summary" in data
         assert "checks" in data
         assert data["summary"]["passed"] == data["summary"]["total"]
+
+
+class TestJsonStdoutPurityF3:
+    """F3: with DATABASE_URL absent from the environment, `nd --json
+    validate` stdout must be pure valid JSON (exit 0) and any unset-variable
+    warning must appear ONLY on stderr (config_loader.py already prints it
+    to stderr; this test pins it against regressions and CliRunner-mixing
+    artifacts). Runs in a REAL subprocess."""
+
+    def test_validate_stdout_is_pure_json_without_database_url(self):
+        import json as _json
+        import os
+        import subprocess
+        import sys
+
+        env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
+        proc = subprocess.run(
+            [sys.executable, "-m", "niveshdristi.cli.main", "--json", "validate"],
+            capture_output=True, text=True, env=env, timeout=240,
+        )
+        assert proc.returncode == 0, proc.stderr[-500:]
+        data = _json.loads(proc.stdout)  # must parse: pure JSON on stdout
+        assert data["summary"]["failed"] == 0
+        combined = proc.stdout
+        assert "Warning: environment variable" not in combined
