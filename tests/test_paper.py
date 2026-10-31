@@ -564,7 +564,7 @@ class TestBacktestPaperEqualityLiveModel:
         h_mut = PaperLedger(tmp_path / "mut" / "paper_test" / "ledger.jsonl")
         base_hashes = [r["hash"] for r in h_base.records()]
         mut_hashes = [r["hash"] for r in h_mut.records()]
-        changed = sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b)
+        changed = sum(1 for a, b in zip(base_hashes, mut_hashes, strict=True) if a != b)
         print("MUTATION CHECK RAW: changed records =", changed,
               "of", len(base_hashes))
         assert base_hashes != mut_hashes
