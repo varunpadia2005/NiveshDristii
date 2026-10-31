@@ -85,6 +85,12 @@ class FundDirectory:
         self.heartbeat = self.root / "heartbeat.json"
         self.snapshots = self.root / "snapshots"
 
+    def __truediv__(self, name: str) -> Path:
+        return self.root / name
+
+    def mkdir(self, parents: bool = False, exist_ok: bool = False) -> None:
+        self.root.mkdir(parents=parents, exist_ok=exist_ok)
+
 
 def default_fund_root() -> Path:
     """The DEFAULT state root (amendment D): outside the repo, under the
@@ -258,6 +264,9 @@ def tick(
     from niveshdristi.execution.sim_broker import SimBroker
 
     broker = SimBroker(rates=rules.rates, price_limits=rules.price_limits)
+    if not candidates:
+        outcome["reason"] = "no candidate sessions (created date >= candidate)"
+        return outcome
     try:
         frames = fetch_bars(sorted(universe), candidates[0])
     except Exception as exc:  # noqa: BLE001 - provider failure is an event
@@ -352,7 +361,7 @@ def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:
     payload = {
         "last_session": record.session_date.isoformat(),
         "cash": fund.cash,
-        "fills": [f.model_dump(mode="json") for f in record.fills],
+        "fills": [f.model_dump(mode="json") for f in getattr(record, "fills", ())],
     }
     tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(tmp, cache_path)

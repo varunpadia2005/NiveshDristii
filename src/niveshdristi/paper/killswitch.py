@@ -19,6 +19,11 @@ from pathlib import Path
 from niveshdristi.core.errors import KillSwitchError
 
 
+class KillSwitchResumeError(KillSwitchError):
+    """resume called when the fund is not halted, or without a note."""
+
+
+
 def halt(
     fund_dir: Path,
     *,
@@ -44,10 +49,10 @@ def halt(
 def resume(fund_dir: Path, *, note: str) -> None:
     """Remove the halt flag; requires a non-empty note (logged by caller)."""
     if not note or not note.strip():
-        raise KillSwitchError("resume requires a non-empty note")
+        raise KillSwitchResumeError("resume requires a non-empty note")
     flag = fund_dir / "halt.flag"
     if not flag.exists():
-        raise KillSwitchError("fund is not halted")
+        raise KillSwitchResumeError("fund is not halted")
     flag.unlink()
 
 
