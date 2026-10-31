@@ -325,7 +325,6 @@ def _backtest_matches_paper(tmp_path) -> dict:
     compare every SessionRecord one by one with the paper ledger — hash and
     canonical bytes. Module-level so a subprocess can call it."""
     from niveshdristi.core.session import SessionRecord
-    from niveshdristi.core.session import SessionRecord
     from niveshdristi.engine.backtest import run_backtest
     from niveshdristi.execution.sim_broker import SimBroker
     from niveshdristi.paper.ledger import PaperLedger
@@ -565,8 +564,8 @@ class TestBacktestPaperEqualityLiveModel:
         h_mut = PaperLedger(tmp_path / "mut" / "paper_test" / "ledger.jsonl")
         base_hashes = [r["hash"] for r in h_base.records()]
         mut_hashes = [r["hash"] for r in h_mut.records()]
-        print("MUTATION CHECK RAW: changed records =",
-              sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b),
+        changed = sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b)
+        print("MUTATION CHECK RAW: changed records =", changed,
               "of", len(base_hashes))
         assert base_hashes != mut_hashes
-        assert sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b) >= 1
+        assert changed >= 1
