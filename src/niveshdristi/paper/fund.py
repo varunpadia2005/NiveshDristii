@@ -337,6 +337,25 @@ def tick(
             )
     if processed:
         outcome["outcome"] = "filled"
+    elif not outcome["reason"]:
+        # F6 (message-only; semantics UNCHANGED): explain a no-op that left
+        # the fund behind clock_now so the operator knows what happened and
+        # what to do. The catch-up cap is MAX_SESSIONS_PER_RUN per tick and
+        # sessions without valid bars are non-sessions, so a fund created
+        # long before clock_now needs repeated ticks and may never reach
+        # recent sessions if the frames do not cover the gap.
+        gap_days = (clock_now - anchor).days
+        outcome["reason"] = (
+            f"no session advanced: fund anchored at {anchor.isoformat()} is "
+            f"{gap_days} calendar days behind the requested session "
+            f"{clock_now.isoformat()}; each tick advances at most "
+            f"{MAX_SESSIONS_PER_RUN} sessions and sessions without valid "
+            "bars are non-sessions. The operator can keep ticking (the fund "
+            "moves forward up to the cap per tick), or re-create the fund "
+            "with `nd paper create --created` set to the day before the "
+            "first desired data session (see docs/SCHEDULER.md alignment "
+            "convention)."
+        )
     return outcome
 
 
