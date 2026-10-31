@@ -56,3 +56,7 @@ class ProviderError(NiveshDristiError):
 class ModelError(NiveshDristiError):
     """Errors from alpha model prediction, registration, or metadata."""
     pass
+
+
+class LockHeldError(ExecutionError):
+    """A concurrent process holds the paper-fund lock (Phase 6)."""

@@ -1,21 +1,19 @@
 """MarketProfile registry — maps market_id to MarketProfile."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import time
-from typing import Optional
-from pathlib import Path
-
-from niveshdristi.core.instrument import Instrument
+from typing import TYPE_CHECKING
 
 
 @dataclass(frozen=True, slots=True)
 class SessionTimes:
     """Trading session times (in market timezone)."""
-    pre_open: Optional[time] = None
+    pre_open: time | None = None
     open: time = time(9, 15)
     close: time = time(15, 30)
-    post_close: Optional[time] = None
+    post_close: time | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +77,13 @@ class CostModel:
             + self.brokerage_per_order * 2
         )
         gst = gst_base * self.gst_pct
-        total = buy_cost + sell_cost + gst + self.dp_charge_per_scrip + notional * self.slippage_bps / 10_000
+        total = (
+            buy_cost
+            + sell_cost
+            + gst
+            + self.dp_charge_per_scrip
+            + notional * self.slippage_bps / 10_000
+        )
         return (total / notional) * 10_000
 
 
@@ -112,26 +116,28 @@ class MarketProfile:
     settlement: SettlementConfig = field(default_factory=SettlementConfig)
     price_limits: PriceLimitConfig = field(default_factory=PriceLimitConfig)
     cost_model: CostModel = field(default_factory=CostModel)
-    tax_model: Optional[TaxModel] = None
+    tax_model: TaxModel | None = None
 
     # Shorting rules
     shorting_allowed: bool = False  # Cash segment shorting
     intraday_shorting_allowed: bool = True  # Intraday only
 
     # Calendar & holidays (loaded from YAML)
-    calendar_path: Optional[str] = None  # Path to holidays YAML
+    calendar_path: str | None = None  # Path to holidays YAML
 
     # Universe & benchmark
     default_universe: str = "default"  # Key in universes/
     benchmark_symbol: str = ""  # e.g., "^NSEI", "^GSPC"
     benchmark_is_total_return: bool = True  # Prefer TRI over price index
+    # Volatility-index symbol for regime models; resolved per market by ROLE.
+    volatility_index_symbol: str = ""  # UNVERIFIED until probed live per market
 
     # Sector taxonomy (loaded from YAML)
-    sector_taxonomy_path: Optional[str] = None
+    sector_taxonomy_path: str | None = None
 
     # Exclusion lists (loaded from YAML)
-    asm_gsm_path: Optional[str] = None  # Surveillance lists
-    fno_ban_path: Optional[str] = None  # F&O ban list
+    asm_gsm_path: str | None = None  # Surveillance lists
+    fno_ban_path: str | None = None  # F&O ban list
 
     # Minimum filters
     min_price: float = 1.0
@@ -164,7 +170,8 @@ class MarketRegistry:
 
     def get(self, market_id: str) -> MarketProfile:
         if market_id not in self._profiles:
-            raise KeyError(f"Unknown market_id: {market_id}. Available: {list(self._profiles.keys())}")
+            available = list(self._profiles.keys())
+            raise KeyError(f"Unknown market_id: {market_id}. Available: {available}")
         return self._profiles[market_id]
 
     def __contains__(self, market_id: str) -> bool:
@@ -184,3 +191,71 @@ def get_registry() -> MarketRegistry:
 
 def register_market(profile: MarketProfile) -> None:
     _REGISTRY.register(profile)
+
+
+# Plain-currency conversion: 1 crore = 10,000,000 currency units. Defined
+# HERE (markets/ side) so neutral code never sees crore-suffixed values.
+CRORE: float = 10_000_000.0
+
+
+if TYPE_CHECKING:
+    from niveshdristi.core.market_rules import MarketRules
+
+
+def to_rules(profile: MarketProfile) -> MarketRules:
+    """Convert a MarketProfile into the neutral core MarketRules view (NEW).
+
+    Conversions performed here, on the markets/ side:
+      - CostModel.stt_pct (sell-side delivery fraction) maps to BOTH
+        stt_delivery_sell and stt_delivery_buy (profile carries one value;
+        the YAML records them equal — see units audit in docs/PROGRESS.md).
+      - min_adv_crores -> min_adv in plain currency units (x CRORE).
+    """
+    from niveshdristi.core.market_rules import (
+        ExclusionList,
+        MarketRules,
+        PriceLimitRule,
+        RateSchedule,
+        TaxSchedule,
+    )
+
+    cm = profile.cost_model
+    rates = RateSchedule(
+        brokerage_per_order=cm.brokerage_per_order,
+        stt_delivery_buy=cm.stt_pct,
+        stt_delivery_sell=cm.stt_pct,
+        exchange_fee=cm.exchange_charges_pct,
+        regulator_fee=cm.sebi_fees_pct,
+        stamp_duty_buy=cm.stamp_duty_pct,
+        gst_on_fees=cm.gst_pct,
+        dp_charge_per_scrip=cm.dp_charge_per_scrip,
+        slippage_base_bps=cm.slippage_bps,
+        verified=False,  # every rate carries # VERIFY in the source YAML
+    )
+    tax = None
+    if profile.tax_model is not None:
+        tm = profile.tax_model
+        tax = TaxSchedule(
+            enabled=tm.enabled,
+            holding_period_months=12,  # UNVERIFIED assumption (12m threshold)
+            short_term_threshold_days=tm.short_term_threshold_days,
+            short_term_rate=tm.short_term_rate,
+            long_term_rate=tm.long_term_rate,
+            long_term_exemption=tm.long_term_exemption,
+            loss_setoff_years=tm.loss_setoff_years,
+            verified=False,
+        )
+    return MarketRules(
+        market_id=profile.market_id,
+        shorting_allowed=profile.shorting_allowed,
+        min_price=profile.min_price,
+        min_adv=profile.min_adv_crores * CRORE,
+        settlement_days=profile.settlement.days,
+        rates=rates,
+        tax=tax,
+        price_limits=PriceLimitRule(
+            enabled=profile.price_limits.enabled,
+            bands=tuple(profile.price_limits.default_bands),
+        ),
+        exclusions=ExclusionList(symbols=frozenset(), source="none-loaded-yet"),
+    )

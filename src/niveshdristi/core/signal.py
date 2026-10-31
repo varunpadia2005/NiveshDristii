@@ -1,15 +1,17 @@
 """Signal — alpha model output with conviction, thesis, and evidence."""
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+
 from datetime import datetime
 from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+from pydantic.config import ConfigDict
 
 from niveshdristi.core.instrument import Instrument
 
 
-@dataclass(frozen=True, slots=True)
-class Signal:
+class Signal(BaseModel):
     """
     Immutable signal from an AlphaModel.
 
@@ -28,24 +30,30 @@ class Signal:
         metadata: Additional model-specific data (not validated for grounding)
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     instrument: Instrument
     as_of: datetime
-    conviction: float
-    horizon_days: int
-    thesis: str
-    evidence: dict[str, float | int | str] = field(default_factory=dict)
-    model_id: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    conviction: float = Field(..., ge=-1.0, le=1.0)
+    horizon_days: int = Field(..., ge=1)
+    thesis: str = Field(..., min_length=1)
+    evidence: dict[str, float | int | str] = {}
+    model_id: str = Field(..., min_length=1)
+    metadata: dict[str, Any] = {}
 
-    def __post_init__(self):
-        if not -1.0 <= self.conviction <= 1.0:
-            raise ValueError(f"conviction must be in [-1, +1], got {self.conviction}")
-        if self.horizon_days < 1:
-            raise ValueError(f"horizon_days must be >= 1, got {self.horizon_days}")
-        if not self.thesis or not self.thesis.strip():
+    @field_validator("thesis", mode="before")
+    @classmethod
+    def _thesis_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
             raise ValueError("thesis cannot be empty")
-        if not self.model_id:
+        return v.strip()
+
+    @field_validator("model_id", mode="before")
+    @classmethod
+    def _model_id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
             raise ValueError("model_id cannot be empty")
+        return v.strip()
 
     def is_long(self, *, long_only: bool = True) -> bool:
         """Whether this signal represents a long position after market rules."""
@@ -60,5 +68,10 @@ class Signal:
         return self.conviction
 
     def __str__(self) -> str:
-        direction = "LONG" if self.conviction > 0 else "SHORT" if self.conviction < 0 else "NEUTRAL"
-        return f"Signal({self.instrument.symbol}, {direction}, conviction={self.conviction:.2f}, horizon={self.horizon_days}d)"
+        direction = (
+            "LONG" if self.conviction > 0 else "SHORT" if self.conviction < 0 else "NEUTRAL"
+        )
+        return (
+            f"Signal({self.instrument.symbol}, {direction}, "
+            f"conviction={self.conviction:.2f}, horizon={self.horizon_days}d)"
+        )

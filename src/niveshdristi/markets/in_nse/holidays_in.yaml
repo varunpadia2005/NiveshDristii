@@ -3,6 +3,8 @@
 # Format: YYYY-MM-DD
 # Note: Add Muhurat trading sessions separately if needed
 
+years_covered: [2024, 2025]
+
 holidays:
   - "2024-01-26"  # Republic Day
   - "2024-03-08"  # Holi

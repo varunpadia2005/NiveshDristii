@@ -7,6 +7,8 @@ market_id: "IN_NSE"
 description: "Nifty 100 index constituents"
 source: "nifty100"
 last_updated: "2024-01-01"
+as_of: "2024-01-01"
+approximate: true
 
 tickers:
   # Nifty 50 (above)

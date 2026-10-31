@@ -44,9 +44,9 @@
 | Cost Component | Current Value | Unit | Source to Verify | Status |
 |----------------|---------------|------|------------------|--------|
 | Brokerage (flat per order) | 20.0 | ₹ | Broker schedule / SEBI max | 🔴 Unverified |
-| STT (delivery sell) | 0.1 | % | Finance Act / SEBI | 🔴 Unverified |
+| STT (delivery sell) | 0.1 | % | Finance Act / SEBI | 🔴 DOUBTFUL, CHECK FIRST — P4 note: costs.yaml now carries BOTH buy and sell delivery keys (0.001 each), so the structural gap is fixed; only the VALUES remain unverified against the current Finance Act before Phase 5 uses costs |
 | STT (intraday sell) | 0.025 | % | Finance Act / SEBI | 🔴 Unverified |
-| Exchange transaction charges | 0.00345 | % | NSE / BSE circular | 🔴 Unverified |
+| Exchange transaction charges | 0.00345 | % | NSE / BSE circular | 🔴 DOUBTFUL, CHECK FIRST — this rate may be outdated; verify against the CURRENT NSE circular before Phase 5 uses costs |
 | SEBI turnover fee | 0.0001 | % | SEBI circular | 🔴 Unverified |
 | Stamp duty (buy side) | 0.015 | % | Indian Stamp Act / State rules | 🔴 Unverified |
 | GST (on brokerage + charges) | 18.0 | % | GST Council | 🔴 Unverified |
@@ -108,14 +108,22 @@
 
 ## 9. Market Data Sources (Terms of Use)
 
-| Source | Data | Terms Checked? | Status |
-|--------|------|----------------|--------|
-| yfinance (`.NS`, `.BO`, `^NSEI`, `^INDIAVIX`) | Prices, fundamentals, indices | ❌ No | 🔴 Unverified |
-| `jugaad-data` / `nsepython` | NSE bhavcopy (EOD + delivery qty) | ❌ No | 🔴 Unverified |
-| niftyindices.com | Official index history + TRI | ❌ No | 🔴 Unverified |
-| NSE/BSE corporate filings | Shareholding, pledges, insider trades | ❌ No | 🔴 Unverified |
-| FII/DII daily flows | NSDL/CDSL / NSE reports | ❌ No | 🔴 Unverified |
-| RBI / FRED / World Bank | Macro (repo, CPI, INR, crude, G-sec) | ❌ No | 🔴 Unverified |
+Live-probed 2026-10-23/24 (Phase 2 P0). Raw probe outputs: `D:/Nivesh Dristi/p2_probe/` (outside the repo).
+
+| Source | Probed result | Terms / license | Verdict |
+|--------|---------------|-----------------|---------|
+| yfinance 1.5.1 | WORKS: RELIANCE.NS 2015-01-01→2026-10-23; latest day has NaN OHLC; prices adjusted by default | Apache-2.0 code; Yahoo data is UNOFFICIAL — personal/educational use only, no availability guarantee | 🟡 Usable (prices fallback; unofficial) |
+| NSE bhavcopy via `archives.nseindia.com` | WORKS: single `sec_bhavdata_full_23102026.csv` (HTTP 200, 3,542 rows, DELIV_QTY/DELIV_PER present); 2015 paths returned 404 | NSE ToS (Oct 2025) PROHIBITS "systematic or automated data collection" — one-off manual browser download of published files is the compliant route | 🟡 Usable — MANUAL BROWSER DOWNLOAD ONLY; NO automated downloader exists in this codebase |
+| `jugaad-data` 0.37.0 | Installs; `full_bhavcopy_raw` works (via archives); `index_df` (niftyindices) broken: internal TypeError; nseindia.com homepage from Python: 403 | Code "YOLO" license; underlying NSE data under NSE ToS | 🟡 Usable for bhavcopy only; index/TRI broken |
+| `nsepython` | NOT probed live (would target the same blocked NSE endpoints); community reports 429/503 blocks | Same NSE ToS concern | 🔴 Not relied on |
+| niftyindices.com (index history, TRI) | BLOCKED: page fetch timed out; via jugaad-data broken | Unknown (robots.txt fetch timed out) | 🔴 Blocked |
+| NSE main site (holidays, filings, constituents) | BLOCKED: holiday page timed out; homepage 403 from code (Akamai) | ToS anti-scraping explicit | 🔴 Blocked — no automated requests made |
+| FII/DII flows (fpi.nsdl.co.in) | BLOCKED: connection reset | Unknown | 🔴 Blocked / unknown |
+| RBI / FRED / World Bank | NOT probed in P0 | — | ⚪ Unknown |
+
+**Documentation notes (Phase 2 decisions):**
+- **Bhavcopy is FILE-BASED**: the user downloads `sec_bhavdata_full_DDMMYYYY.csv` manually in a browser from the NSE archives into a configured directory. `niveshdristi.markets.in_nse.providers.bhavcopy_file` parses only local files. Do NOT add an automated downloader (NSE ToS).
+- **yfinance is unofficial** and used for prices only (optional `data` extra). Personal/educational use only; fundamentals via yfinance are current-state (no `announced_at`) and are PIT-unsafe — the adapter refuses them.
 
 > **Rule:** Avoid scraping sites whose terms forbid it. Prefer exchange disclosures and licensed APIs.
 
@@ -158,4 +166,4 @@ backtest:
 
 ---
 
-*Last updated: 2026-10-22 — All items unverified*
+*Last updated: 2026-10-24 — Sections 1–8 remain unverified. Section 9 reflects the live P0 probe of 2026-10-23/24 (see that section for per-source verdicts); items 4 (STT delivery, exchange charges) are marked DOUBTFUL pending Finance Act / NSE circular checks.*

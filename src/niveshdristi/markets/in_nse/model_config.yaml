@@ -1,0 +1,45 @@
+# =============================================================================
+# IN_NSE model configuration — UNVERIFIED ECONOMIC ASSUMPTIONS
+# =============================================================================
+# EVERY section in this file is an UNVERIFIED economic assumption. Direction
+# entries are ONLY +1 / 0 / -1 (hypothesized sensitivity sign); no magnitudes
+# are invented. Verify against current research/circulars before any real use.
+# =============================================================================
+
+# --- UNVERIFIED: macro factor -> sector -> direction (+1/0/-1) ---
+# Hypothesized directional sensitivities (sign only):
+#   repo_rate_down: rate cuts are hypothesized positive for rate-sensitive lenders
+#   fx_inr_stronger: a stronger INR is hypothesized positive for importers,
+#                    negative for IT exporters
+#   crude_down: lower crude is hypothesized positive for paints/OMCs, negative
+#               for upstream energy
+macro_sector_sensitivity:
+  repo_rate_down:
+    banks: +1
+    it: 0
+    energy: 0
+    paints: 0
+  fx_inr_stronger:
+    banks: 0
+    it: -1
+    energy: 0
+    paints: +1
+  crude_down:
+    banks: 0
+    it: 0
+    energy: -1
+    paints: +1
+
+# --- UNVERIFIED COPY of legacy sector-index tickers (regime/rrg.py) ---
+# Copied verbatim from the legacy SECTOR_ETFS map for future wiring only.
+# docs/VERIFY.md section 8: these tickers MAY NOT EXIST on the data provider;
+# never probed live; DO NOT use for any fetch until verified.
+sector_index_tickers:
+  IT: "NIFTYIT.NS"
+  Bank: "NIFTYBANK.NS"
+  Auto: "NIFTYAUTO.NS"
+  Pharma: "NIFTYPHARMA.NS"
+  FMCG: "NIFTYFMCG.NS"
+  Metal: "NIFTYMETAL.NS"
+  Energy: "NIFTYENERGY.NS"
+  Infra: "NIFTYINFRA.NS"

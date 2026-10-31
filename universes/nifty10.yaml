@@ -6,6 +6,8 @@ market_id: "IN_NSE"
 description: "Top 10 Nifty 50 constituents by market cap (for quick testing)"
 source: "nifty10"
 last_updated: "2024-01-01"
+as_of: "2024-01-01"
+approximate: true
 
 tickers:
   - "RELIANCE"
