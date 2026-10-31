@@ -778,3 +778,16 @@ rates, TRI benchmark, constituent list, announcement-dated fundamentals.
   only in legacy folders and markets/in_nse/providers/yfinance_adapter.py
   (lazy import, provider chain) composed in cli/main.py. Tests and the gate
   never touch the network or the default fund directory.
+
+## Push record (2026-10-31)
+
+rebuild/v2 pushed to origin (github.com/varunpadia2005/NiveshDristii, PRIVATE)
+in 6 milestone fast-forward pushes: 9e68591 (Phase 2 close), 43e91e8 (Phase 3
+close), f50c840 (Phase 4 close), 4031931 (Phase 5 part 1), 9a50100 (Phase 5
+part 2), 88e4495 (Phase 6 final / R7). 98 commits total. A 7th batch entry
+(32a66d8) was rejected as a non-fast-forward REWIND because origin was
+already at 46b4a1c — skipped, not an error on the remote. After the final
+push: git log origin/rebuild/v2..rebuild/v2 is empty and
+rebuild/v2 == origin/rebuild/v2 == 88e4495. HISTORY RULE in force: commits
+reachable from origin/rebuild/v2 are never amended/rebased/reset; defects
+are fixed with follow-up commits; Phase 7 commits stay LOCAL until reviewed.
