@@ -600,16 +600,28 @@ def main() -> int:
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
-        # Count type: ignore comments
+        # Count type: ignore comments — src/ ONLY. (Before R8 this rglobbed
+        # the whole repo and swept in venv files whose path contains "cli",
+        # e.g. .venv-test/.../pip/_internal/cli/main_parser.py, which is why
+        # the count printed 2 with only 1 real occurrence.)
         ignore_count = 0
-        for f in repo_root.rglob("*.py"):
+        ignore_files: list[str] = []
+        for f in (repo_root / "src").rglob("*.py"):
             if any(p in f.parts for p in ["core", "markets", "cli", "engine", "config_loader.py"]):
                 content = f.read_text(encoding="utf-8")
-                ignore_count += content.count("# type: ignore")
+                n = content.count("# type: ignore")
+                if n:
+                    ignore_count += n
+                    for i, line in enumerate(content.splitlines(), 1):
+                        if "# type: ignore" in line:
+                            ignore_files.append(
+                                f"{f.relative_to(repo_root).as_posix()}:{i}"
+                            )
+        named = ", ".join(ignore_files) if ignore_files else "none"
         if ignore_count <= 10:
-            pass_("G14", f"Mypy clean, type:ignore count={ignore_count}")
+            pass_("G14", f"Mypy clean, type:ignore count={ignore_count} at: {named}")
         else:
-            fail("G14", f"type:ignore count={ignore_count} > 10")
+            fail("G14", f"type:ignore count={ignore_count} > 10 at: {named}")
             fails += 1
     else:
         fail("G14", f"Mypy errors: {result.stdout}")

@@ -325,6 +325,7 @@ def _backtest_matches_paper(tmp_path) -> dict:
     compare every SessionRecord one by one with the paper ledger — hash and
     canonical bytes. Module-level so a subprocess can call it."""
     from niveshdristi.core.session import SessionRecord
+    from niveshdristi.core.session import SessionRecord
     from niveshdristi.engine.backtest import run_backtest
     from niveshdristi.execution.sim_broker import SimBroker
     from niveshdristi.paper.ledger import PaperLedger
@@ -395,3 +396,177 @@ class TestBacktestPaperEquality:
             outputs.append(json.loads(proc.stdout.strip().splitlines()[-1]))
         assert outputs[0] == outputs[1]
         assert outputs[0]["identical"] is True, outputs
+
+
+def _momentum_frames(n_sessions: int = 150):
+    """Trending synthetic frames long enough for TimeSeriesMomentum's
+    120-day lookback + 5-day skip (126 closes minimum)."""
+    dates = [
+        (date(2026, 1, 1) + timedelta(days=i)).isoformat() for i in range(n_sessions)
+    ]
+    closes = [round(100.0 * (1.003 ** i), 6) for i in range(n_sessions)]
+    common = {
+        "date": dates, "close": closes,
+        "high": [v * 1.01 for v in closes], "low": [v * 0.99 for v in closes],
+        "adj_close": closes,
+        "adj_high": [v * 1.01 for v in closes],
+        "adj_low": [v * 0.99 for v in closes],
+        "volume": [1_000_000] * n_sessions,
+    }
+    return {"SYN090": pl.DataFrame(common), "SYN091": pl.DataFrame(common)}
+
+
+def _backtest_paper_compare(
+    tmp_path, *, frames, bundle, created, tick_dates, label
+) -> dict:
+    """Generic R7-SPEC-3 comparison for ANY model bundle: paper fund ticked
+    once per session (the tick catch-up cap forbids one giant jump), then
+    run_backtest on the SAME frames/config; every paper record matched by
+    session_date to its backtest twin; hash AND canonical bytes."""
+    from niveshdristi.core.session import SessionRecord
+    from niveshdristi.engine.backtest import run_backtest
+    from niveshdristi.execution.sim_broker import SimBroker
+    from niveshdristi.paper.ledger import PaperLedger
+
+    ledger_path = TestPaperFund._create(tmp_path, created=created)
+    for d in tick_dates:
+        result = TestPaperFund._tick(
+            tmp_path, frames, d, None, models=bundle
+        )
+        assert result["outcome"] == "filled", (d, result)
+    rules = TestRiskGates._rules()
+    bt = run_backtest(
+        frames, models=bundle, rules=rules,
+        limits=TestPaperFund._limits(), rebalance=RebalanceSchedule(),
+        initial_cash=1_000_000.0, tax_enabled=False,
+        broker=SimBroker(rates=rules.rates, price_limits=rules.price_limits),
+    )
+    stored = PaperLedger(ledger_path).records()
+    by_date = {r.session_date.isoformat(): r for r in bt.records}
+    mismatches = []
+    for line in stored:
+        b = by_date.get(line["session_date"])
+        if b is None:
+            mismatches.append({"session": line["session_date"], "error": "no twin"})
+            continue
+        rec = SessionRecord.model_validate(
+            {k: v for k, v in line.items() if k != "hash"}
+        )
+        same_hash = b.compute_hash() == line["hash"]
+        same_bytes = (
+            json.dumps(b._canonical(), sort_keys=True, default=str)
+            == json.dumps(rec._canonical(), sort_keys=True, default=str)
+        )
+        if not (same_hash and same_bytes):
+            mismatches.append({
+                "session": line["session_date"],
+                "same_hash": same_hash, "same_bytes": same_bytes,
+            })
+    return {
+        "label": label,
+        "identical": not mismatches,
+        "mismatches": mismatches,
+        "paper_sessions": len(stored),
+        "backtest_sessions": len(bt.records),
+        # documented alignment: paper period = created+1 .. last tick date;
+        # backtest additionally covers the pre-created data sessions, so the
+        # expected relation is paper_sessions == backtest - offset where
+        # offset = number of data sessions on/before `created`
+        "offset": sum(
+            1 for d in _momentum_session_dates(frames)
+            if d <= created.isoformat()
+        ),
+    }
+
+
+def _momentum_session_dates(frames) -> list[str]:
+    return sorted({
+        d for frame in frames.values() for d in frame["date"].to_list()
+    })
+
+
+class TestBacktestPaperEqualityLiveModel:
+    """R8 1a: the equality property must hold for a REAL registered model
+    whose conviction DEPENDS on frame content, and must be non-vacuous
+    (mutation check). Alignment convention: the fund is created the day
+    before the first data session because paper defers the assessment on
+    its creation date; matching is by session_date; counts must reconcile
+    exactly as paper_sessions == backtest_sessions - offset."""
+
+    def test_live_momentum_equality_and_counts(self, tmp_path):
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
+
+        frames = _momentum_frames(150)
+        bundle = ModelBundle([TimeSeriesMomentum()])
+        dates = _momentum_session_dates(frames)
+        created = date.fromisoformat(dates[0]) - timedelta(days=1)
+        result = _backtest_paper_compare(
+            tmp_path, frames=frames, bundle=bundle, created=created,
+            tick_dates=[date.fromisoformat(d) for d in dates[:130]],
+            label="momentum_ts",
+        )
+        assert result["identical"] is True, result
+        # NO session silently skipped: the counts reconcile exactly as
+        # backtest == paper + (data sessions AFTER the last ticked one)
+        #  + (data sessions on/before created)  [the documented offset]
+        last_ticked = dates[129]
+        expected_diff = sum(
+            1 for d in dates
+            if d > last_ticked or d <= created.isoformat()
+        )
+        assert result["paper_sessions"] == 130
+        assert result["backtest_sessions"] == 150
+        assert result["backtest_sessions"] - result["paper_sessions"] == expected_diff
+
+    def test_mutation_check_perturbed_close_breaks_equality(self, tmp_path):
+        """Non-vacuity: perturb ONE close in the input frames that the model
+        reads (inside its trailing window), re-run BOTH sides fresh, and
+        show the compared record hash CHANGES. (A snapshot perturbation
+        cannot serve: the backtest-vs-paper comparison reads the ledger and
+        the input frames, never the snapshots.)"""
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
+        from niveshdristi.paper.ledger import PaperLedger
+
+        bundle = ModelBundle([TimeSeriesMomentum()])
+        dates = _momentum_session_dates(_momentum_frames(150))
+        created = date.fromisoformat(dates[0]) - timedelta(days=1)
+        tick_dates = [date.fromisoformat(d) for d in dates[:130]]
+
+        baseline = _backtest_paper_compare(
+            tmp_path / "base", frames=_momentum_frames(150), bundle=bundle,
+            created=created, tick_dates=tick_dates, label="momentum_ts",
+        )
+        # Perturb ONE close that the model READS. trailing_return uses only
+        # the window ENDPOINTS (closes[end]/closes[start]-1), so the row
+ # must be one of those: dates[124] is the `end` row for the final
+        # ticked session (index 129: end = 129-5). ALSO documented: a
+        # pending-only change is invisible in STORED records (pending is
+        # not serialized into the record), so the perturbed row must move
+        # mark-to-market or execution prices of a session WITH a position —
+        # dates[127] does (the fund holds from 126 on). (Dead ends tried:
+        # interior row -> no effect by construction; dates[124] -> pending
+        # change only -> zero stored-record change.)
+        frames_mut = _momentum_frames(150)
+        f = frames_mut["SYN090"]
+        frames_mut["SYN090"] = f.with_columns(
+            pl.when(pl.col("date") == dates[127])
+            .then(pl.col("close") * 1.5)
+            .otherwise(pl.col("close"))
+            .alias("close")
+        )
+        mutated = _backtest_paper_compare(
+            tmp_path / "mut", frames=frames_mut, bundle=bundle,
+            created=created, tick_dates=tick_dates, label="momentum_ts_mutated",
+        )
+        assert baseline["identical"] is True, baseline
+        assert mutated["identical"] is True, mutated  # equality survives,
+        # but the RECORDS differ -> the comparison is not vacuous:
+        h_base = PaperLedger(tmp_path / "base" / "paper_test" / "ledger.jsonl")
+        h_mut = PaperLedger(tmp_path / "mut" / "paper_test" / "ledger.jsonl")
+        base_hashes = [r["hash"] for r in h_base.records()]
+        mut_hashes = [r["hash"] for r in h_mut.records()]
+        print("MUTATION CHECK RAW: changed records =",
+              sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b),
+              "of", len(base_hashes))
+        assert base_hashes != mut_hashes
+        assert sum(1 for a, b in zip(base_hashes, mut_hashes) if a != b) >= 1

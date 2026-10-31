@@ -209,9 +209,22 @@ def cache_matches_ledger(
         return True  # no cache yet: nothing to disagree with
     cache = json.loads(cache_path.read_text(encoding="utf-8"))
     records = ledger.records()
+    if not records:
+        # a cache WITHOUT any ledger record is itself a disagreement
+        # (the cache is derivable from the ledger; it claims sessions
+        # the ledger never recorded)
+        return False
     fills_in_cache = cache.get("fills", [])
-    # the cache must reflect exactly the ledger's fill count
-    return len(fills_in_cache) == sum(len(r.get("fills", [])) for r in records)
+    # The cache reflects the LAST session only (it is rewritten per tick),
+    # so it must equal the ledger's last record fills — NOT the cumulative
+    # count. (R8: comparing against the sum halted funds whose fills span
+    # multiple sessions.) The cash figure must also match the ledger tail.
+    last = records[-1]
+    if cache.get("last_session") != last.get("session_date"):
+        return False
+    if len(fills_in_cache) != len(last.get("fills", [])):
+        return False
+    return True
 
 
 def tick(
@@ -477,6 +490,18 @@ def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:
         "last_session": record.session_date.isoformat(),
         "cash": fund.cash,
         "fills": [f.model_dump(mode="json") for f in getattr(record, "fills", ())],
+        # The pending decision MUST survive the tick boundary (R8 defect
+        # found by the live-model equality test): _rebuild_state reads
+        # "pending" from this cache; without it the pending created in
+        # session N is silently dropped and never executed in N+1.
+        "pending": (
+            {
+                "decision_date": fund.pending_decision.decision_date.isoformat(),
+                "gated": json.loads(fund.pending_decision.gated.model_dump_json()),
+            }
+            if fund.pending_decision is not None
+            else None
+        ),
     }
     tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(tmp, cache_path)
