@@ -1123,6 +1123,7 @@ class TestEngineLongOnlyPropertyF1:
 
         class RandomConvictionModel:
             model_id = "random_f1"
+            _rng: random.Random  # typed so mypy accepts the later assignment
 
             def predict(self, ctx: AsOfContext, inputs: ModelInputs):
                 out = []

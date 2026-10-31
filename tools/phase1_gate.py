@@ -163,14 +163,40 @@ def main() -> int:
                 phase0_tools_ok = False
                 fails += 1
                 continue
-            h0 = hashlib.md5(p0.read_bytes()).hexdigest()
-            h1 = hashlib.md5(p1.read_bytes()).hexdigest()
+            # F8: compare LF-NORMALIZED content so a clean clone's CRLF
+            # checkout is not a false mismatch; any real content difference
+            # still fails (the fail-proof below verifies both directions).
+            def _norm(b: bytes) -> bytes:
+                return b.replace(b"\r\n", b"\n")
+
+            h0 = hashlib.md5(_norm(p0.read_bytes())).hexdigest()
+            h1 = hashlib.md5(_norm(p1.read_bytes())).hexdigest()
             if h0 != h1:
                 fail("G03b", f"md5 mismatch for tools/{name}: phase0={h0} repo={h1}")
                 phase0_tools_ok = False
                 fails += 1
             else:
                 pass_("G03b", f"tools/{name} md5 match: {h0}")
+
+    # F8 fail-proof: the normalizer must (a) make a CRLF-only difference
+    # compare EQUAL and (b) still catch a real content difference.
+    if phase0_root:
+        _same_lf = b"a = 1\nb = 2\n"
+        _same_crlf = b"a = 1\r\nb = 2\r\n"
+        _different = b"a = 1\nb = 3\n"
+        _n = lambda b: b.replace(b"\r\n", b"\n")  # noqa: E731 - gate-local
+        crlf_only_ok = hashlib.md5(_n(_same_lf)).hexdigest() == hashlib.md5(
+            _n(_same_crlf)
+        ).hexdigest()
+        real_diff_caught = hashlib.md5(_n(_same_lf)).hexdigest() != hashlib.md5(
+            _n(_different)
+        ).hexdigest()
+        if crlf_only_ok and real_diff_caught:
+            pass_("G03b", "F8 fail-proof: CRLF-only passes, real diff caught")
+        else:
+            fail("G03b", f"F8 fail-proof broken: crlf_only_ok={crlf_only_ok}, "
+                         f"real_diff_caught={real_diff_caught}")
+            fails += 1
 
     # G04: Config equality - MD5 match
     print("\n=== G04: Config equality ===")

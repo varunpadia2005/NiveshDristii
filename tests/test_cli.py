@@ -53,7 +53,11 @@ class TestCLIJSONOutput:
 
     def test_config_show_json(self):
         """nd config --show --json outputs valid JSON."""
-        result = runner.invoke(app, ["--json", "config", "--show"])
+        # DATABASE_URL pinned: an unset-var warning goes to stderr but
+        # CliRunner merges it into output in some click versions; the
+        # unset case is covered end-to-end by the F3 subprocess test.
+        result = runner.invoke(app, ["--json", "config", "--show"],
+                               env={"DATABASE_URL": "sqlite://"})
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "backtest" in data
@@ -61,7 +65,8 @@ class TestCLIJSONOutput:
 
     def test_config_validate_json(self):
         """nd config --validate --json outputs valid JSON."""
-        result = runner.invoke(app, ["--json", "config", "--validate"])
+        result = runner.invoke(app, ["--json", "config", "--validate"],
+                               env={"DATABASE_URL": "sqlite://"})
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data.get("valid") is True
