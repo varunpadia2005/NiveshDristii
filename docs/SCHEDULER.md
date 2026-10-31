@@ -84,3 +84,15 @@ exist in Phase 6: execution is PaperBroker only. The paper fund can never
 be labelled promotable — the DataLimitations banner on every report lists
 the standing limitations (unverified rates, approximate universe,
 derived calendar, adjusted-price basis, unavailable corporate actions).
+
+## Alignment convention for the backtest-vs-paper equality test (R8)
+
+The paper fund defers its first assessment: a fund created on date D
+assesses from D+1. A backtest over the same frames assesses from the first
+data session. For the records to correspond one-to-one, the test fund is
+created the day BEFORE the first data session. Matching is by session_date
+(no session is silently skipped: the test asserts
+backtest_sessions == paper_sessions + (data sessions after the last ticked
+one) + (data sessions on/before the created date)). The paper tick's
+catch-up is capped at 10 sessions, so long histories are ticked once per
+session in a loop.

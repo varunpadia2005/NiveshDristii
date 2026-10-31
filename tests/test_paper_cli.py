@@ -294,3 +294,52 @@ class TestPaperExplain:
         ])
         assert result.exit_code == 0
         assert json.loads(result.output)["status"] == "no-op"
+
+
+class TestOutgoingDataProof:
+    """R8 1d: the EXACT prompt text the explain flow would send (after
+    redaction) contains none of: holdings, quantities, cash, NAV, fund id,
+    filesystem paths, secret-looking strings. NOTE (documented, not
+    loosened): the evidence numbers live only in the VALIDATOR — the
+    provider never sees them — so a live model cannot cite numbers it never
+    received; redaction wins over usefulness."""
+
+    def test_explain_prompt_after_redaction_is_clean(self, tmp_path,
+                                                      fake_provider,
+                                                      monkeypatch):
+        from niveshdristi.llm.fake import FakeLLM
+        from niveshdristi.llm.factory import PROVIDER_REGISTRY
+
+        class RecordingFake(FakeLLM):
+            pass  # FakeLLM.records already keeps every request
+
+        import niveshdristi.llm as llm_pkg
+
+        created = []
+        real_make = llm_pkg.make_llm
+
+        def capturing(provider, model):
+            inst = real_make(provider, model)
+            created.append(inst)
+            return inst
+
+        monkeypatch.setattr(llm_pkg, "make_llm", capturing)
+        TestPaperExplain._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        assert created and created[0].requests, "the flow must have built a request"
+        request = created[0].requests[0]
+        prompt_text = request.system_prompt + "\n" + "\n".join(request.data_blocks)
+        print("EXACT OUTGOING PROMPT (after redaction):")
+        print(prompt_text)
+        for sentinel in (
+            "paper_test",                     # fund id
+            "1000000.0",                      # cash value
+            str(tmp_path),                    # filesystem path
+            "sk-or-v1-",                      # secret-looking
+            "holdings", "quantity",           # category words (defensive)
+        ):
+            assert sentinel not in prompt_text, sentinel

@@ -84,6 +84,21 @@ class LlmView(BaseModel):
     claims: tuple[Claim, ...] = Field(min_length=1)
     prompt_hash: str = Field(min_length=1)
     schema_version: str = SCHEMA_VERSION
+    # R8 1f: summary and claim text originate from an LLM — they are
+    # UNTRUSTED DISPLAY TEXT. A grounded claim may still quote attacker
+    # text; an LlmView is display-only and never feeds any decision,
+    # signal, weight, gate, order or ledger record. The flag is validated
+    # to True so it cannot be silently turned off.
+    claims_are_untrusted_display_text: bool = True
+
+    @field_validator("claims_are_untrusted_display_text")
+    @classmethod
+    def _untrusted_acknowledged(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError(
+                "LlmView text is UNTRUSTED display text; this cannot be false"
+            )
+        return v
 
     @field_validator("disclaimer")
     @classmethod

@@ -867,3 +867,25 @@ Provider model ids, terms and endpoints; real-world injection robustness
 (tests prove validator-level rejection only); cost per token (no real call
 was made). Blocked as before: 2026 NSE holidays, verified rates, TRI
 benchmark, constituents, announcement-dated fundamentals.
+
+## R8 verification and hardening
+
+- Two REAL defects fixed (09438d2), found by extending the SPEC TEST 3
+  equality to a live model: (1) the tick cache never carried the pending
+  decision across the tick boundary (it was silently dropped — synthetic
+  tests ticked all sessions in one call and never crossed the boundary);
+  (2) the cache-vs-ledger check compared the last session's fills to the
+  CUMULATIVE ledger count, halting funds whose fills span multiple
+  sessions. It now compares the ledger tail and treats a cache without any
+  ledger record as a disagreement.
+- Live-model equality: TimeSeriesMomentum over 150 trending synthetic
+  sessions, 130 ticked; counts reconcile exactly; mutation check shows the
+  comparison is not vacuous (endpoint-row perturbation changes 3/130
+  record hashes; interior rows provably cannot affect trailing_return,
+  which reads only the two window endpoints; pending-only changes are
+  invisible in STORED records because pending is not serialized into the
+  record — both dead ends documented in the test).
+- Redaction honesty: redaction is best-effort defense in depth; the REAL
+  control is structural — only caller-built EvidenceItems are ever included
+  in a prompt, and an LlmView is display-only text that no decision, signal,
+  weight, gate, order or ledger record ever consumes.

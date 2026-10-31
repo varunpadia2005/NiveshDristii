@@ -315,3 +315,65 @@ class TestValidateOutput:
             validate_output('{"summary": "s", "claims": []}', self._evidence(),
                             model_id="m", as_of=date(2026, 10, 31),
                             prompt_hash="h")
+
+
+class TestNumericTokenPolicy:
+    """R8 1e: the numeric-token policy table. POLICY: a numeric token is
+    extracted with the anchored regex and must equal, as a float, one of
+    the CITED evidence numbers exactly after that single normalization.
+    Ambiguous equivalences are REJECTED, never loosened."""
+
+    @staticmethod
+    def _tokens(text: str) -> list[float]:
+        from niveshdristi.llm.validation import _numeric_tokens
+
+        return _numeric_tokens(text)
+
+    def test_table(self):
+        evidence = {2.0, 5.0, 12.5, 10.0, 20.0, 3.5}
+        # (input text, expected extracted tokens, verdict given evidence)
+        rows = [
+            ("1,000", [1.0, 0.0], "REJECT: comma splits; neither traces"),
+            ("1000", [1000.0], "REJECT: 1000 not in evidence"),
+            ("2.0", [2.0], "ACCEPT: exact after float normalization"),
+            ("2", [2.0], "ACCEPT: 2 == 2.0 exactly"),
+            ("5%", [5.0], "ACCEPT: symbol ignored, 5.0 in evidence"),
+            ("0.05", [0.05], "REJECT: percent-to-fraction NOT inferred"),
+            ("1e3", [], "REJECT: scientific notation is not a token"),
+            ("1000 in 1e3", [1000.0], "REJECT: 1000 not in evidence"),
+            ("model e2 says 2", [2.0], "ACCEPT: e2 digit not a token; 2 traces"),
+            ("-3.5", [3.5], "REJECT-AS-STATED: sign dropped, 3.5 in evidence "
+                             "-> token accepted but the MINUS is not modeled; "
+                             "evidence carries magnitudes only"),
+            ("(3.5)", [3.5], "ACCEPT-extraction: parentheses NOT inferred as "
+                             "negatives; 3.5 traces"),
+            ("Rs 12.5", [12.5], "ACCEPT: currency symbol ignored, no conversion"),
+            ("$12.5", [12.5], "ACCEPT: currency symbol ignored, no conversion"),
+            ("10-20", [10.0, 20.0], "ACCEPT-extraction: BOTH must trace"),
+            ("two", [], "REJECT: number words are never inferred"),
+            ("2026-10-31", [2026.0, 10.0, 31.0],
+             "REJECT-in-practice: hyphen is not a word char, so date parts "
+             "ARE tokens and each must trace to evidence; a date in a claim "
+             "is untraceable unless evidence carries 2026.0, 10.0, 31.0"),
+        ]
+        print("NUMERIC TOKEN TABLE (policy: exact float match after the "
+              "single documented normalization; ambiguous -> reject):")
+        for text, expected, verdict in rows:
+            got = self._tokens(text)
+            print(f"  {text!r:>16} -> {got}  |  {verdict}")
+            assert got == expected, (text, got, expected)
+            # end-to-end: only rows whose every token is in evidence validate
+            ok = all(n in evidence for n in got)
+            if not ok:
+                import json as _json
+                from niveshdristi.llm import LlmGroundingError, validate_output
+
+                raw = (
+                    '{"summary": "s", "claims": [{"text": ' + _json.dumps(text) +
+                    ', "evidence_ids": ["e1"]}]}'
+                )
+                with pytest.raises(LlmGroundingError):
+                    validate_output(raw, (EvidenceItem(id="e1", text="x",
+                                                       numbers=tuple(sorted(evidence))),),
+                                    model_id="m", as_of=date(2026, 10, 31),
+                                    prompt_hash="h")

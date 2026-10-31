@@ -4,6 +4,9 @@ policy, R10 artifacts, and "tick and replay never call the LLM"."""
 from __future__ import annotations
 
 import json
+import os
+import sys
+import subprocess
 from datetime import date
 
 from niveshdristi.llm import (
@@ -151,3 +154,51 @@ class TestTickReplayNeverCallLlm:
         llm.complete(LlmRequest(system_prompt=SYSTEM_RULES))
         assert llm.calls == 1
         assert replay["byte_identical"] is True
+
+
+class TestProbeLlmDryRun:
+    """R8 1g: the probe dry-runs offline (no network) and refuses to send
+    without the explicit flag; the key's VALUE is never printed."""
+
+    FAKE_KEY = "sk-or-v1-PROBEprobePROBEprobe0000000000"
+
+    def _run(self, *extra):
+        import subprocess
+
+        env = dict(os.environ)
+        env["NDR_LLM_KEY"] = self.FAKE_KEY
+        return subprocess.run(
+            [sys.executable, "tools/probe_llm.py",
+             "--base-url", "https://probe.invalid/api/v1",
+             "--model", "unverified/model", *extra],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+
+    def test_dry_run_offline_and_refuses_to_send(self):
+        proc = self._run()
+        assert proc.returncode == 0, proc.stderr
+        assert "DRY RUN" in proc.stdout
+        assert "Dry run only" in proc.stderr
+        data = json.loads(proc.stdout.split("===\n", 1)[-1].split("}", 1)[0] + "}"
+                         ) if False else None
+        # key VALUE never printed; presence only
+        assert self.FAKE_KEY not in proc.stdout
+        assert self.FAKE_KEY not in proc.stderr
+        assert '"key_present": true' in proc.stdout
+        # max_tokens cap present
+        assert '"max_tokens_cap": 64' in proc.stdout
+
+    def test_live_flag_without_key_still_offline(self):
+        # flag set but no key -> typed refusal, still no network call made
+        import subprocess
+
+        env = dict(os.environ)
+        env.pop("NDR_LLM_KEY", None)
+        proc = subprocess.run(
+            [sys.executable, "tools/probe_llm.py",
+             "--base-url", "https://probe.invalid/api/v1",
+             "--model", "unverified/model", "--yes-make-network-call"],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode == 2
+        assert "NDR_LLM_KEY not set" in proc.stderr
