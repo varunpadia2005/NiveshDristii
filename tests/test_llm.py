@@ -223,3 +223,95 @@ class TestEvidenceAndFactory:
         b = Budget()
         assert b.max_tokens_per_call == DEFAULT_MAX_TOKENS_PER_CALL
         assert b.max_calls_per_run == DEFAULT_MAX_CALLS_PER_RUN
+
+
+class TestValidateOutput:
+    """P7-S2: R3 schema, R4 grounding + numeric traceability, R12 always."""
+
+    @staticmethod
+    def _evidence():
+        return (
+            EvidenceItem(id="e1", text="close 12.5", numbers=(12.5, 0.82)),
+            EvidenceItem(id="e2", text="vol 3.0", numbers=(3.0,)),
+        )
+
+    def test_valid_output_known_answer(self):
+        from niveshdristi.llm import validate_output
+
+        raw = (
+            '{"summary": "composite 0.82 with close 12.5", '
+            '"claims": [{"text": "price 12.5 above support", '
+            '"evidence_ids": ["e1"]}]}'
+        )
+        v = validate_output(raw, self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+        assert v.summary.startswith("composite 0.82")
+        assert v.disclaimer == DISCLAIMER_TEXT  # R12: always official text
+        assert v.as_of == date(2026, 10, 31)
+        assert v.schema_version == "1"
+
+    def test_malformed_json_rejected(self):
+        from niveshdristi.llm import LlmSchemaError, validate_output
+
+        with pytest.raises(LlmSchemaError, match="not valid JSON"):
+            validate_output("{not json", self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+
+    def test_wrong_shape_rejected(self):
+        from niveshdristi.llm import LlmSchemaError, validate_output
+
+        with pytest.raises(LlmSchemaError):
+            validate_output('{"nope": 1}', self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+
+    def test_lying_llm_fake_number_rejected(self):
+        from niveshdristi.llm import LlmGroundingError, validate_output
+
+        raw = (
+            '{"summary": "meh", "claims": [{"text": "target 99.9", '
+            '"evidence_ids": ["e1"]}]}'
+        )
+        with pytest.raises(LlmGroundingError, match="99.9"):
+            validate_output(raw, self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+
+    def test_unknown_evidence_id_rejected(self):
+        from niveshdristi.llm import LlmGroundingError, validate_output
+
+        raw = (
+            '{"summary": "meh", "claims": [{"text": "x", '
+            '"evidence_ids": ["ghost"]}]}'
+        )
+        with pytest.raises(LlmGroundingError, match="ghost"):
+            validate_output(raw, self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+
+    def test_number_from_uncited_evidence_rejected(self):
+        from niveshdristi.llm import LlmGroundingError, validate_output
+
+        raw = (
+            '{"summary": "meh", "claims": [{"text": "vol 3.0", '
+            '"evidence_ids": ["e1"]}]}'
+        )
+        with pytest.raises(LlmGroundingError, match="3.0"):
+            validate_output(raw, self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+
+    def test_summary_numbers_traceable_to_any_evidence(self):
+        from niveshdristi.llm import validate_output
+
+        raw = (
+            '{"summary": "vol 3.0 observed", "claims": '
+            '[{"text": "see e2", "evidence_ids": ["e2"]}]}'
+        )
+        v = validate_output(raw, self._evidence(), model_id="m",
+                            as_of=date(2026, 10, 31), prompt_hash="h")
+        assert v.summary == "vol 3.0 observed"
+
+    def test_empty_claims_rejected(self):
+        from niveshdristi.llm import LlmSchemaError, validate_output
+
+        with pytest.raises(LlmSchemaError, match="non-empty"):
+            validate_output('{"summary": "s", "claims": []}', self._evidence(),
+                            model_id="m", as_of=date(2026, 10, 31),
+                            prompt_hash="h")
