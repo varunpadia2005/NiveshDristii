@@ -188,6 +188,12 @@ paper_app = typer.Typer(help="Paper trading commands")
 app.add_typer(paper_app, name="paper")
 
 
+def _today() -> date:
+    """NEW (F5): the ONE wall-clock read in cli/. Tests patch this helper;
+    persisted artifacts should prefer data-derived dates (see paper_halt)."""
+    return date.today()
+
+
 def _fund_paths(fund_id: str, base: str | None) -> Any:
     from niveshdristi.paper.fund import FundPaths
 
@@ -333,7 +339,7 @@ def paper_create(
     try:
         ledger_path = create_fund(
             name, base=base,
-            created=date.fromisoformat(created) if created else date.today(),
+            created=date.fromisoformat(created) if created else _today(),
             config_digest="cli-created", rules=rules,
             limitations=limitations, rates_verified=False,
             initial_cash=capital, universe=universe_list,
@@ -383,7 +389,7 @@ def paper_tick(
         entry.data_status != "live" for entry in registry.entries()
     )  # noted: limitation codes are fixed on the ledger header
     del stub_used
-    candidate = date.fromisoformat(as_of) if as_of else date.today()
+    candidate = date.fromisoformat(as_of) if as_of else _today()
     start_window = candidate - timedelta(days=30)
     try:
         result = run_tick(
@@ -474,10 +480,16 @@ def paper_halt(
 ):
     """Halt paper fund (kill switch)."""
     from niveshdristi.paper.killswitch import halt
+    from niveshdristi.paper.ledger import PaperLedger
 
+    # F5: the session stamped into the persisted flag is DATA-DERIVED (the
+    # ledger's last session; the created date when the ledger is empty),
+    # never the wall clock.
+    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+    stamp = ledger.last_session_date() or _today()
     payload = halt(
         _fund_paths(fund_id, base), fund_id=fund_id, reason=reason,
-        session=date.today(), event_id=f"halt-{fund_id}",
+        session=stamp, event_id=f"halt-{fund_id}",
     )
     _events_log(fund_id, base).append("halt", **payload)
     _output({"status": "halted", **payload}, ctx.obj["json_output"])

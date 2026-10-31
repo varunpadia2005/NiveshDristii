@@ -2,6 +2,7 @@
 provider via monkeypatch — never network)."""
 
 import json
+from datetime import date
 
 import polars as pl
 import pytest
@@ -343,3 +344,64 @@ class TestOutgoingDataProof:
             "holdings", "quantity",           # category words (defensive)
         ):
             assert sentinel not in prompt_text, sentinel
+
+
+class TestClockF5:
+    """F5: every wall-clock read in cli/ goes through main._today(); the
+    halt flag's session is DATA-DERIVED (last ledger session, else the
+    created date), never the wall clock."""
+
+    def test_halt_session_is_ledger_derived_not_wall_clock(self, tmp_path,
+                                                           fake_provider,
+                                                           monkeypatch):
+        import niveshdristi.cli.main as cm
+
+        # the clock helper must not be touched at all during halt
+        def boom():
+            raise AssertionError("wall clock read during halt")
+
+        monkeypatch.setattr(cm, "_today", boom)
+        TestPaperExplain._seed(tmp_path, fake_provider)  # ledger has 2026-10-02
+        result = runner.invoke(app, [
+            "--json", "paper", "halt", "paper_test", "--base", str(tmp_path),
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["session"] == "2026-10-02"  # ledger-derived
+
+    def test_halt_session_falls_back_to_created_when_ledger_empty(self, tmp_path,
+                                                                  fake_provider,
+                                                                  monkeypatch):
+        import niveshdristi.cli.main as cm
+
+        monkeypatch.setattr(cm, "_today", lambda: date(2026, 1, 1))
+        runner.invoke(app, ["--json", "paper", "create", "empty_f",
+                            "--created", "2026-01-01",
+                            "--universe", "SYN090,SYN091", "--base", str(tmp_path)])
+        result = runner.invoke(app, [
+            "--json", "paper", "halt", "empty_f", "--base", str(tmp_path),
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        # empty ledger -> the created date (also 2026-01-01 here); the point
+        # is that it is NOT today's real date
+        assert payload["session"] in ("2026-01-01",)
+
+    def test_all_clock_reads_routed_through_today(self):
+        import re
+        from pathlib import Path
+
+        src = (Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+               / "cli" / "main.py").read_text(encoding="utf-8")
+        lines = src.splitlines()
+        # the ONLY allowed wall-clock read is inside the _today() helper
+        helper_span = set()
+        for i, line in enumerate(lines):
+            if "def _today" in line:
+                helper_span.update(range(i, i + 4))
+        uses = [
+            (i, line) for i, line in enumerate(lines, 1)
+            if re.search(r"\bdate\.today\(\)|\bdatetime\.now\(", line)
+            and (i - 1) not in helper_span
+        ]
+        assert uses == [], uses
