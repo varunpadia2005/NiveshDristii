@@ -460,7 +460,7 @@ def main() -> int:
     for target in (
         "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models",
-        "src/niveshdristi/portfolio",
+        "src/niveshdristi/portfolio", "src/niveshdristi/llm",
     ):
         scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
         if scannable:
