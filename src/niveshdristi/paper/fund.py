@@ -32,6 +32,7 @@ clock; no market literals in paper/.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -292,6 +293,13 @@ def tick(
                 f"{valid}/{total})"
             )
             continue
+        cutoff = session.isoformat()
+        snapshots_for_session = {
+            sym: frame.filter(
+                pl.col("date").cast(pl.String).str.slice(0, 10) <= cutoff
+            )
+            for sym, frame in frames.items()
+        }
         with Lock(paths.root / "tick.lock"):
             if not cache_matches_ledger(paths.broker_cache, ledger):
                 _halt(paths, fund_id, session, "broker cache disagrees with ledger")
@@ -308,6 +316,7 @@ def tick(
             )
             ledger.append(record, fund.last_hash)
             _write_cache_atomic(paths.broker_cache, record, fund)
+            save_snapshot(paths, session, snapshots_for_session)
             processed += 1
             outcome["sessions"].append(
                 f"{session.isoformat()}: advanced (fills={len(record.fills)})"
@@ -315,6 +324,31 @@ def tick(
     if processed:
         outcome["outcome"] = "filled"
     return outcome
+
+
+def save_snapshot(
+    paths: FundDirectory, session: date, frames: dict[str, pl.DataFrame]
+) -> dict[str, str]:
+    """Amendment I: store the frames the models saw for this session
+    (parquet sidecars keyed by content hash) so replay never refetches
+    (yfinance restates adjusted history after corporate actions)."""
+    out: dict[str, str] = {}
+    snapshot_dir = paths.snapshots / session.isoformat()
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    for symbol in sorted(frames):
+        frame = frames[symbol]
+        tmp = snapshot_dir / f"_{symbol}.parquet.tmp"
+        frame.write_parquet(tmp)
+        raw = tmp.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        tmp.unlink()
+        target = snapshot_dir / f"{symbol}_{digest[:16]}.parquet"
+        if not target.exists():
+            target.write_bytes(raw)
+        out[symbol] = digest
+    manifest = snapshot_dir / "manifest.json"
+    manifest.write_text(json.dumps(out, sort_keys=True), encoding="utf-8")
+    return out
 
 
 def _halt(paths: FundDirectory, fund_id: str, session: date, reason: str) -> None:

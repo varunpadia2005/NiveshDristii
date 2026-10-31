@@ -529,9 +529,15 @@ def paper_replay(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Replay stored snapshots through advance() and compare with the ledger."""
+    from niveshdristi.engine.advance import ModelBundle as MB
+    from niveshdristi.engine.advance import RebalanceSchedule as RS
     from niveshdristi.paper.replay import replay_fund
+    from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
 
-    result = replay_fund(fund_id, base=base)
+    result = replay_fund(
+        fund_id, base=base, models=MB(_live_models_bundle()),
+        limits=GLimits(), rebalance=RS(),
+    )
     _output(result, ctx.obj["json_output"])
     if not result.get("byte_identical", False):
         raise typer.Exit(code=1)
