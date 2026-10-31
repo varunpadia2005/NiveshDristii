@@ -13,7 +13,19 @@ repository registers a scheduled task automatically.
 ## The command the scheduled task runs
 
 ```
-"C:\Path\To\Python313\python.exe" -m niveshdristi.cli paper tick <fund-id> --base "D:\funds"
+"C:\Path\To\Python313\python.exe" -m niveshdristi.cli paper tick <fund-id> --base "D:\funds" --as-of <YYYY-MM-DD>
+```
+
+Notes (F4):
+- The module entry point is `niveshdristi.cli` (a `__main__` shim added in F4);
+  `python -m niveshdristi.cli.main` also works. Both require the working
+  directory ("Start in" in Task Scheduler) to be the REPO ROOT: config.yaml
+  and universes/ are loaded with CWD-RELATIVE paths at import time, so even
+  `--help` fails from any other directory.
+- `--as-of` is optional; when omitted the tick uses the system date
+  (cli/main.py). Pass it explicitly for reproducible runs.
+```
+
 ```
 
 Replace the python path with your interpreter (find it with
