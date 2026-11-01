@@ -8,3 +8,8 @@ serverAddress = "localhost"
 address = "127.0.0.1"
 port = 8501
 headless = true
+
+# D1a: security posture (loopback, XSRF on, CORS not relaxed).
+[server]
+enableXsrfProtection = true
+enableCORS = false

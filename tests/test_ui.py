@@ -153,3 +153,54 @@ class TestUiBoundary:
                 if banned.search(line) and not line.strip().startswith("#"):
                     offenders.append(f"{f.name}:{i}")
         assert offenders == [], offenders
+
+
+class TestInertTextD1a:
+    """D1a: hostile strings from ledger/events/sidecars render INERT —
+    they appear as element VALUES, never as executed markup. The app uses
+    no unsafe_allow_html and no st.markdown of raw text anywhere."""
+
+    @staticmethod
+    def _plant_hostile(tmp_path):
+        # plant hostile strings in the halt flag reason and events
+        flag = tmp_path / "paper_test" / "halt.flag"
+        import json as _json
+
+        flag.write_text(_json.dumps({
+            "fund_id": "paper_test",
+            "reason": "<script>alert(1)</script> [click](javascript:alert(1)) "
+                      "![img](javascript:alert(1))",
+            "session": "2026-10-02", "halted_at": "2026-10-02",
+        }), encoding="utf-8")
+
+    def test_hostile_strings_render_inert(self, seeded_fund):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = seeded_fund
+        self._plant_hostile(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=120)
+        assert not at.exception, at.exception
+        all_values = " ".join(
+            str(getattr(e, "value", "")) for e in at.main)
+        # the raw string appears VERBATIM (inert), intact, in a value slot
+        assert "<script>alert(1)</script>" in all_values
+        assert "[click](javascript:alert(1))" in all_values
+
+    def test_no_dangerous_surface_in_ui_and_services(self):
+        ui = Path(__file__).resolve().parent.parent / "src" / "niveshdristi" / "ui"
+        svc = Path(__file__).resolve().parent.parent / "src" / "niveshdristi" / "services"
+        banned = ("unsafe_allow_html", "st.markdown", "st.components",
+                  "iframe", "eval(", "exec(", "subprocess", "os.system",
+                  "requests", "urllib", "httpx", "st.secrets")
+        offenders = []
+        for f in list(ui.rglob("*.py")) + list(svc.rglob("*.py")):
+            for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                for b in banned:
+                    if b in line and not line.strip().startswith("#"):
+                        offenders.append(f"{f.name}:{i}: {b}")
+        assert offenders == [], offenders
