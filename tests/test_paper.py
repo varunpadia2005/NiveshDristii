@@ -709,3 +709,61 @@ class TestPendingDurabilityR9a:
         a = run(tmp_path / "a", crash_after=-1)   # uninterrupted
         b = run(tmp_path / "b", crash_after=K)    # cache loss + recover mid-run
         assert a == b  # BYTE FOR BYTE
+
+
+class TestFirstValidSessionAnchorF10:
+    """F10 (decision F6a): an empty-ledger fund is anchored at its FIRST
+    VALID session, not created+1 — and the backtest-vs-paper equality
+    convention still holds for a fund created LONG before its data."""
+
+    def test_anchor_at_first_valid_session(self, tmp_path):
+        # fund created 2025-06-01; frames start 2026-01-01 (12 sessions)
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(tmp_path, created=date(2025, 6, 1))
+        result = TestPaperFund._tick(tmp_path, frames,
+                                     date.fromisoformat(dates[-1]), None)
+        assert result["outcome"] == "filled"
+        assert result["sessions"][0].startswith(dates[0]), result["sessions"][:2]
+        # the catch-up cap was NOT burned on pre-data non-sessions: the tick
+        # advanced MAX_SESSIONS_PER_RUN sessions ending at dates[-1]
+        advanced = [s for s in result["sessions"] if "advanced" in s]
+        assert len(advanced) == 10
+        assert advanced[0].startswith(dates[0])   # anchored at first VALID
+        assert advanced[-1].startswith(dates[9])  # cap ends the window
+
+    def test_equality_holds_when_created_long_before_data(self, tmp_path):
+        """The F6a convention: with the anchor at the first valid session,
+        paper records correspond one-to-one to backtest records even though
+        the fund was created ~6 months before the data."""
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
+        from niveshdristi.core.session import SessionRecord
+        from niveshdristi.engine.backtest import run_backtest
+        from niveshdristi.execution.sim_broker import SimBroker
+        from niveshdristi.paper.ledger import PaperLedger
+
+        frames = _momentum_frames(150)
+        dates = _momentum_session_dates(frames)
+        bundle = ModelBundle([TimeSeriesMomentum()])
+        TestPaperFund._create(tmp_path, created=date(2025, 7, 1))
+        for d in dates[:130]:
+            TestPaperFund._tick(tmp_path, frames, date.fromisoformat(d), None,
+                                models=bundle)
+        rules = TestRiskGates._rules()
+        bt = run_backtest(
+            frames, models=bundle, rules=rules,
+            limits=TestPaperFund._limits(), rebalance=RebalanceSchedule(),
+            initial_cash=1_000_000.0, tax_enabled=False,
+            broker=SimBroker(rates=rules.rates, price_limits=rules.price_limits),
+        )
+        stored = PaperLedger(tmp_path / "paper_test" / "ledger.jsonl").records()
+        by_date = {r.session_date.isoformat(): r for r in bt.records}
+        assert len(stored) == 130
+        for line in stored:
+            b = by_date[line["session_date"]]
+            rec = SessionRecord.model_validate(
+                {k: v for k, v in line.items() if k != "hash"}
+            )
+            assert b.compute_hash() == line["hash"], line["session_date"]
+            assert json.dumps(b._canonical(), sort_keys=True, default=str) == \
+                json.dumps(rec._canonical(), sort_keys=True, default=str)

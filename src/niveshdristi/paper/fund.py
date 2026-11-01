@@ -269,8 +269,32 @@ def tick(
 
     # Candidate sessions: from (ledger last session | fund creation) forward,
     # capped at MAX_SESSIONS_PER_RUN (amendment E catch-up).
+    try:
+        frames = fetch_bars(sorted(universe), clock_now)
+    except Exception as exc:  # noqa: BLE001 - provider failure is an event
+        outcome["outcome"] = "failure"
+        outcome["reason"] = f"provider chain exhausted: {exc}"
+        return outcome
+
     header = ledger.header()
     anchor = date.fromisoformat(header["created"]) if last_session is None else last_session
+    # F10 (decision F6a): an EMPTY-LEDGER fund is anchored at its FIRST
+    # VALID session (>= created+1 with full coverage) instead of created+1,
+    # so a fund created long before its data does not burn its catch-up cap
+    # on non-sessions. This PRESERVES the backtest-vs-paper equality
+    # convention: the paper period starts at the first data session, which
+    # is exactly the backtest's first session.
+    if last_session is None:
+        first_valid = None
+        probe = anchor
+        while probe < clock_now:
+            probe = date.fromordinal(probe.toordinal() + 1)
+            valid, total = coverage_for_session(frames, probe, universe)
+            if total > 0 and valid >= total * COVERAGE_MIN_THRESHOLD:
+                first_valid = probe
+                break
+        if first_valid is not None:
+            anchor = date.fromordinal(first_valid.toordinal() - 1)
     candidates: list[date] = []
     start = anchor
     while len(candidates) < MAX_SESSIONS_PER_RUN:
@@ -287,13 +311,6 @@ def tick(
     if not candidates:
         outcome["reason"] = "no candidate sessions (created date >= candidate)"
         return outcome
-    try:
-        frames = fetch_bars(sorted(universe), candidates[0])
-    except Exception as exc:  # noqa: BLE001 - provider failure is an event
-        outcome["outcome"] = "failure"
-        outcome["reason"] = f"provider chain exhausted: {exc}"
-        return outcome
-
     # F7: REPORT-only data-quality flags to events.jsonl. This never
     # changes records, hashes or decisions — the report is observational.
     from niveshdristi.marketdata.quality import check_prices
