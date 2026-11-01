@@ -3,6 +3,8 @@ pages render the standard unavailable panel until their phase."""
 
 from __future__ import annotations
 
+import os
+
 import streamlit as st
 
 PAGES = ("Overview", "Deep-Dive", "Signals", "Backtest Lab", "Paper Fund",
@@ -16,8 +18,9 @@ def render_app() -> None:
     from niveshdristi.services import market_labels, read_fund
 
     labels = market_labels()
-    fund_id = st.session_state.get("fund_id", "paper_test")
-    base = st.session_state.get("fund_base")
+    fund_id = st.session_state.get("fund_id") or os.environ.get(
+        "NDR_FUND_ID", "paper_test")
+    base = st.session_state.get("fund_base") or os.environ.get("NDR_FUND_BASE")
     try:
         payload = read_fund(fund_id, base=base)
     except Exception as exc:  # noqa: BLE001 - UI must not crash on state
