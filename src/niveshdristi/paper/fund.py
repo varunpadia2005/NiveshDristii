@@ -46,6 +46,7 @@ from niveshdristi.core.errors import LedgerError, LockHeldError
 from niveshdristi.core.limitations import DataLimitations
 from niveshdristi.core.market_rules import MarketRules
 from niveshdristi.core.money import to_paise
+from niveshdristi.core.session import SessionRecord
 from niveshdristi.engine.advance import (
     FundState,
     ModelBundle,
@@ -78,8 +79,12 @@ class FundPaths:
 class FundDirectory:
     """Layout: ledger.jsonl, broker_cache.json, halt.flag, events.jsonl."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, base: Path | None = None,
+                 fund_id: str = "") -> None:
         self.root = Path(root)
+        # R9a: recover needs the fund id + base to invoke the replay
+        self.base = Path(base) if base is not None else self.root.parent
+        self.fund_id = fund_id or self.root.name
         self.ledger = self.root / "ledger.jsonl"
         self.broker_cache = self.root / "broker_cache.json"
         self.halt_flag = self.root / "halt.flag"
@@ -411,14 +416,15 @@ def _halt(paths: FundDirectory, fund_id: str, session: date, reason: str) -> Non
 
 
 def _rebuild_state(
-    ledger: PaperLedger, header: dict, cache_path: Path
+    ledger: PaperLedger, header: dict, cache_path: Path,
+    *, upto: int | None = None,
 ) -> FundState:
     """Shared by tick() and replay: rebuild FundState from the LEDGER
     (cash, lots via FIFO from the fill history) + the CACHE (pending
     decision). The ledger is the source of truth for money; the cache only
     carries the pending decision between sessions."""
 
-    records = ledger.records()
+    records = ledger.records()[:upto] if upto is not None else ledger.records()
     initial_cash = float(header.get("initial_cash_paise", 0)) / 100.0
     cash = initial_cash
     lots: list[Lot] = []
@@ -516,6 +522,43 @@ def _rebuild_state(
 def records_cash(ledger: PaperLedger) -> float:
     records = ledger.records()
     return float(records[-1]["cash_after"]) if records else 0.0
+
+
+def recover_fund(
+    paths: FundDirectory, *,
+    models: Any, rules: Any, limits: Any, rebalance: Any,
+    tax_enabled: bool = False,
+) -> dict:
+    """OPERATOR-ONLY (R9a, NEW): rebuild the broker cache from the ledger
+    AND re-derive the pending decision by REPLAYING the whole ledger from
+    its stored snapshots (deterministic per the C5 byte-equality property;
+    a per-session dry run is insufficient because the pre-session pending
+    is not stored anywhere). The ledger is never modified; any hash
+    mismatch aborts the recovery (LedgerError via the replay comparison)."""
+    from niveshdristi.paper.replay import replay_fund
+
+    records = PaperLedger(paths.ledger).records()
+    if not records:
+        return {"recovered": 0, "pending": False}
+    result = replay_fund(
+        paths.fund_id, base=paths.base, models=models, limits=limits,
+        rebalance=rebalance, return_fund=True,
+    )
+    if not result["byte_identical"]:
+        raise LedgerError(
+            "recover: replay is not byte-identical to the ledger; refusing "
+            "to rebuild the cache from a divergent replay"
+        )
+    fund = result["final_fund"]
+    last = records[-1]
+    stored_record = SessionRecord.model_validate(
+        {k: v for k, v in last.items() if k != "hash"}
+    )
+    _write_cache_atomic(paths.broker_cache, stored_record, fund)
+    return {
+        "recovered": len(records),
+        "pending": fund.pending_decision is not None,
+    }
 
 
 def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:

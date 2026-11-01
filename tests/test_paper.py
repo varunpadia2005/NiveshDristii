@@ -670,3 +670,42 @@ class TestQualityFlagsF7:
         la = (base_a / "paper_test" / "ledger.jsonl").read_bytes()
         lb = (base_b / "paper_test" / "ledger.jsonl").read_bytes()
         assert la == lb
+
+
+class TestPendingDurabilityR9a:
+    """R9a: a fund ticked uninterrupted (A) and a fund whose cache is
+    DELETED after session k then `recover`d (B) must produce BYTE-IDENTICAL
+    ledgers, using the real TimeSeriesMomentum so a pending decision exists
+    at the deletion point."""
+
+    def test_recover_preserves_pending_ledger_bytes(self, tmp_path):
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
+        from niveshdristi.paper.fund import FundPaths, recover_fund
+
+        frames = _momentum_frames(150)
+        dates = _momentum_session_dates(frames)
+        created = date.fromisoformat(dates[0]) - timedelta(days=1)
+        bundle = ModelBundle([TimeSeriesMomentum()])
+        tick_dates = [date.fromisoformat(d) for d in dates[:132]]
+        K = 130  # delete the cache after 130 ticks (pending exists there)
+
+        def run(base, crash_after):
+            TestPaperFund._create(base, created=created)
+            for i, d in enumerate(tick_dates):
+                if i == crash_after:
+                    (base / "paper_test" / "broker_cache.json").unlink()
+                    paths = FundPaths(base).for_fund("paper_test")
+                    from niveshdristi.portfolio.risk_gates import GateLimits
+                    rec = recover_fund(
+                        paths, models=bundle, rules=TestRiskGates._rules(),
+                        limits=GateLimits(max_position_pct=1.0,
+                                          min_cash_pct=0.0, turnover_max=1.0),
+                        rebalance=RebalanceSchedule(),
+                    )
+                    assert rec["recovered"] == i
+                TestPaperFund._tick(base, frames, d, None, models=bundle)
+            return (base / "paper_test" / "ledger.jsonl").read_bytes()
+
+        a = run(tmp_path / "a", crash_after=-1)   # uninterrupted
+        b = run(tmp_path / "b", crash_after=K)    # cache loss + recover mid-run
+        assert a == b  # BYTE FOR BYTE

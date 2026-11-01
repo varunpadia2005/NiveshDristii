@@ -188,6 +188,17 @@ paper_app = typer.Typer(help="Paper trading commands")
 app.add_typer(paper_app, name="paper")
 
 
+def _market_rules_from_header(fund_id: str, base: str | None) -> Any:
+    """NEW (R9a): reconstruct the fund's MarketRules from the ledger header
+    digest (same as replay does) so recover is composition-faithful."""
+    import json
+
+    from niveshdristi.core.market_rules import MarketRules
+    from niveshdristi.paper.ledger import PaperLedger
+
+    header = PaperLedger(_fund_paths(fund_id, base).ledger).header()
+    return MarketRules.model_validate(json.loads(header["market_rules_digest"]))
+
 def _today() -> date:
     """NEW (F5): the ONE wall-clock read in cli/. Tests patch this helper;
     persisted artifacts should prefer data-derived dates (see paper_halt)."""
@@ -561,24 +572,23 @@ def paper_recover(
     fund_id: str = typer.Argument(..., help="Fund ID"),
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
-    """OPERATOR: rebuild the broker cache from the ledger (never called by tick)."""
-    from niveshdristi.paper.fund import FundState, _write_cache_atomic
-    from niveshdristi.paper.ledger import PaperLedger
+    """OPERATOR: rebuild the broker cache from the ledger (never called by
+    tick). R9a: re-derives the pending decision by dry-running the last
+    session from its stored snapshot (hash-checked against the ledger)."""
+    from niveshdristi.engine.advance import ModelBundle as MB
+    from niveshdristi.engine.advance import RebalanceSchedule as RS
+    from niveshdristi.paper.fund import recover_fund
+    from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
 
-    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
-    records = ledger.records()
-    last_session = (
-        date.fromisoformat(records[-1]["session_date"])
-        if records else date(1970, 1, 1)
+    result = recover_fund(
+        _fund_paths(fund_id, base),
+        models=MB(_live_models_bundle()),
+        rules=_market_rules_from_header(fund_id, base),
+        limits=GLimits(),
+        rebalance=RS(),
     )
-    fund = FundState(cash=float(records[-1]["cash_after"]) if records else 0.0)
-    _write_cache_atomic(
-        _fund_paths(fund_id, base).broker_cache,
-        type("R", (), {"session_date": last_session})(),
-        fund,
-    )
-    _events_log(fund_id, base).append("recover", fund_id=fund_id)
-    _output({"status": "recovered", "records": len(records)}, ctx.obj["json_output"])
+    _events_log(fund_id, base).append("recover", fund_id=fund_id, **result)
+    _output({"status": "recovered", **result}, ctx.obj["json_output"])
 
 
 @paper_app.command("unlock")
