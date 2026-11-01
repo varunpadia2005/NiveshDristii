@@ -127,7 +127,12 @@ def run_llm(
             status="degraded", detail="BudgetExceeded: per-run call cap"
         )
     request = LlmRequest(
-        system_prompt=(extra_system + "\n" + SYSTEM_RULES).strip(),
+        # R9c: avoid duplicating SYSTEM_RULES when the caller already
+        # passed it as extra_system.
+        system_prompt=(
+            extra_system if SYSTEM_RULES in extra_system
+            else (extra_system + "\n" + SYSTEM_RULES).strip()
+        ),
         data_blocks=data_blocks,
         schema_version=SCHEMA_VERSION,
         max_tokens=budget.max_tokens_per_call,
