@@ -930,3 +930,34 @@ class TestDecisionsSidecarF12:
         wrong = read_sidecar(directory, date(2026, 10, 3), "b" * 64)
         assert wrong is not None
         assert wrong["verified"] is False
+
+
+class TestAnchorLiveModeD1b:
+    """D1b: a fund created TODAY and ticked several sessions LATER must not
+    skip sessions that had full coverage (F10 anchor rule in live mode).
+    The provider frames are the SAME each tick, so after the anchor settles
+    every covered session is processed exactly once, in order."""
+
+    def test_no_skipped_covered_sessions_live_mode(self, tmp_path):
+        # created 2026-09-30; the provider has 40 sessions ending 2026-11-10
+        frames = _momentum_frames(40)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
+        # first tick happens much later (as-of = dates[-1], ~40 days later):
+        # catch-up caps at 10, so tick forward one day at a time from the
+        # operator's perspective — each tick advances up to 10 sessions and
+        # the union of processed sessions must have NO gaps in the covered
+        # calendar from the anchor to the last ticked date.
+        processed: set[str] = set()
+        clock = date.fromisoformat(dates[-1])
+        for i in range(1, 41):
+            d = date.fromisoformat(dates[39]) - timedelta(days=40 - i)
+            if d < date(2026, 10, 1):
+                continue
+            r = TestPaperFund._tick(tmp_path, frames, min(d, clock), None)
+            for s in r["sessions"]:
+                if "advanced" in s:
+                    processed.add(s.split(":")[0])
+        covered = {d for d in dates if d >= "2026-10-01" and d <= dates[-1]}
+        missing = covered - processed
+        assert not missing, f"covered sessions skipped: {sorted(missing)[:5]}"
