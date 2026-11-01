@@ -868,3 +868,60 @@ class TestSplitHaltPolicyF11:
         q = [e for e in events if e.get("event") == "quality"][-1]
         assert q["flags"]["SYN091"]["split_discontinuity"] >= 1
         assert q.get("halted") is None
+
+
+class TestDecisionsSidecarF12:
+    """F12 (R9b decision): content-hashed sidecar OUTSIDE the hash chain.
+
+    - written after the ledger commit; ledger bytes IDENTICAL with and
+      without it; replay unaffected;
+    - missing -> fallback (None);
+    - tampered -> "unverified", never trusted."""
+
+    def test_ledger_byte_identical_with_and_without_sidecar(self, tmp_path):
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        created = date.fromisoformat(dates[0]) - timedelta(days=1)
+        a, b = tmp_path / "a", tmp_path / "b"
+        for base in (a, b):
+            TestPaperFund._create(base, created=created)
+            TestPaperFund._tick(base, frames, date.fromisoformat(dates[9]), None)
+        assert (a / "paper_test" / "ledger.jsonl").read_bytes() == \
+            (b / "paper_test" / "ledger.jsonl").read_bytes()
+        # remove the sidecar in b -> ledger bytes STILL equal
+        import shutil
+        shutil.rmtree(b / "paper_test" / "decisions")
+        assert (a / "paper_test" / "ledger.jsonl").read_bytes() == \
+            (b / "paper_test" / "ledger.jsonl").read_bytes()
+
+    def test_replay_and_hashes_unaffected(self, tmp_path):
+        from tests.test_paper import TestReplayByteEquality as R
+
+        R._seed_and_tick(tmp_path, days=3)
+        assert (tmp_path / "paper_test" / "decisions").exists()
+        replay = R._replay(tmp_path)
+        assert replay["byte_identical"] is True
+
+    def test_missing_returns_none_and_tampered_is_unverified(self, tmp_path):
+        from niveshdristi.paper.decisions_sidecar import (
+            read_sidecar, write_sidecar,
+        )
+
+        directory = tmp_path / "decisions"
+        session = date(2026, 10, 2)
+        assert read_sidecar(directory, session, "h" * 64) is None  # missing
+        write_sidecar(directory, session, "h" * 64, {"targets": {"X": 0.5}})
+        good = read_sidecar(directory, session, "h" * 64)
+        assert good is not None and good["verified"] is True
+        assert good["payload"]["targets"] == {"X": 0.5}
+        # tamper: flip a byte in the payload -> digest no longer matches
+        target = sorted(directory.glob(f"{session.isoformat()}_*.json"))[0]
+        target.write_text(
+            target.read_text(encoding="utf-8").replace("0.5", "0.9"),
+            encoding="utf-8")
+        bad = read_sidecar(directory, session, "h" * 64)
+        assert bad is not None and bad["verified"] is False  # UNVERIFIED
+        # record_hash mismatch -> unverified
+        write_sidecar(directory, date(2026, 10, 3), "a" * 64, {"x": 1})
+        wrong = read_sidecar(directory, date(2026, 10, 3), "b" * 64)
+        assert wrong is not None and wrong["verified"] is False

@@ -387,6 +387,21 @@ def tick(
             # carries the PENDING decision created by this session's assess
             _write_cache_atomic(paths.broker_cache, record, fund)
             save_snapshot(paths, session, snapshots_for_session)
+            # R9b decision sidecar (OUTSIDE the hash chain), written AFTER
+            # the ledger commit; observational only — removing it must not
+            # change any byte of the ledger or replay.
+            from niveshdristi.paper.decisions_sidecar import write_sidecar
+
+            sidecar_payload: dict[str, Any] = {
+                "decisions": [d.model_dump(mode="json") for d in record.decisions],
+                "pending": (
+                    fund.pending_decision.gated.model_dump(mode="json")
+                    if fund.pending_decision is not None else None
+                ),
+            }
+            write_sidecar(
+                paths.root / "decisions", session, linked_hash, sidecar_payload
+            )
             processed += 1
             outcome["sessions"].append(
                 f"{session.isoformat()}: advanced (fills={len(record.fills)})"
