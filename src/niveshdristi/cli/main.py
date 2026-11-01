@@ -671,13 +671,35 @@ def paper_explain(
         ),
     )
     raw_text = json.dumps(record, sort_keys=True, default=str)
-    # R6: redact fund id, cash, equity and any path unless opted in (no
-    # opt-in flags are exposed in this command; defaults are the safe ones).
-    outgoing = redact(
-        raw_text,
-        {"fund_ids": fund_id, "cash": str(record["cash_after"]),
-         "paths": str(_fund_paths(fund_id, base).root)},
-    )
+    # R6 + F13: redact fund id, cash, equity/NAV, EVERY fill/position
+    # quantity and price, and any path (no opt-in flags are exposed in this
+    # command). DOCUMENTED FAIL-SAFE: with everything portfolio-specific
+    # redacted, the explain feature currently yields little numeric value
+    # by design — the model never sees the numbers it must cite.
+    # redact() takes ONE literal per category, so multi-value categories
+    # (quantities, prices) are applied as sequential literal removals and
+    # redact(raw_text, {}) finishes with the unconditional secret scrub.
+    outgoing = redact(raw_text, {
+        "fund_ids": fund_id,
+        "cash": str(record["cash_after"]),
+        "nav": str(record["equity_after"]),
+        "paths": str(_fund_paths(fund_id, base).root),
+    })
+    multi: list[tuple[str, str]] = [("cash", str(record["cash_after"]))]
+    for fill in record.get("fills", []) or []:
+        if fill.get("fill_price") is not None:
+            multi.append(("quantities", str(fill["fill_price"])))
+        if fill.get("filled_quantity") is not None:
+            multi.append(("quantities", str(fill["filled_quantity"])))
+    for pos in record.get("positions_after", []) or []:
+        if pos.get("market_value") is not None:
+            multi.append(("nav", str(pos["market_value"])))
+        if pos.get("shares") is not None:
+            multi.append(("quantities", str(pos["shares"])))
+    for category, literal in multi:
+        if literal and literal in outgoing:
+            outgoing = outgoing.replace(literal, f"[REDACTED:{category}]")
+    outgoing = redact(outgoing, {})  # unconditional secret scrub
     llm = make_llm(provider, model)
     outcome = run_llm(
         llm,

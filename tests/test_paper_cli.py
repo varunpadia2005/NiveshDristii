@@ -405,3 +405,47 @@ class TestClockF5:
             and (i - 1) not in helper_span
         ]
         assert uses == [], uses
+
+
+class TestExplainSentinelsF13:
+    """F13 (R9c decision): fill and position quantities/prices are redacted
+    from the explain prompt, and the fail-safe is documented — with
+    everything portfolio-specific redacted, the explain feature yields
+    little numeric value BY DESIGN."""
+
+    def test_fill_price_and_quantity_redacted(self, tmp_path, fake_provider,
+                                              monkeypatch):
+        import niveshdristi.llm as llm_pkg
+
+        created = []
+        real = llm_pkg.make_llm
+
+        def cap(p, m):
+            inst = real(p, m)
+            created.append(inst)
+            return inst
+
+        monkeypatch.setattr(llm_pkg, "make_llm", cap)
+        TestPaperExplain._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        assert created and created[0].requests
+        prompt = created[0].requests[0].system_prompt + "".join(
+            created[0].requests[0].data_blocks)
+        # no raw share quantity / fill price survives: every integer share
+        # count in the ledger record must be behind a [REDACTED:*] tag
+        import json as _json
+        ledger_line = [
+            l for l in (tmp_path / "paper_test" / "ledger.jsonl")
+            .read_text(encoding="utf-8").splitlines() if "session_date" in l
+        ][-1]
+        record = _json.loads(ledger_line)
+        for fill in record.get("fills", []):
+            assert str(fill["filled_quantity"]) not in prompt
+            assert str(fill["fill_price"]) not in prompt
+        for pos in record.get("positions_after", []):
+            assert str(pos["shares"]) not in prompt
+            assert str(pos["market_value"]) not in prompt
