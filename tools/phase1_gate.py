@@ -367,7 +367,7 @@ def main() -> int:
         "src/niveshdristi/cli", "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
         "src/niveshdristi/markets/in_nse/models", "src/niveshdristi/portfolio",
         "src/niveshdristi/execution", "src/niveshdristi/paper",
-        "src/niveshdristi/llm",
+        "src/niveshdristi/llm", "src/niveshdristi/services",
     ):
         g08_files.extend((repo_root / d).glob("*.py"))
     g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
@@ -430,7 +430,7 @@ def main() -> int:
             "src/niveshdristi/portfolio",
             "src/niveshdristi/execution",
             "src/niveshdristi/paper",
-            "src/niveshdristi/llm",
+            "src/niveshdristi/llm", "src/niveshdristi/services",
         ],
     )
     core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
@@ -442,14 +442,15 @@ def main() -> int:
     ex_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/execution/")]
     pp_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/paper/")]
     llm_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/llm/")]
+    svc_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/services/")]
     if (
         core_issues or engine_issues or md_issues or alpha_issues or in_models
-        or pf_issues or ex_issues or pp_issues or llm_issues
+        or pf_issues or ex_issues or pp_issues or llm_issues or svc_issues
     ):
-        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)} execution={len(ex_issues)} paper={len(pp_issues)} llm={len(llm_issues)}")
+        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)} execution={len(ex_issues)} paper={len(pp_issues)} llm={len(llm_issues)} services={len(svc_issues)}")
         for i in (
             core_issues + engine_issues + md_issues + alpha_issues + in_models
-            + pf_issues + ex_issues + pp_issues + llm_issues
+            + pf_issues + ex_issues + pp_issues + llm_issues + svc_issues
         )[:10]:
             info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
@@ -487,6 +488,7 @@ def main() -> int:
         "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models",
         "src/niveshdristi/portfolio", "src/niveshdristi/llm",
+        "src/niveshdristi/services",
     ):
         scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
         if scannable:
@@ -606,6 +608,7 @@ def main() -> int:
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
                   "src/niveshdristi/portfolio", "src/niveshdristi/execution",
                   "src/niveshdristi/paper", "src/niveshdristi/llm",
+                  "src/niveshdristi/services",
                   "src/niveshdristi/config_loader.py",
                   *test_files], cwd=repo_root)
     if result.returncode == 0:
@@ -622,6 +625,7 @@ def main() -> int:
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
                   "src/niveshdristi/portfolio", "src/niveshdristi/execution",
                   "src/niveshdristi/paper", "src/niveshdristi/llm",
+                  "src/niveshdristi/services",
                   "src/niveshdristi/config_loader.py", *test_files,
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)

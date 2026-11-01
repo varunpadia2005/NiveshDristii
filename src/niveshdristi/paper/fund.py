@@ -332,7 +332,11 @@ def tick(
         }
         if any(i.check == "schema" for i in report.issues):
             quality_flags[symbol]["schema"] = 1
-        if report.has_critical and report.count("split_discontinuity") > 0                 and symbol in fund.positions():
+        if (
+            report.has_critical
+            and report.count("split_discontinuity") > 0
+            and symbol in fund.positions()
+        ):
             _halt(paths, fund_id, clock_now,
                   f"critical split_discontinuity on held symbol {symbol}")
             EventLog(paths.events).append(

@@ -805,16 +805,16 @@ class TestSplitHaltPolicyF11:
         # SYN090; t3: split planted on the held symbol -> halt
         frames, dates = self._ohlc_frames(n=2)
         TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
-        r1 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[0]),
-                                 None, models=bundle)
-        assert r1["outcome"] == "filled"
+        r_decide = TestPaperFund._tick(
+            tmp_path, frames, date.fromisoformat(dates[0]), None, models=bundle)
+        assert r_decide["outcome"] == "filled"
         r2 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[1]),
                                  None, models=bundle)
         assert r2["outcome"] == "filled"
         ledger = tmp_path / "paper_test" / "ledger.jsonl"
         records_before = len(
-            [l for l in ledger.read_text(encoding="utf-8").splitlines()
-             if "session_date" in l])
+            [x for x in ledger.read_text(encoding="utf-8").splitlines()
+             if "session_date" in x])
         assert records_before >= 2
 
         # session 2: SPLIT planted on SYN090 (held) -> halt, NO new record
@@ -827,12 +827,13 @@ class TestSplitHaltPolicyF11:
         assert "SYN090" in r2["reason"]
         assert (tmp_path / "paper_test" / "halt.flag").exists()
         records_after = len(
-            [l for l in ledger.read_text(encoding="utf-8").splitlines()
-             if "session_date" in l])
+            [x for x in ledger.read_text(encoding="utf-8").splitlines()
+             if "session_date" in x])
         assert records_after == records_before  # NO ledger record appended
         events = EventLog(tmp_path / "paper_test" / "events.jsonl").read()
         q = [e for e in events if e.get("event") == "quality"][-1]
-        assert q.get("halted") is True and q.get("held_symbol") == "SYN090"
+        assert q.get("halted") is True
+        assert q.get("held_symbol") == "SYN090"
 
     def test_unheld_symbol_split_is_log_only(self, tmp_path):
         from niveshdristi.engine.advance import ModelBundle
@@ -844,11 +845,11 @@ class TestSplitHaltPolicyF11:
         bundle = ModelBundle([TestAdvance._model({"2026-10-01": 0.9})])
         frames, dates = self._ohlc_frames(n=2)
         TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
-        r1 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[1]),
-                                 None, models=bundle)
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[1]),
+                            None, models=bundle)
         ledger = tmp_path / "paper_test" / "ledger.jsonl"
-        before = len([l for l in ledger.read_text(encoding="utf-8").splitlines()
-                      if "session_date" in l])
+        before = len([x for x in ledger.read_text(encoding="utf-8").splitlines()
+                      if "session_date" in x])
         # plant the split on SYN091 ONLY (SYN090 stays clean/held)
         frames2, dates2 = self._ohlc_frames(n=3)  # both clean
         clean091 = frames2["SYN091"]["close"].to_list()
@@ -861,8 +862,8 @@ class TestSplitHaltPolicyF11:
                                  models=bundle)
         assert r2["outcome"] in ("filled", "no-op")  # NOT halted
         assert not (tmp_path / "paper_test" / "halt.flag").exists()
-        after = len([l for l in ledger.read_text(encoding="utf-8").splitlines()
-                     if "session_date" in l])
+        after = len([x for x in ledger.read_text(encoding="utf-8").splitlines()
+                     if "session_date" in x])
         assert after >= before  # the tick proceeded
         events = EventLog(tmp_path / "paper_test" / "events.jsonl").read()
         q = [e for e in events if e.get("event") == "quality"][-1]
@@ -904,7 +905,8 @@ class TestDecisionsSidecarF12:
 
     def test_missing_returns_none_and_tampered_is_unverified(self, tmp_path):
         from niveshdristi.paper.decisions_sidecar import (
-            read_sidecar, write_sidecar,
+            read_sidecar,
+            write_sidecar,
         )
 
         directory = tmp_path / "decisions"
@@ -912,7 +914,8 @@ class TestDecisionsSidecarF12:
         assert read_sidecar(directory, session, "h" * 64) is None  # missing
         write_sidecar(directory, session, "h" * 64, {"targets": {"X": 0.5}})
         good = read_sidecar(directory, session, "h" * 64)
-        assert good is not None and good["verified"] is True
+        assert good is not None
+        assert good["verified"] is True
         assert good["payload"]["targets"] == {"X": 0.5}
         # tamper: flip a byte in the payload -> digest no longer matches
         target = sorted(directory.glob(f"{session.isoformat()}_*.json"))[0]
@@ -920,8 +923,10 @@ class TestDecisionsSidecarF12:
             target.read_text(encoding="utf-8").replace("0.5", "0.9"),
             encoding="utf-8")
         bad = read_sidecar(directory, session, "h" * 64)
-        assert bad is not None and bad["verified"] is False  # UNVERIFIED
+        assert bad is not None
+        assert bad["verified"] is False  # UNVERIFIED
         # record_hash mismatch -> unverified
         write_sidecar(directory, date(2026, 10, 3), "a" * 64, {"x": 1})
         wrong = read_sidecar(directory, date(2026, 10, 3), "b" * 64)
-        assert wrong is not None and wrong["verified"] is False
+        assert wrong is not None
+        assert wrong["verified"] is False

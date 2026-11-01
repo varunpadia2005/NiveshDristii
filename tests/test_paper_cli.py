@@ -432,15 +432,16 @@ class TestExplainSentinelsF13:
             str(tmp_path), "--session", "2026-10-02",
         ])
         assert result.exit_code == 0, result.output
-        assert created and created[0].requests
+        assert created
+        assert created[0].requests
         prompt = created[0].requests[0].system_prompt + "".join(
             created[0].requests[0].data_blocks)
         # no raw share quantity / fill price survives: every integer share
         # count in the ledger record must be behind a [REDACTED:*] tag
         import json as _json
         ledger_line = [
-            l for l in (tmp_path / "paper_test" / "ledger.jsonl")
-            .read_text(encoding="utf-8").splitlines() if "session_date" in l
+            x for x in (tmp_path / "paper_test" / "ledger.jsonl")
+            .read_text(encoding="utf-8").splitlines() if "session_date" in x
         ][-1]
         record = _json.loads(ledger_line)
         for fill in record.get("fills", []):
