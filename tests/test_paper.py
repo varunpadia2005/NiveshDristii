@@ -767,3 +767,104 @@ class TestFirstValidSessionAnchorF10:
             assert b.compute_hash() == line["hash"], line["session_date"]
             assert json.dumps(b._canonical(), sort_keys=True, default=str) == \
                 json.dumps(rec._canonical(), sort_keys=True, default=str)
+
+
+class TestSplitHaltPolicyF11:
+    """F11 (approved policy): a CRITICAL split_discontinuity on a HELD
+    symbol halts the fund BEFORE appending a ledger record; the same
+    discontinuity on an UNHELD symbol is log-only. Resume still requires a
+    note (kill-switch semantics unchanged)."""
+
+    @staticmethod
+    def _ohlc_frames(n=30, split_after=None):
+        from datetime import timedelta as _td
+        dates = [(date(2026, 10, 1) + _td(days=i)).isoformat() for i in range(n)]
+        c090 = [100.0 * (1.005 ** i) for i in range(n)]
+        if split_after is not None:
+            for i in range(split_after, n):
+                c090[i] = c090[i] / 2.0  # the 2:1 split
+        c091 = [50.0 + i for i in range(n)]
+        def mk(c):
+            return pl.DataFrame({
+                "date": dates, "open": [v * 0.99 for v in c],
+                "high": [v * 1.01 for v in c], "low": [v * 0.99 for v in c],
+                "close": c, "adj_close": c,
+                "adj_high": [v * 1.01 for v in c],
+                "adj_low": [v * 0.99 for v in c],
+                "volume": [1_000_000] * n,
+            })
+        return {"SYN090": mk(c090), "SYN091": mk(c091)}, dates
+
+    def test_held_symbol_critical_split_halts_before_record(self, tmp_path):
+        from niveshdristi.engine.advance import ModelBundle
+        from niveshdristi.paper.events import EventLog
+        from tests.test_advance import TestAdvance
+
+        bundle = ModelBundle([TestAdvance._model({"2026-10-01": 0.9})])
+        # t1: clean frames -> decide; t2: pending executes -> fund HOLDS
+        # SYN090; t3: split planted on the held symbol -> halt
+        frames, dates = self._ohlc_frames(n=2)
+        TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
+        r1 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[0]),
+                                 None, models=bundle)
+        assert r1["outcome"] == "filled"
+        r2 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[1]),
+                                 None, models=bundle)
+        assert r2["outcome"] == "filled"
+        ledger = tmp_path / "paper_test" / "ledger.jsonl"
+        records_before = len(
+            [l for l in ledger.read_text(encoding="utf-8").splitlines()
+             if "session_date" in l])
+        assert records_before >= 2
+
+        # session 2: SPLIT planted on SYN090 (held) -> halt, NO new record
+        frames2, dates2 = self._ohlc_frames(n=3, split_after=2)
+        r2 = TestPaperFund._tick(tmp_path, frames2,
+                                 date.fromisoformat(dates2[2]), None,
+                                 models=bundle)
+        assert r2["outcome"] == "failure"
+        assert "split_discontinuity" in r2["reason"]
+        assert "SYN090" in r2["reason"]
+        assert (tmp_path / "paper_test" / "halt.flag").exists()
+        records_after = len(
+            [l for l in ledger.read_text(encoding="utf-8").splitlines()
+             if "session_date" in l])
+        assert records_after == records_before  # NO ledger record appended
+        events = EventLog(tmp_path / "paper_test" / "events.jsonl").read()
+        q = [e for e in events if e.get("event") == "quality"][-1]
+        assert q.get("halted") is True and q.get("held_symbol") == "SYN090"
+
+    def test_unheld_symbol_split_is_log_only(self, tmp_path):
+        from niveshdristi.engine.advance import ModelBundle
+        from niveshdristi.paper.events import EventLog
+        from tests.test_advance import TestAdvance
+
+        # SYN091 gets the split; the fund only ever holds SYN090
+        # (signals restricted to SYN090 by the model's symbol set)
+        bundle = ModelBundle([TestAdvance._model({"2026-10-01": 0.9})])
+        frames, dates = self._ohlc_frames(n=2)
+        TestPaperFund._create(tmp_path, created=date(2026, 9, 30))
+        r1 = TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[1]),
+                                 None, models=bundle)
+        ledger = tmp_path / "paper_test" / "ledger.jsonl"
+        before = len([l for l in ledger.read_text(encoding="utf-8").splitlines()
+                      if "session_date" in l])
+        # plant the split on SYN091 ONLY (SYN090 stays clean/held)
+        frames2, dates2 = self._ohlc_frames(n=3)  # both clean
+        clean091 = frames2["SYN091"]["close"].to_list()
+        split091 = [v if i < 2 else v / 2.0 for i, v in enumerate(clean091)]
+        frames2["SYN091"] = frames2["SYN091"].with_columns(
+            pl.Series("close", split091), pl.Series("adj_close", split091),
+        )
+        r2 = TestPaperFund._tick(tmp_path, frames2,
+                                 date.fromisoformat(dates2[2]), None,
+                                 models=bundle)
+        assert r2["outcome"] in ("filled", "no-op")  # NOT halted
+        assert not (tmp_path / "paper_test" / "halt.flag").exists()
+        after = len([l for l in ledger.read_text(encoding="utf-8").splitlines()
+                     if "session_date" in l])
+        assert after >= before  # the tick proceeded
+        events = EventLog(tmp_path / "paper_test" / "events.jsonl").read()
+        q = [e for e in events if e.get("event") == "quality"][-1]
+        assert q["flags"]["SYN091"]["split_discontinuity"] >= 1
+        assert q.get("halted") is None

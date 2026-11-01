@@ -311,8 +311,14 @@ def tick(
     if not candidates:
         outcome["reason"] = "no candidate sessions (created date >= candidate)"
         return outcome
-    # F7: REPORT-only data-quality flags to events.jsonl. This never
-    # changes records, hashes or decisions — the report is observational.
+    processed = 0
+    fund = _rebuild_state(ledger, header, paths.broker_cache)
+
+    # F7/F11: data-quality flags to events.jsonl (REPORT-only), PLUS the ONE
+    # documented exception to "data problems never halt" (decision F7): a
+    # CRITICAL split_discontinuity on a symbol CURRENTLY HELD halts the fund
+    # BEFORE any record is appended (a split on a held symbol would corrupt
+    # fills/valuation). Everything else is log-only.
     from niveshdristi.marketdata.quality import check_prices
     from niveshdristi.paper.events import EventLog
 
@@ -326,10 +332,21 @@ def tick(
         }
         if any(i.check == "schema" for i in report.issues):
             quality_flags[symbol]["schema"] = 1
+        if report.has_critical and report.count("split_discontinuity") > 0                 and symbol in fund.positions():
+            _halt(paths, fund_id, clock_now,
+                  f"critical split_discontinuity on held symbol {symbol}")
+            EventLog(paths.events).append(
+                "quality", fund_id=fund_id, flags=quality_flags,
+                halted=True, held_symbol=symbol,
+            )
+            outcome["outcome"] = "failure"
+            outcome["reason"] = (
+                f"halted: critical split_discontinuity on held symbol "
+                f"{symbol} (F11 policy); no ledger record appended; "
+                f"resume with `nd paper resume --note ...`"
+            )
+            return outcome
     EventLog(paths.events).append("quality", fund_id=fund_id, flags=quality_flags)
-
-    processed = 0
-    fund = _rebuild_state(ledger, header, paths.broker_cache)
     for session in candidates:
         valid, total = coverage_for_session(frames, session, universe)
         if valid == 0:
