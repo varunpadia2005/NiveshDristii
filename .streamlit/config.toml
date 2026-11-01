@@ -1,0 +1,10 @@
+# NEW (P8-S3): local-only Streamlit configuration.
+# Bound to loopback, headless, usage stats OFF (never phoned home).
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
