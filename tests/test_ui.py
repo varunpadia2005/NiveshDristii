@@ -50,6 +50,9 @@ def _texts(block):
         except AttributeError:
             continue
         for e in elements:
+            label = getattr(e, "label", None)
+            if label:
+                out.append(str(label))
             out.append(str(getattr(e, "value", "")))
     try:
         cols = block.columns
@@ -253,7 +256,82 @@ class TestFundOverviewS5:
         at.run(timeout=180)
         at.sidebar.radio[0].set_value("Overview").run(timeout=180)
         assert not at.exception, at.exception
-        texts = " ".join(str(getattr(e, "value", "")) for e in at.main)
+        texts = " ".join(_texts(at.main))
         assert "Fund overview" in texts
         assert "Needs attention" in texts
         assert "unavailable: no verified data source" in texts  # sector panel
+
+
+class TestMarketPagesS6:
+    """P8-S6: Market Overview (honest unavailables + last-data-session
+    badge) and the Signals Board (live models over stored snapshots)."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from tests.test_paper import TestPaperFund, _momentum_frames, \
+            _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=date.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[9]), None)
+        return tmp_path, dates
+
+    def test_market_overview_service(self, tmp_path):
+        from niveshdristi.services.market_view import market_overview
+
+        tmp_path, dates = self._seeded(tmp_path)
+        mo = market_overview("paper_test", base=tmp_path)
+        assert mo["last_data_session"] == dates[9]
+        assert "official holiday calendar is not loaded" in mo["holiday_note"]
+        assert "benchmark" in mo["unavailable"] and "India VIX" in mo["unavailable"]
+
+    def test_signals_board_rows_and_filter(self, tmp_path):
+        from niveshdristi.services.market_view import signals_board
+
+        tmp_path, _ = self._seeded(tmp_path)
+        rows = signals_board("paper_test", base=tmp_path)
+        assert {r["symbol"] for r in rows} == {"SYN090", "SYN091"}
+        for r in rows:
+            assert r["lean"].startswith(("\u25b2", "\u25bc", "\u2014")) or \
+                r["lean"] == "No opinion"
+            assert r["data_status"] == "live"
+            assert r["last_volume"] > 0
+        strong = signals_board("paper_test", base=tmp_path, min_conviction=0.9)
+        assert all(
+            r["conviction"] is None or abs(r["conviction"]) >= 0.9
+            for r in strong)
+
+    def test_signals_page_renders(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Signals").run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "Signals board" in texts
+        assert "SYN090" in texts
+        assert "unavailable: no verified data source" in texts  # sector filter
+
+    def test_market_overview_page_renders(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Market Overview").run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "Last data session" in texts
+        assert "holiday calendar is not loaded" in texts

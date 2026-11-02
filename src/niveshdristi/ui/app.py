@@ -7,14 +7,15 @@ import os
 
 import streamlit as st
 
-PAGES = ("Overview", "Deep-Dive", "Signals", "Backtest Lab", "Paper Fund",
-         "Settings")
+PAGES = ("Overview", "Market Overview", "Deep-Dive", "Signals",
+         "Backtest Lab", "Paper Fund", "Settings")
 
 
 def render_app() -> None:
     st.set_page_config(page_title="NiveshDristi", layout="wide")
     st.title("NiveshDristi — educational research tool")
-    page = st.sidebar.radio("Navigation", PAGES, index=4)
+    page = st.sidebar.radio("Navigation", PAGES,
+                            index=PAGES.index("Paper Fund"))
     from niveshdristi.services import market_labels, read_fund
 
     labels = market_labels()
@@ -37,6 +38,25 @@ def render_app() -> None:
         except Exception:  # noqa: BLE001 - fall back to the base payload
             overview = {**payload, "kpis": None}
         render_fund_overview(overview, labels)
+    elif page == "Market Overview":
+        from niveshdristi.services.market_view import market_overview
+        from niveshdristi.ui.market_page import render_market_overview
+
+        try:
+            mo = market_overview(fund_id, base=base)
+        except Exception as exc:  # noqa: BLE001
+            mo = {"as_of": payload["as_of"], "last_data_session": None,
+                  "holiday_note": f"unavailable: {exc}", "unavailable": []}
+        render_market_overview(mo, labels)
+    elif page == "Signals":
+        from niveshdristi.services.market_view import signals_board
+        from niveshdristi.ui.market_page import render_signals_board
+
+        try:
+            rows = signals_board(fund_id, base=base)
+        except Exception:  # noqa: BLE001
+            rows = []
+        render_signals_board(rows, payload, labels)
     elif page == "Paper Fund":
         from niveshdristi.ui.paper_page import render_paper_fund
 

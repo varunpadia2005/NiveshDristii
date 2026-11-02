@@ -68,6 +68,8 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
                                  "conviction_caption": CONVICTION_CAPTION,
                                  "conviction": None, "thesis": "", "horizon": None,
                                  "status": ""}
+        errors = 0
+        models_tried = 0
         try:
             inputs = build_from_full_frames(
                 as_of=date.fromisoformat(as_of), prices=frames)
@@ -83,10 +85,14 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
                 status = model_status_label(model)
                 if status:  # stub/evidence-only: labelled, never numbers
                     continue
-                for signal in model.predict(ctx, inputs):
-                    if signal.instrument.symbol == symbol:
-                        best = signal
-                        break
+                models_tried += 1
+                try:
+                    for signal in model.predict(ctx, inputs):
+                        if signal.instrument.symbol == symbol:
+                            best = signal
+                            break
+                except Exception:  # noqa: BLE001 - one model must not kill
+                    errors += 1                  # the symbol's other models
             if best is not None:
                 entry.update({
                     "lean": lean_label(best.conviction),
@@ -95,6 +101,8 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
                     "horizon": best.horizon_days,
                     "status": "",
                 })
+            elif models_tried and errors == models_tried:
+                entry["status"] = "unavailable: all models failed on this frame"
         except Exception as exc:  # noqa: BLE001 - display-only degradation
             entry["status"] = f"unavailable: {type(exc).__name__}"
         out[symbol] = entry
