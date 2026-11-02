@@ -76,6 +76,10 @@ def render_app() -> None:
 
             st.error(f"deep-dive unavailable: {type(exc).__name__}: {exc}")
             st.text(traceback.format_exc()[-600:])
+    elif page == "Backtest Lab":
+        from niveshdristi.ui.backtest_page import render_backtest_lab
+
+        render_backtest_lab(payload, labels)
     elif page == "Paper Fund":
         from niveshdristi.ui.paper_page import render_paper_fund
 

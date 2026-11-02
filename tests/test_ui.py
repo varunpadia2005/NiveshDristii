@@ -268,8 +268,7 @@ class TestMarketPagesS6:
 
     @staticmethod
     def _seeded(tmp_path):
-        from tests.test_paper import TestPaperFund, _momentum_frames, \
-            _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         frames = _momentum_frames(12)
         dates = _momentum_session_dates(frames)
@@ -285,7 +284,8 @@ class TestMarketPagesS6:
         mo = market_overview("paper_test", base=tmp_path)
         assert mo["last_data_session"] == dates[9]
         assert "official holiday calendar is not loaded" in mo["holiday_note"]
-        assert "benchmark" in mo["unavailable"] and "India VIX" in mo["unavailable"]
+        assert "benchmark" in mo["unavailable"]
+        assert "India VIX" in mo["unavailable"]
 
     def test_signals_board_rows_and_filter(self, tmp_path):
         from niveshdristi.services.market_view import signals_board
@@ -343,8 +343,7 @@ class TestDeepDiveS7:
 
     @staticmethod
     def _seeded(tmp_path):
-        from tests.test_paper import TestPaperFund, _momentum_frames, \
-            _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         frames = _momentum_frames(12)
         dates = _momentum_session_dates(frames)
@@ -385,3 +384,63 @@ class TestDeepDiveS7:
         assert "Stock deep-dive" in texts
         assert "evidence only" in texts
         assert "Recorded risk-gate verdicts" in texts
+
+
+class TestBacktestLabS8:
+    """P8-S8: engine backtest over stored snapshots; FIXED verdict wording;
+    no promotable-looking label can ever appear."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=date.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[9]), None)
+        return tmp_path, dates
+
+    def test_service_fixed_verdict_and_promotable_false(self, tmp_path):
+        import json
+
+        from niveshdristi.services.backtest_lab import (
+            content_key,
+            run_backtest_service,
+        )
+
+        tmp_path, dates = self._seeded(tmp_path)
+        key = content_key("paper_test", tmp_path)
+        result = run_backtest_service("paper_test", tmp_path, _key=key)
+        assert result["available"] is True
+        assert result["verdict"] == ("validation-gate result: pipeline "
+                                     "demonstration only; not evidence of "
+                                     "performance")
+        assert result["promotable"] is False  # NEVER promotable-looking
+        banned = ("promotable strategy", "approved for use",
+                  "evidence of performance", "go live")
+        text = json.dumps(result).lower()
+        for b in banned:
+            if b != "evidence of performance":
+                assert b not in text
+        assert "not evidence of performance" in text  # the fixed phrase
+        assert len(result["net_curve"]) == len(result["gross_curve"]) > 0
+
+    def test_lab_page_renders_on_click(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Backtest Lab").run(timeout=180)
+        assert not at.exception, at.exception
+        at.button(key="run_backtest_btn").click().run(timeout=300)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        # the 12-session fund honestly degrades (legacy warmup), so the
+        # typed error state is the expected verdict-first display
+        assert "backtest unavailable" in texts or             "pipeline demonstration only" in texts

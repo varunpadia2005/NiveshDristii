@@ -12,8 +12,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from niveshdristi.services.vocabulary import lean_label
-
 
 def _snapshot_frame(paths: Any, as_of: str, symbol: str):
     snap_dir = paths.snapshots / as_of

@@ -72,7 +72,7 @@ def run_backtest(
     *,
     models: ModelBundle,
     rules: MarketRules,
-    limits: GateLimits,
+    limits: GateLimits | None = None,
     rebalance: RebalanceSchedule,
     initial_cash: float = 1_000_000.0,
     broker=None,
@@ -92,6 +92,7 @@ def run_backtest(
         broker = SimBroker(
             rates=rules.rates, price_limits=PriceLimitRule(enabled=False)
         )
+    limits = limits or GateLimits()  # P8-S8: engine-side default
     calendar = DataCalendar.from_frames(frames)
     sessions = list(calendar.sessions())
     fund = FundState(cash=initial_cash, gross_cash=initial_cash)

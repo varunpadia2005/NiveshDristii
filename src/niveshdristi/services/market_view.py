@@ -17,7 +17,6 @@ def market_overview(fund_id: str, base: str | Path | None = None) -> dict:
     official holiday calendar is NOT loaded) + honest unavailable list."""
     from niveshdristi.paper.fund import FundPaths
     from niveshdristi.paper.ledger import PaperLedger
-
     from niveshdristi.services.fund import read_fund
 
     paths = FundPaths(base).for_fund(fund_id)
