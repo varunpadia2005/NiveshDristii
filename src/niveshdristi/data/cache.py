@@ -1,12 +1,12 @@
 """Caching layer: Parquet (local, fast) + PostgreSQL (shared, persistent)."""
-import polars as pl
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
-import asyncpg
 from datetime import date
+from pathlib import Path
 
-from niveshdristi.data.providers import RawPriceData, DataProvider
+import asyncpg
+import polars as pl
+
+from niveshdristi.data.providers import DataProvider
 
 
 @dataclass
@@ -31,7 +31,7 @@ def _parquet_path(ticker: str) -> Path:
     return _get_parquet_dir() / f"{safe}.parquet"
 
 
-def load_parquet(ticker: str) -> Optional[pl.DataFrame]:
+def load_parquet(ticker: str) -> pl.DataFrame | None:
     path = _parquet_path(ticker)
     if path.exists():
         return pl.read_parquet(path)
@@ -47,7 +47,7 @@ def save_parquet(ticker: str, df: pl.DataFrame) -> None:
 
 # --- PostgreSQL Cache ---
 
-async def _get_pg_pool() -> Optional[asyncpg.Pool]:
+async def _get_pg_pool() -> asyncpg.Pool | None:
     from niveshdristi.config import CFG
     dsn = CFG.data.cache.pg_dsn
     if not dsn:
@@ -90,7 +90,7 @@ async def init_pg() -> None:
             pass
 
 
-async def load_pg(ticker: str, start: Optional[date] = None) -> Optional[pl.DataFrame]:
+async def load_pg(ticker: str, start: date | None = None) -> pl.DataFrame | None:
     pool = await _get_pg_pool()
     if not pool:
         return None
@@ -142,8 +142,8 @@ async def load_prices(
     use_pg: bool = True
 ) -> CachedPriceData:
     """Load prices with caching: try Parquet -> PG -> fetch fresh."""
-    from niveshdristi.data.providers import get_provider
     from niveshdristi.data.adjust import adjust_prices
+    from niveshdristi.data.providers import get_provider
     from niveshdristi.data.validate import validate_prices
 
     provider = provider or get_provider()

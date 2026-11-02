@@ -1,15 +1,13 @@
 """High-level data loading API."""
 import asyncio
-from typing import List, Dict
-import polars as pl
 
-from niveshdristi.data.cache import load_prices, init_pg
-from niveshdristi.data.providers import get_provider
-from niveshdristi.data.contracts import PriceData
 from niveshdristi.config import CFG
+from niveshdristi.data.cache import init_pg, load_prices
+from niveshdristi.data.contracts import PriceData
+from niveshdristi.data.providers import get_provider
 
 
-async def load_universe(tickers: List[str] = None) -> Dict[str, PriceData]:
+async def load_universe(tickers: list[str] = None) -> dict[str, PriceData]:
     """Load price data for multiple tickers concurrently."""
     tickers = tickers or CFG.data.universe
     provider = get_provider()
@@ -38,7 +36,7 @@ def get_ticker_suffix(ticker: str) -> str:
     return ticker
 
 
-async def refresh_all() -> Dict[str, str]:
+async def refresh_all() -> dict[str, str]:
     """Force refresh all universe tickers. Returns status dict."""
     await init_pg()
     provider = get_provider()

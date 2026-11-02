@@ -1,7 +1,7 @@
 """Conviction Score: blends technical, fundamental, regime, and ML signals into 0-100 score."""
 from dataclasses import dataclass
-from typing import Optional
-from niveshdristi.data.contracts import SignalReport, GuardrailReport, RegimeReport, ModelOutput
+
+from niveshdristi.data.contracts import GuardrailReport, ModelOutput, RegimeReport, SignalReport
 
 
 @dataclass
@@ -24,7 +24,7 @@ def compute_conviction(
     signal: SignalReport,
     guardrails: GuardrailReport,
     regime: RegimeReport,
-    model: Optional[ModelOutput] = None,
+    model: ModelOutput | None = None,
     weights: dict = None
 ) -> ConvictionScore:
     """Blend all components into final conviction score."""

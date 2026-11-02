@@ -1,10 +1,9 @@
 """Market literals validation — ensure core/ and engine/ contain no market-specific code."""
 
 from __future__ import annotations
-from pathlib import Path
-from typing import List, Optional
-import re
 
+import re
+from pathlib import Path
 
 # Patterns that indicate market-specific code in core/engine
 # These should only match in EXECUTABLE code, not in comments/docstrings
@@ -53,7 +52,7 @@ SCAN_DIRS = [
 ]
 
 
-def scan_market_literals(root: Path = Path("."), scan_dirs: Optional[List[str]] = None) -> List[dict]:
+def scan_market_literals(root: Path = Path("."), scan_dirs: list[str] | None = None) -> list[dict]:
     """
     Scan core/ and engine/ for market-specific literals.
 

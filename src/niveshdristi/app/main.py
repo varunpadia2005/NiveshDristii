@@ -1,12 +1,18 @@
 """Streamlit UI entry point."""
 import streamlit as st
-from niveshdristi.config import CFG
-from niveshdristi.app.theme import theme_toggle
+
 from niveshdristi.app.pages import (
-    dashboard, deep_dive, screener,
-    sector_rotation, backtest_lab, portfolio_builder,
-    ai_analyst, methodology
+    ai_analyst,
+    backtest_lab,
+    dashboard,
+    deep_dive,
+    methodology,
+    portfolio_builder,
+    screener,
+    sector_rotation,
 )
+from niveshdristi.app.theme import theme_toggle
+from niveshdristi.config import CFG
 
 st.set_page_config(
     page_title="NiveshDristi",

@@ -1,11 +1,9 @@
 """Grounded AI Analyst: builds facts bundle, calls LLM, validates output."""
 import json
-import re
-from typing import Optional
-from niveshdristi.config import CFG
-from niveshdristi.data.contracts import FactsBundle, AnalystNote
-from niveshdristi.genai.client import OpenRouterClient, render_template
 
+from niveshdristi.config import CFG
+from niveshdristi.data.contracts import AnalystNote, FactsBundle
+from niveshdristi.genai.client import OpenRouterClient, render_template
 
 client = OpenRouterClient()
 
@@ -123,7 +121,7 @@ async def generate_analyst_note(bundle: FactsBundle) -> AnalystNote:
             elif isinstance(model_obj, dict):
                 from types import SimpleNamespace
                 model_obj = SimpleNamespace(**model_obj)
-            
+
             prompt = USER_PROMPT_TEMPLATE.format(
                 ticker=bundle.ticker,
                 date=bundle.date.isoformat(),

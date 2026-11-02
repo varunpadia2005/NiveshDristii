@@ -1,9 +1,8 @@
 """Relative Rotation Graph (RRG) and Market Regime detection."""
 import polars as pl
-import numpy as np
+
 from niveshdristi.config import CFG
 from niveshdristi.data.contracts import RegimeReport
-
 
 SECTOR_ETFS = {
     "IT": "NIFTYIT.NS",
@@ -38,7 +37,7 @@ async def compute_rrg(
 
     bench_ret = benchmark["adj_close"].pct_change(lookback).drop_nulls()
     if len(bench_ret) == 0:
-        return {s: "Unknown" for s in sector_data}
+        return dict.fromkeys(sector_data, "Unknown")
 
     last_bench = bench_ret[-1]
     quadrants = {}

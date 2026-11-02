@@ -1,13 +1,14 @@
 """Configuration loader using Pydantic Settings."""
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
-import yaml
-from pathlib import Path
-from dotenv import load_dotenv
 
+from pathlib import Path
+from typing import Any
+
+import yaml
+from dotenv import load_dotenv
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env file first
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -37,7 +38,7 @@ class ValidationConfig(BaseSettings):
 class DataConfig(BaseSettings):
     provider: str = "yfinance"
     cache: CacheConfig = Field(default_factory=CacheConfig)
-    universe: List[str] = Field(default_factory=list)
+    universe: list[str] = Field(default_factory=list)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
 
 
@@ -49,20 +50,20 @@ class IndicatorsConfig(BaseSettings):
     bb_period: int = 20
     bb_std: float = 2.0
     atr_period: int = 14
-    ema_periods: List[int] = Field(default_factory=lambda: [20, 50, 200])
+    ema_periods: list[int] = Field(default_factory=lambda: [20, 50, 200])
 
 
 class SignalsConfig(BaseSettings):
-    weights: Dict[str, float] = Field(default_factory=lambda: {
+    weights: dict[str, float] = Field(default_factory=lambda: {
         "trend": 0.35, "momentum": 0.30, "volatility": 0.15, "volume": 0.20
     })
-    score_bounds: List[float] = Field(default_factory=lambda: [-1.0, 1.0])
+    score_bounds: list[float] = Field(default_factory=lambda: [-1.0, 1.0])
     normalization: str = "sigmoid"
 
 
 class FundamentalsConfig(BaseSettings):
     refresh_cron: str = "0 6 * * 1"
-    guardrails: List[GuardrailRule] = Field(default_factory=list)
+    guardrails: list[GuardrailRule] = Field(default_factory=list)
 
 
 class RRGConfig(BaseSettings):
@@ -72,7 +73,7 @@ class RRGConfig(BaseSettings):
 
 class HMMConfig(BaseSettings):
     n_states: int = 3
-    features: List[str] = Field(default_factory=lambda: ["returns", "realized_vol", "vix"])
+    features: list[str] = Field(default_factory=lambda: ["returns", "realized_vol", "vix"])
     train_window_days: int = 756
     embargo_days: int = 10
 
@@ -83,8 +84,8 @@ class RegimesConfig(BaseSettings):
 
 
 class BacktestConfig(BaseSettings):
-    costs: Dict[str, float] = Field(default_factory=dict)
-    timing: Dict[str, int] = Field(default_factory=dict)
+    costs: dict[str, float] = Field(default_factory=dict)
+    timing: dict[str, int] = Field(default_factory=dict)
     initial_capital: float = 1_000_000
     risk_free_rate: float = 0.07
 
@@ -98,10 +99,10 @@ class PortfolioConfig(BaseSettings):
 
 
 class ModelsConfig(BaseSettings):
-    features: Dict[str, Any] = Field(default_factory=dict)
-    labels: Dict[str, Any] = Field(default_factory=dict)
-    cv: Dict[str, Any] = Field(default_factory=dict)
-    lightgbm: Dict[str, Any] = Field(default_factory=dict)
+    features: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, Any] = Field(default_factory=dict)
+    cv: dict[str, Any] = Field(default_factory=dict)
+    lightgbm: dict[str, Any] = Field(default_factory=dict)
 
 
 class GenAIConfig(BaseSettings):
@@ -110,14 +111,14 @@ class GenAIConfig(BaseSettings):
     temperature: float = 0.1
     max_tokens: int = 1500
     fallback_template: str = "analyst_note.j2"
-    validator: Dict[str, Any] = Field(default_factory=dict)
+    validator: dict[str, Any] = Field(default_factory=dict)
     api_key: str = Field(default="", exclude=True)  # From OPENROUTER_API_KEY env var
 
 
 class AppConfig(BaseSettings):
     theme_default: str = "light"
     cache_ttl_seconds: int = 3600
-    pages: List[str] = Field(default_factory=list)
+    pages: list[str] = Field(default_factory=list)
 
 
 class Settings(BaseSettings):
@@ -142,11 +143,11 @@ class Settings(BaseSettings):
 def load_config(path: str = "config.yaml") -> Settings:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
-    
+
     # Merge with env overrides for specific keys
     import os
     env_overrides = {}
-    
+
     # Handle flat env vars that map to nested config
     if os.getenv("DATABASE_URL"):
         env_overrides.setdefault("data", {}).setdefault("cache", {})["pg_dsn"] = os.getenv("DATABASE_URL")
@@ -155,19 +156,19 @@ def load_config(path: str = "config.yaml") -> Settings:
         pass
     if os.getenv("OPENROUTER_API_KEY"):
         env_overrides.setdefault("genai", {})["api_key"] = os.getenv("OPENROUTER_API_KEY")
-    
+
     # Merge env overrides into raw config
     for key, value in env_overrides.items():
         if key in raw and isinstance(raw[key], dict) and isinstance(value, dict):
             raw[key].update(value)
         else:
             raw[key] = value
-    
+
     return Settings(**raw)
 
 
 # Global config instance (lazy, typed Settings - not a proxy)
-_CFG: Optional[Settings] = None
+_CFG: Settings | None = None
 
 
 def get_config() -> Settings:

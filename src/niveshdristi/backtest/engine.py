@@ -1,10 +1,11 @@
 """Honest backtest engine: 1-day delay, full Indian cost model, Polars vectorized."""
-import polars as pl
-import numpy as np
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+
+import numpy as np
+import polars as pl
+
 from niveshdristi.config import CFG
-from niveshdristi.data.contracts import Trade, BacktestResult
+from niveshdristi.data.contracts import BacktestResult, Trade
 
 
 @dataclass
@@ -33,9 +34,9 @@ def _compute_cost_bps() -> float:
 
 
 def simulate(
-    prices: Dict[str, pl.DataFrame],
-    signals: Dict[str, pl.Series],  # aligned to price dates
-    config: Optional[BacktestConfig] = None
+    prices: dict[str, pl.DataFrame],
+    signals: dict[str, pl.Series],  # aligned to price dates
+    config: BacktestConfig | None = None
 ) -> BacktestResult:
     """Vectorized backtest with mandatory 1-day delay: signal@close -> trade@next_open."""
     config = config or BacktestConfig(
@@ -63,7 +64,7 @@ def simulate(
         lagged_signals[ticker] = sig_df.filter(pl.col("trade_date").is_not_null())
 
     cash = config.initial_capital
-    positions: Dict[str, int] = {}
+    positions: dict[str, int] = {}
     equity = []
     trades = []
     cost_mult = 1 + config.cost_bps / 10000
@@ -139,12 +140,12 @@ def simulate(
 
 
 def run_walk_forward(
-    prices: Dict[str, pl.DataFrame],
-    signals: Dict[str, pl.Series],
+    prices: dict[str, pl.DataFrame],
+    signals: dict[str, pl.Series],
     train_window: int = 252,
     test_window: int = 63,
     step: int = 21
-) -> List[BacktestResult]:
+) -> list[BacktestResult]:
     """Walk-forward backtest: expanding window train, rolling test."""
     all_dates = pl.concat([df.select("date") for df in prices.values()]).unique().sort("date")
     dates = all_dates["date"].to_list()

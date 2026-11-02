@@ -1,30 +1,30 @@
 """Theme system: Light default with dark mode toggle - Groww-inspired."""
 import streamlit as st
-from niveshdristi.config import CFG
 
+from niveshdristi.config import CFG
 
 # Groww-inspired color palette - Light, clean, professional
 LIGHT_THEME = {
     # Backgrounds - clean whites and off-whites
     "bg_primary": "#FFFFFF",
-    "bg_secondary": "#FAFAFB", 
+    "bg_secondary": "#FAFAFB",
     "bg_tertiary": "#F5F6FA",
     "bg_card": "#FFFFFF",
     "bg_hover": "#F0F2F5",
     "bg_input": "#FAFAFB",
-    
+
     # Text
     "text_primary": "#1A1D21",
     "text_secondary": "#5E6C84",
     "text_muted": "#9AA7B8",
     "text_on_primary": "#FFFFFF",
-    
+
     # Brand - Groww green
     "brand_primary": "#00B87C",
     "brand_secondary": "#00A06D",
     "brand_light": "#E8F8F0",
     "brand_gradient": "linear-gradient(135deg, #00B87C 0%, #00D48A 100%)",
-    
+
     # Semantic
     "success": "#00B87C",
     "success_light": "#E8F8F0",
@@ -34,16 +34,16 @@ LIGHT_THEME = {
     "warning_light": "#FFF4E6",
     "info": "#007AFF",
     "info_light": "#E8F0FE",
-    
+
     # Borders
     "border_light": "#E4E7EC",
     "border_medium": "#D1D5DB",
     "border_focus": "#00B87C",
-    
+
     # Charts
     "chart_grid": "#F0F2F5",
     "chart_text": "#5E6C84",
-    
+
     # Shadows
     "shadow_sm": "0 1px 2px rgba(0,0,0,0.04)",
     "shadow_md": "0 4px 12px rgba(0,0,0,0.06)",
@@ -58,17 +58,17 @@ DARK_THEME = {
     "bg_card": "#161B22",
     "bg_hover": "#1F2937",
     "bg_input": "#1C2128",
-    
+
     "text_primary": "#F0F6FC",
     "text_secondary": "#8B949E",
     "text_muted": "#6E7681",
     "text_on_primary": "#FFFFFF",
-    
+
     "brand_primary": "#00D48A",
     "brand_secondary": "#00C07D",
     "brand_light": "#0D2818",
     "brand_gradient": "linear-gradient(135deg, #00D48A 0%, #00B87C 100%)",
-    
+
     "success": "#00D48A",
     "success_light": "#0D2818",
     "danger": "#F85149",
@@ -77,14 +77,14 @@ DARK_THEME = {
     "warning_light": "#2D1F00",
     "info": "#58A6FF",
     "info_light": "#0D1F2D",
-    
+
     "border_light": "#30363D",
     "border_medium": "#484F58",
     "border_focus": "#00D48A",
-    
+
     "chart_grid": "#21262D",
     "chart_text": "#8B949E",
-    
+
     "shadow_sm": "0 1px 2px rgba(0,0,0,0.2)",
     "shadow_md": "0 4px 12px rgba(0,0,0,0.3)",
     "shadow_lg": "0 12px 24px rgba(0,0,0,0.4)",
@@ -714,10 +714,10 @@ def theme_toggle():
     """Render theme toggle button in top right."""
     if "theme" not in st.session_state:
         st.session_state.theme = CFG.app.theme_default
-    
+
     theme = DARK_THEME if st.session_state.theme == "dark" else LIGHT_THEME
     apply_theme(theme)
-    
+
     # Top-right toggle in sidebar
     with st.sidebar:
         st.markdown("---")

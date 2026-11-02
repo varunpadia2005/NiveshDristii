@@ -6,22 +6,28 @@ DO NOT modify expected values — they represent the baseline before rebuild.
 If a test fails, it means behavior has changed; update the fixture, not the test.
 """
 import sys
+
 sys.path.insert(0, "src")
 
 import json
-import polars as pl
 from datetime import date
-import pytest
 
-from niveshdristi.indicators import compute_all_indicators
-from niveshdristi.signals import generate_signal_report, generate_signal_series, compute_conviction
-from niveshdristi.fundamentals import check_guardrails
-from niveshdristi.data.contracts import FundamentalData, GuardrailReport, SignalReport, RegimeReport
-from niveshdristi.regime import market_regime
+import polars as pl
+
 from niveshdristi.backtest import simulate
-from niveshdristi.genai import validate_note, render_template
-from niveshdristi.data.contracts import AnalystNote, FactsBundle
-
+from niveshdristi.data.contracts import (
+    AnalystNote,
+    FactsBundle,
+    FundamentalData,
+    GuardrailReport,
+    RegimeReport,
+    SignalReport,
+)
+from niveshdristi.fundamentals import check_guardrails
+from niveshdristi.genai import render_template, validate_note
+from niveshdristi.indicators import compute_all_indicators
+from niveshdristi.regime import market_regime
+from niveshdristi.signals import compute_conviction, generate_signal_report, generate_signal_series
 
 # ============================================================
 # Load Fixtures
@@ -312,7 +318,12 @@ def test_validate_note_fails_for_invented_number():
 
 def test_render_template():
     """Jinja2 template renders without error."""
-    from niveshdristi.data.contracts import FundamentalData, SignalReport, GuardrailReport, RegimeReport
+    from niveshdristi.data.contracts import (
+        FundamentalData,
+        GuardrailReport,
+        RegimeReport,
+        SignalReport,
+    )
 
     signal_data = load_json_fixture("signal_reliance.json")
     fund_data = load_json_fixture("fundamentals_reliance.json")

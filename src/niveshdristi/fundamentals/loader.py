@@ -1,8 +1,9 @@
 """Fundamentals loader: yfinance .info + financials, cached weekly in PostgreSQL."""
-import yfinance as yf
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date
+
 import asyncpg
+import yfinance as yf
+
 from niveshdristi.config import CFG
 from niveshdristi.data.contracts import FundamentalData, GuardrailReport
 
@@ -44,7 +45,7 @@ async def init_fundamentals_pg():
             pass
 
 
-async def get_fundamentals_pg(ticker: str) -> Optional[FundamentalData]:
+async def get_fundamentals_pg(ticker: str) -> FundamentalData | None:
     pool = await _get_pg_pool()
     if not pool:
         return None

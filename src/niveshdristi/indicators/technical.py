@@ -1,5 +1,6 @@
 """Technical indicators as Polars expressions - vectorized, composable, no loops."""
 import polars as pl
+
 from niveshdristi.config import CFG
 
 

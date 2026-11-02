@@ -1,11 +1,12 @@
 """Dashboard page: Market overview with Groww-inspired design."""
-import streamlit as st
 import pandas as pd
-from niveshdristi.config import CFG
+import streamlit as st
+
 from niveshdristi.app.components import (
-    page_header, render_disclaimer, metric_card, quick_stats_row,
-    stock_card, signal_breakdown_chart, regime_indicator,
-    sector_quadrant_chart, empty_state, loading_skeleton
+    empty_state,
+    page_header,
+    quick_stats_row,
+    render_disclaimer,
 )
 
 

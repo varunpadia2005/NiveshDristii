@@ -1,5 +1,6 @@
 """Price adjustment: splits, dividends, suspicious move detection."""
 import polars as pl
+
 from niveshdristi.config import CFG
 
 

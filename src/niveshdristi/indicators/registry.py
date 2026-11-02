@@ -1,10 +1,10 @@
 """Indicator registry for dynamic loading from config."""
-from typing import Callable, Dict, List
 import polars as pl
-from niveshdristi.indicators.technical import INDICATOR_REGISTRY, compute_all_indicators
+
+from niveshdristi.indicators.technical import INDICATOR_REGISTRY
 
 
-def get_indicator_expr(name: str, **params) -> List[pl.Expr]:
+def get_indicator_expr(name: str, **params) -> list[pl.Expr]:
     """Get Polars expressions for an indicator by name."""
     if name not in INDICATOR_REGISTRY:
         raise ValueError(f"Unknown indicator: {name}. Available: {list(INDICATOR_REGISTRY.keys())}")
@@ -16,7 +16,6 @@ def get_indicator_expr(name: str, **params) -> List[pl.Expr]:
 def compute_indicators_from_config(df: pl.DataFrame, config: dict = None) -> pl.DataFrame:
     """Compute indicators specified in config."""
     if config is None:
-        from niveshdristi.config import CFG
         config = {"indicators": ["sma", "ema", "rsi", "macd", "bollinger", "atr", "adx", "obv"]}
 
     exprs = []

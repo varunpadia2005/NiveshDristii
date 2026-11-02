@@ -1,9 +1,11 @@
 # Characterization Test Fixtures
 # These are synthetic but realistic data to freeze current behavior
 
-import polars as pl
-from datetime import date, timedelta
 import json
+from datetime import date, timedelta
+
+import polars as pl
+
 
 # 1. Price fixture: 100+ trading days of synthetic OHLCV for RELIANCE
 def create_price_fixture():

@@ -1,7 +1,7 @@
 """Core data contracts - all modules exchange these typed objects."""
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, List, Optional
+
 import polars as pl
 
 
@@ -15,7 +15,7 @@ class ValidationIssue:
 @dataclass
 class ValidationReport:
     ticker: str
-    issues: List[ValidationIssue]
+    issues: list[ValidationIssue]
     passed: bool
 
 
@@ -36,8 +36,8 @@ class SignalReport:
     volatility_score: float
     volume_score: float
     composite: float
-    components: Dict[str, float]
-    reasons: List[str]
+    components: dict[str, float]
+    reasons: list[str]
 
 
 @dataclass
@@ -46,27 +46,27 @@ class PriceRange:
     date: date
     current_price: float
     volatility: float
-    ranges: Dict[str, tuple[float, float]]  # e.g., "1d_90": (low, high)
+    ranges: dict[str, tuple[float, float]]  # e.g., "1d_90": (low, high)
     atr_bands: tuple[float, float]
-    sr_levels: List[dict]
+    sr_levels: list[dict]
 
 
 @dataclass
 class FundamentalData:
     ticker: str
-    pe_ratio: Optional[float]
-    pb_ratio: Optional[float]
-    roe: Optional[float]
-    debt_to_equity: Optional[float]
-    profit_margin: Optional[float]
-    revenue_growth: Optional[float]
+    pe_ratio: float | None
+    pb_ratio: float | None
+    roe: float | None
+    debt_to_equity: float | None
+    profit_margin: float | None
+    revenue_growth: float | None
     sector: str
     as_of: date
 
 
 @dataclass
 class GuardrailReport:
-    flags: List[dict]
+    flags: list[dict]
     max_score_cap: int  # 100 or lower if guardrails triggered
 
 
@@ -74,8 +74,8 @@ class GuardrailReport:
 class RegimeReport:
     market_state: str
     vix_level: float
-    sector_quadrants: Dict[str, str]
-    state_probs: Dict[str, float] = None
+    sector_quadrants: dict[str, str]
+    state_probs: dict[str, float] = None
 
 
 @dataclass
@@ -85,7 +85,7 @@ class ModelOutput:
     prob_up: float
     prob_down: float
     prob_flat: float
-    shap_values: Dict[str, float]
+    shap_values: dict[str, float]
 
 
 @dataclass
@@ -114,14 +114,14 @@ class FactsBundle:
     guardrails: GuardrailReport
     regime: RegimeReport
     price_range: PriceRange
-    model: Optional[ModelOutput]
-    backtest_stats: Optional[dict]
+    model: ModelOutput | None
+    backtest_stats: dict | None
 
 
 @dataclass
 class AnalystNote:
     summary: str
-    bull_case: List[str]
-    bear_case: List[str]
-    risks: List[str]
-    would_change_view: List[str]
+    bull_case: list[str]
+    bear_case: list[str]
+    risks: list[str]
+    would_change_view: list[str]

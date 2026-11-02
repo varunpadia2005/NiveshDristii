@@ -1,10 +1,10 @@
 """Macro data loaders: VIX, USD/INR, Crude, G-Sec yields."""
-import polars as pl
 from datetime import date
-from typing import Optional
-import yfinance as yf
-from niveshdristi.data.cache import load_parquet, save_parquet
 
+import polars as pl
+import yfinance as yf
+
+from niveshdristi.data.cache import load_parquet
 
 MACRO_TICKERS = {
     "vix": "^INDIAVIX",      # India VIX
@@ -14,7 +14,7 @@ MACRO_TICKERS = {
 }
 
 
-async def load_macro(series: str, start: Optional[date] = None) -> pl.DataFrame:
+async def load_macro(series: str, start: date | None = None) -> pl.DataFrame:
     """Load macro series with Parquet caching."""
     if series not in MACRO_TICKERS:
         raise ValueError(f"Unknown macro series: {series}")

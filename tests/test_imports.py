@@ -1,5 +1,6 @@
 """Basic import tests to verify module structure."""
 import sys
+
 sys.path.insert(0, "src")
 
 def test_config():
@@ -9,7 +10,7 @@ def test_config():
     print("✓ config")
 
 def test_contracts():
-    from niveshdristi.data.contracts import SignalReport, ValidationReport
+    from niveshdristi.data.contracts import SignalReport
     assert "composite" in SignalReport.__dataclass_fields__
     print("✓ contracts")
 
@@ -20,9 +21,11 @@ def test_providers():
     print("✓ providers")
 
 def test_indicators():
-    from niveshdristi.indicators import compute_all_indicators
-    import polars as pl
     from datetime import date
+
+    import polars as pl
+
+    from niveshdristi.indicators import compute_all_indicators
     df = pl.DataFrame({
         "date": pl.date_range(date(2024,1,1), date(2024,1,10), "1d", eager=True),
         "open": [100]*10, "high": [101]*10, "low": [99]*10, "close": [100]*10,
@@ -36,9 +39,11 @@ def test_indicators():
     print("✓ indicators")
 
 def test_signals():
-    from niveshdristi.signals import generate_signal_report
-    import polars as pl
     from datetime import date
+
+    import polars as pl
+
+    from niveshdristi.signals import generate_signal_report
     df = pl.DataFrame({
         "date": pl.date_range(date(2024,1,1), date(2024,1,10), "1d", eager=True),
         "adj_open": [100]*10, "adj_high": [101]*10, "adj_low": [99]*10,
