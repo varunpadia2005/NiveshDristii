@@ -54,6 +54,11 @@ class TaEnsemble:
     def model_id(self) -> str:
         return "ta_ensemble"
 
+    def indicator_frame(self, df):
+        """NEW (P8-S7, display only): the legacy indicator frame (RSI, MACD,
+        EMA columns) for UI charts; no signal scoring, no execution."""
+        return compute_all_indicators(df)
+
     def legacy_report(self, symbol: str, df):
         """Direct legacy call (ported maths): indicators + signal report."""
         with_indicators = compute_all_indicators(df)

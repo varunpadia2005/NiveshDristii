@@ -335,3 +335,53 @@ class TestMarketPagesS6:
         texts = " ".join(_texts(at.main))
         assert "Last data session" in texts
         assert "holiday calendar is not loaded" in texts
+
+
+class TestDeepDiveS7:
+    """P8-S7: deep-dive from stored snapshots — candles, indicator panes,
+    evidence-only zones, recorded gate verdicts, compare view."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from tests.test_paper import TestPaperFund, _momentum_frames, \
+            _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=date.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[9]), None)
+        return tmp_path, dates
+
+    def test_deep_dive_service(self, tmp_path):
+        from niveshdristi.services.deep_dive import compare, deep_dive
+
+        tmp_path, dates = self._seeded(tmp_path)
+        dd = deep_dive("SYN090", "paper_test", base=tmp_path)
+        assert dd["available"] is True
+        assert dd["as_of"] == dates[9]
+        assert len(dd["candles"]) >= 10
+        assert dd["indicators"]["rsi"] is not None
+        assert 0 <= float(dd["zones_evidence_only"]["stop_zone"]) <= \
+            float(dd["zones_evidence_only"]["resistance"])
+        assert "guardrails" in dd["unavailable"]
+        cmp_ = compare("SYN090", "SYN091", "paper_test", base=tmp_path)
+        assert cmp_["a"]["symbol"] == "SYN090"
+        assert cmp_["b"]["symbol"] == "SYN091"
+
+    def test_deep_dive_page_renders(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Deep-Dive").run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "Stock deep-dive" in texts
+        assert "evidence only" in texts
+        assert "Recorded risk-gate verdicts" in texts

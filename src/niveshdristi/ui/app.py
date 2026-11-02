@@ -57,6 +57,25 @@ def render_app() -> None:
         except Exception:  # noqa: BLE001
             rows = []
         render_signals_board(rows, payload, labels)
+    elif page == "Deep-Dive":
+        from niveshdristi.services.deep_dive import compare, deep_dive
+        from niveshdristi.ui.deep_dive_page import render_compare, render_deep_dive
+
+        symbol = st.session_state.get("dive_symbol") or sorted(
+            payload["positions"] and
+            [p["instrument"]["symbol"] for p in payload["positions"]]
+            or ["SYN090"])[0]
+        other = "SYN091" if symbol != "SYN091" else "SYN090"
+        try:
+            dd = deep_dive(symbol, fund_id, base=base)
+            render_deep_dive(dd, labels)
+            st.divider()
+            render_compare(compare(symbol, other, fund_id, base=base), labels)
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            st.error(f"deep-dive unavailable: {type(exc).__name__}: {exc}")
+            st.text(traceback.format_exc()[-600:])
     elif page == "Paper Fund":
         from niveshdristi.ui.paper_page import render_paper_fund
 
