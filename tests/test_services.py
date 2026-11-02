@@ -21,6 +21,8 @@ SERVICES_ALLOW = (
     "niveshdristi.paper",
     "niveshdristi.markets",
     "niveshdristi.engine",
+    "niveshdristi.alpha",      # read-only registered models (S5/S6 display)
+    "niveshdristi.marketdata",  # as-of limited data handle (read-only)
     "niveshdristi.services",
 )
 

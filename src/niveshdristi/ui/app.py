@@ -26,7 +26,18 @@ def render_app() -> None:
     except Exception as exc:  # noqa: BLE001 - UI must not crash on state
         st.error(f"fund unreadable: {exc}")
         return
-    if page == "Paper Fund":
+    if page == "Overview":
+        from niveshdristi.ui.overview_page import render_fund_overview
+
+        overview = {**payload}
+        from niveshdristi.services.fund_overview import fund_overview as _fo
+
+        try:
+            overview = _fo(fund_id, base=base)
+        except Exception:  # noqa: BLE001 - fall back to the base payload
+            overview = {**payload, "kpis": None}
+        render_fund_overview(overview, labels)
+    elif page == "Paper Fund":
         from niveshdristi.ui.paper_page import render_paper_fund
 
         render_paper_fund(payload, labels)

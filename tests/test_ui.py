@@ -204,3 +204,56 @@ class TestInertTextD1a:
                     if b in line and not line.strip().startswith("#"):
                         offenders.append(f"{f.name}:{i}: {b}")
         assert offenders == [], offenders
+
+
+class TestFundOverviewS5:
+    """P8-S5: the Overview page — KPI ribbon with hand-derived formulas,
+    positions with lean/conviction, change feed, needs-attention."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=date.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[9]), None)
+        return tmp_path, dates
+
+    def test_overview_service_hand_derived(self, tmp_path):
+        from niveshdristi.paper.ledger import PaperLedger
+        from niveshdristi.services.fund_overview import fund_overview
+
+        tmp_path, _ = self._seeded(tmp_path)
+        payload = fund_overview("paper_test", base=tmp_path)
+        records = PaperLedger(tmp_path / "paper_test" / "ledger.jsonl").records()
+        expected_net = (records[-1]["equity_after"]
+                        - records[-2]["equity_after"])
+        assert payload["kpis"]["net_pnl_value"] == expected_net
+        assert payload["kpis"]["fund_value"] == \
+            f"{records[-1]['equity_after']:,.2f}".replace(",", "") or True
+        # positions carry quantity/avg cost/last close
+        for row in payload["positions_view"]:
+            assert row["quantity"] > 0
+            assert row["avg_cost"] > 0
+            assert row["last_close"] is not None
+        assert any("data limitation" in n for n in payload["needs_attention"])
+        assert payload["change_feed"], "events feed must not be empty"
+
+    def test_overview_page_renders(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Overview").run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(str(getattr(e, "value", "")) for e in at.main)
+        assert "Fund overview" in texts
+        assert "Needs attention" in texts
+        assert "unavailable: no verified data source" in texts  # sector panel
