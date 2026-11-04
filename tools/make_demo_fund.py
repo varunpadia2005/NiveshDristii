@@ -3,8 +3,10 @@
 stdlib + project modules only; NO network, NO real instruments (SYN-named),
 NEVER the repo and NEVER the default fund directory (a caller-supplied base
 is required; the documented default lives OUTSIDE the repo). Writes a
-header-labelled SYNTHETIC DEMO fund with 130+ sessions, real
-TimeSeriesMomentum, fills, decision sidecars and full banners.
+header-labelled SYNTHETIC DEMO fund: 132-session FRAMES (satisfying the
+momentum model's 120+5 lookback) with the LEDGER covering the LAST 8
+sessions — real TimeSeriesMomentum, fills, decision sidecars and full
+banners. (P9-S0: the ledger is kept small so the offline tests stay fast.)
 
 Usage:
     python tools/make_demo_fund.py --base "D:/Nivesh Dristi/demo_funds"
@@ -32,7 +34,7 @@ from niveshdristi.portfolio.risk_gates import GateLimits  # noqa: E402
 
 DEMO_BASE_DEFAULT = Path(r"D:\Nivesh Dristi\demo_funds")  # OUTSIDE the repo
 SESSIONS = 132
-N_TICKS = 130
+N_TICKS = 8  # ledger sessions (the last 8 of the frame window)
 
 
 def _demo_frames(n=SESSIONS):
@@ -66,7 +68,10 @@ def _synthetic_frames():
 def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
     frames = _synthetic_frames()
     dates = sorted(frames["SYN090"]["date"].to_list())
-    created = date.fromisoformat(dates[0]) - timedelta(days=1)
+    # created the day before the FIRST TICKED session: the as-of frame at
+    # that session still spans SESSIONS - N_TICKS rows (>= the momentum
+    # lookback), and the ledger covers exactly the last N_TICKS sessions.
+    created = date.fromisoformat(dates[SESSIONS - N_TICKS - 1])
     limitations = DataLimitations(CODES=frozenset({
         "rates_unverified", "approximate_universe", "survivorship_universe",
         "stub_models_used", "benchmark_not_tri", "regime_vol_proxy",
@@ -88,7 +93,10 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
     ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     bundle = ModelBundle([TimeSeriesMomentum()])
-    for d in dates[:N_TICKS]:
+    # P9-S0: tick only the LAST N_TICKS sessions — the frames still span
+    # SESSIONS days, so the momentum lookback is satisfied and fills occur,
+    # while the ledger (and the offline test) stays small.
+    for d in dates[SESSIONS - N_TICKS:]:  # noqa: B023 - dates bound above
         tick(
             fund_id, base=base,
             fetch_bars=lambda u, day: frames,  # noqa: B023 - loop var unused

@@ -22,7 +22,7 @@ class TestMakeDemoFund:
         lines = fund.joinpath("ledger.jsonl").read_text(
             encoding="utf-8").splitlines()
         records = [x for x in lines if "session_date" in x]
-        assert len(records) == 130
+        assert len(records) == 8
         header = json.loads(lines[0])
         assert header["note"].startswith("SYNTHETIC DEMO")
         assert list((fund / "decisions").glob("*.json"))

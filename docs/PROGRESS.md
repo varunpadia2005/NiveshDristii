@@ -963,3 +963,16 @@ S10a 4d1153e, S10b a88f2c4. Final gate at the closeout commit: PASS.
   usage); wireframes as-built; per-page manual checklist; UI_REACT_TRACK
   design note (deferred endpoints struck with reasons; licence checks;
   build-after-Phase-10 recommendation).
+
+## Recorded near-miss (P9-S0, first commit of the Phase 9 run)
+
+During P8-S4 an over-broad `ruff check src tests --fix` added trailing
+newlines to 15 legacy api/app files and the two frozen legacy tests, and a
+`git add -A` swept them into commit 2e9144a. The gate's G03 check caught it
+at the P8 closeout; e529a4a restored the exact 82f76d8 blobs. RULES NOW IN
+FORCE for every future run: (1) never `git add -A` / `git add .` /
+`git commit -a` — explicit paths only, with `git status --porcelain` and
+`git diff --cached --stat` printed before every commit; (2) formatters run
+with --fix ONLY on explicit NEW file paths; (3) before every commit, the
+legacy diff `git diff --name-only 82f76d8 HEAD -- <legacy folders and
+frozen tests>` must be EMPTY or the run stops.
