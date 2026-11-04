@@ -976,3 +976,13 @@ FORCE for every future run: (1) never `git add -A` / `git add .` /
 with --fix ONLY on explicit NEW file paths; (3) before every commit, the
 legacy diff `git diff --name-only 82f76d8 HEAD -- <legacy folders and
 frozen tests>` must be EMPTY or the run stops.
+
+Completing the near-miss repair (P9-S0 follow-up): the sweep also touched
+tests/test_imports.py (one blank line — restored to the 82f76d8 blob) and
+tests/fixtures/bhavcopy_SYNTHETIC_sec_bhavdata_full.csv (+5 synthetic rows).
+The fixture rows are the legacy tests' DETERMINISTIC REWRITE OUTPUT (G18
+treats them as byte-identical INFO); reverting the commit would make the
+first pytest run change the file and FAIL G18, so the committed content is
+functionally required and stays. The standing legacy-diff stop check
+therefore treats exactly that one fixture as a documented, expected
+difference (G03's own contract list excludes tests/fixtures).
