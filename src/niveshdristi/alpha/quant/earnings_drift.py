@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -66,7 +67,7 @@ class EarningsDrift:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=stamp,
                     conviction=round(conviction, 6),

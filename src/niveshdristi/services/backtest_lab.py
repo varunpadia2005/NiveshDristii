@@ -53,9 +53,9 @@ def run_backtest_service(fund_id: str, base: str | Path | None = None,
             f"{symbol}_{digest[:16]}.parquet"))
         if matches:
             frames[symbol] = pl.read_parquet(matches[0])
-    from niveshdristi.core.market_rules import MarketRules
+    from niveshdristi.services.rules import rules_from_header
 
-    rules = MarketRules(market_id="TEST_M")
+    rules = rules_from_header(fund_id, base)
     # WARMUP SLICE: the legacy TA scorer needs ~200 as-of rows before the
     # FIRST backtest session, so each frame is cut to its last
     # (paper sessions + 200) rows. Display-only computation.

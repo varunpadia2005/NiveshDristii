@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -72,7 +73,9 @@ class PriceRangeModel:
         for symbol in inputs.prices:
             evidence = compute_price_evidence(inputs.prices_for(symbol))
             instrument = Instrument(
-                symbol=symbol, exchange=ctx.market_id, market_id=ctx.market_id, currency="XXX"
+                symbol=symbol, exchange=ctx.market_id,
+                market_id=ctx.market_id,
+                currency=currency_for_market(ctx.market_id),
             )
             signals.append(
                 Signal(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -40,7 +41,8 @@ def _stamp(ctx: AsOfContext) -> datetime:
 
 def _instrument(ctx: AsOfContext, symbol: str) -> Instrument:
     return Instrument(
-        symbol=symbol, exchange=ctx.market_id, market_id=ctx.market_id, currency="XXX"
+        symbol=symbol, exchange=ctx.market_id, market_id=ctx.market_id,
+        currency=currency_for_market(ctx.market_id),
     )
 
 

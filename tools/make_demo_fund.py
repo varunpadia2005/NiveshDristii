@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum  # noqa: E402
 from niveshdristi.core.limitations import DataLimitations  # noqa: E402
+from niveshdristi.markets import IN_NSE_PROFILE
 from niveshdristi.core.market_rules import MarketRules  # noqa: E402
 from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule  # noqa: E402
 from niveshdristi.paper.fund import create_fund, tick  # noqa: E402
@@ -78,7 +79,7 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
     }))
     create_fund(
         f"{fund_id}", base=base, created=created, config_digest="synthetic-demo",
-        rules=MarketRules(market_id="TEST_M"),
+        rules=MarketRules(market_id=IN_NSE_PROFILE.market_id),
         limitations=limitations, rates_verified=False,
         initial_cash=1_000_000.0, universe=["SYN090", "SYN091"],
     )
@@ -101,7 +102,7 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
             fund_id, base=base,
             fetch_bars=lambda u, day: frames,  # noqa: B023 - loop var unused
             clock_now=date.fromisoformat(d), models=bundle,
-            rules=MarketRules(market_id="TEST_M"),
+            rules=MarketRules(market_id=IN_NSE_PROFILE.market_id),
             limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0,
                               turnover_max=1.0),
             rebalance=RebalanceSchedule(), universe=["SYN090", "SYN091"],

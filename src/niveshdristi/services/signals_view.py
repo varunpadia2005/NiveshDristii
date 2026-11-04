@@ -44,7 +44,10 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
     from niveshdristi.paper.fund import FundPaths
     from niveshdristi.paper.ledger import PaperLedger
 
+    from niveshdristi.services.rules import rules_from_header
+
     paths = FundPaths(base).for_fund(fund_id)
+    rules = rules_from_header(fund_id, base)
     records = PaperLedger(paths.ledger).records()
     if not records:
         return {}
@@ -78,7 +81,7 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
             ctx = AsOfContext(
                 as_of=datetime.combine(date.fromisoformat(as_of),
                                        datetime.min.time(), tzinfo=UTC),
-                universe=(), market_id="TEST_M",
+                universe=(), market_id=rules.market_id,
             )
             best = None
             for model in bundle.models:
