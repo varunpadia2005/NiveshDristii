@@ -1,20 +1,20 @@
 """FastAPI backend for NiveshDristi."""
-import asyncio
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from typing import List, Optional
+import asyncio
 
 from niveshdristi.config import CFG
 from niveshdristi.data.cache import init_pg
-from niveshdristi.data.contracts import FactsBundle, PriceRange, RegimeReport
-from niveshdristi.data.loader import load_prices
-from niveshdristi.data.providers import get_provider
-from niveshdristi.fundamentals import check_guardrails, load_fundamentals
-from niveshdristi.genai import generate_analyst_note, validate_note
+from niveshdristi.data.loader import load_prices, load_universe
 from niveshdristi.indicators import compute_all_indicators
-from niveshdristi.regime import SECTOR_ETFS, get_regime_report
 from niveshdristi.signals import generate_signal_report, generate_signal_series
+from niveshdristi.fundamentals import load_fundamentals, check_guardrails
+from niveshdristi.regime import get_regime_report, SECTOR_ETFS, market_regime
+from niveshdristi.genai import generate_analyst_note, validate_note
+from niveshdristi.data.contracts import FactsBundle, RegimeReport, PriceRange
+from niveshdristi.data.providers import get_provider
 
 
 @asynccontextmanager
@@ -112,9 +112,9 @@ async def get_analyst_note(ticker: str):
         price_task = load_prices(ticker)
         fund_task = load_fundamentals(ticker)
         nifty_task = load_prices("^NSEI")
-
+        
         price_data, fund, nifty = await asyncio.gather(price_task, fund_task, nifty_task)
-
+        
         df = compute_all_indicators(price_data.df)
         signal = generate_signal_report(ticker, df)
         guard = check_guardrails(fund)

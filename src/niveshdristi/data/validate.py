@@ -1,8 +1,7 @@
 """Data validation with severity levels: ERROR, WARN, INFO."""
 from dataclasses import dataclass
-
+from typing import List
 import polars as pl
-
 from niveshdristi.config import CFG
 
 
@@ -16,7 +15,7 @@ class ValidationIssue:
 @dataclass
 class ValidationReport:
     ticker: str
-    issues: list[ValidationIssue]
+    issues: List[ValidationIssue]
     passed: bool
 
 

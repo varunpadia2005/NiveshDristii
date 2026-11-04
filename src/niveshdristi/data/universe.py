@@ -1,5 +1,8 @@
 """Stock universe definitions and trading calendar."""
 from datetime import date, timedelta
+from typing import List, Dict
+import pandas as pd
+
 
 # Nifty 50 (as of 2024)
 NIFTY50 = [
@@ -28,7 +31,7 @@ SECTOR_MAP = {
 }
 
 
-def get_universe(name: str) -> list[str]:
+def get_universe(name: str) -> List[str]:
     """Get tickers for a named universe."""
     universes = {
         "nifty50": NIFTY50,

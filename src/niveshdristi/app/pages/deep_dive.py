@@ -1,16 +1,13 @@
 """Deep-Dive page: Single stock analysis with Groww-inspired design."""
-import asyncio
-
-import pandas as pd
 import streamlit as st
-
+import pandas as pd
+import asyncio
+from niveshdristi.config import CFG
 from niveshdristi.app.components import (
-    empty_state,
-    metric_card,
-    quick_stats_row,
-    regime_indicator,
-    render_disclaimer,
-    signal_badge,
+    page_header, render_disclaimer, metric_card, signal_badge,
+    candle_chart, gauge_chart, signal_breakdown_chart, conviction_gauge,
+    analyst_note_card, sector_quadrant_chart, regime_indicator,
+    quick_stats_row, empty_state, tag
 )
 
 

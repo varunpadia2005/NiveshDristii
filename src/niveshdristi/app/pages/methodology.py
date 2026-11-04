@@ -1,13 +1,14 @@
 """Methodology page: Interactive documentation with Groww-inspired design."""
 import streamlit as st
-
-from niveshdristi.app.components import page_header, render_disclaimer
+from niveshdristi.app.components import (
+    page_header, render_disclaimer, tag, empty_state
+)
 
 
 def render(api_get):
-
+    
     page_header("Methodology", "How NiveshDristi works - transparent, explainable, and honest", "📚")
-
+    
     # Table of contents
     st.markdown("### Table of Contents")
     toc_items = [
@@ -21,19 +22,19 @@ def render(api_get):
         ("8. GenAI Layer", "genai", "🧠"),
         ("9. Principles & Safeguards", "principles", "🛡️"),
     ]
-
+    
     cols = st.columns(3)
     for i, (title, anchor, icon) in enumerate(toc_items):
         with cols[i % 3]:
             if st.button(f"{icon} {title}", key=f"toc_{anchor}", use_container_width=True):
                 st.session_state.methodology_section = anchor
                 st.rerun()
-
+    
     # Current section
     section = st.session_state.get("methodology_section", "data-layer")
-
+    
     st.markdown("---")
-
+    
     # Section content
     sections = {
         "data-layer": {
@@ -351,9 +352,9 @@ def render(api_get):
             """
         },
     }
-
+    
     sec = sections.get(section, sections["data-layer"])
-
+    
     st.markdown(f"""
     <div style="margin-bottom: 24px;">
         <h1 style="margin: 0; font-size: 28px; font-weight: 700; display: flex; align-items: center; gap: 12px;">
@@ -361,7 +362,7 @@ def render(api_get):
         </h1>
     </div>
     """, unsafe_allow_html=True)
-
+    
     st.markdown(sec['content'])
 
 

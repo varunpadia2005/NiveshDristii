@@ -1,6 +1,6 @@
 """GenAI layer exports."""
-from niveshdristi.genai.analyst import generate_analyst_note
 from niveshdristi.genai.client import OpenRouterClient, render_template
+from niveshdristi.genai.analyst import generate_analyst_note
 from niveshdristi.genai.validator import validate_note
 
 __all__ = [

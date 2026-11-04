@@ -1,18 +1,16 @@
 """Backtest Lab page: Strategy testing with Groww-inspired design."""
-import pandas as pd
 import streamlit as st
-
+import pandas as pd
 from niveshdristi.app.components import (
-    page_header,
-    quick_stats_row,
-    render_disclaimer,
+    page_header, render_disclaimer, metric_card, quick_stats_row,
+    empty_state, tag, signal_badge
 )
 
 
 def render(api_get):
-
+    
     page_header("Backtest Lab", "Test and validate trading strategies with honest backtesting", "🧪")
-
+    
     # Strategy selector
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -34,14 +32,14 @@ def render(api_get):
             step=100000,
             format="%d"
         )
-
+    
     # Date range
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Start Date", value=pd.Timestamp("2022-01-01"))
     with col2:
         end_date = st.date_input("End Date", value=pd.Timestamp("2024-01-01"))
-
+    
     # Advanced settings
     with st.expander("⚙️ Advanced Settings"):
         col1, col2 = st.columns(2)
@@ -51,24 +49,24 @@ def render(api_get):
         with col2:
             max_pos = st.slider("Max Position %", 1, 20, 10)
             max_sector = st.slider("Max Sector %", 10, 50, 30)
-
+    
     if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
         with st.spinner(f"Running {strategy} backtest..."):
             import requests
             tickers_param = ""  # Would need proper ticker list
             r = requests.get(
-                "http://localhost:8000/backtest",
+                f"http://localhost:8000/backtest",
                 params={"tickers": "", "strategy": strategy.lower().replace(" ", "_")},
                 timeout=60
             )
-
+            
             if r.ok:
                 data = r.json()
                 metrics = data.get("metrics", {})
-
+                
                 # Results
                 st.success("✅ Backtest completed")
-
+                
                 # Key metrics
                 st.markdown("### Performance Metrics")
                 stats = [
@@ -79,7 +77,7 @@ def render(api_get):
                     {"label": "Total Trades", "value": str(metrics.get("Trades", 0)), "icon": "🔄"},
                 ]
                 quick_stats_row(stats)
-
+                
                 # Equity curve
                 if data.get("equity_curve"):
                     import plotly.graph_objects as go
@@ -98,7 +96,7 @@ def render(api_get):
                         yaxis=dict(showgrid=True, gridcolor="var(--chart-grid)", title="Equity (₹)"),
                     )
                     st.plotly_chart(fig, use_container_width=True)
-
+                
                 # Trade log
                 if data.get("trades"):
                     st.markdown("### Trade Log")
@@ -117,11 +115,11 @@ def render(api_get):
             </p>
         </div>
         """, unsafe_allow_html=True)
-
+        
         # Strategy cards
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### Available Strategies")
-
+        
         strategies = [
             ("Signal-Based", "Uses composite technical signals for entries/exits", "📊"),
             ("Mean Reversion", "Buys oversold, sells overbought using RSI/Bollinger", "🔄"),
@@ -129,7 +127,7 @@ def render(api_get):
             ("ML-Based", "Uses LightGBM model predictions for signals", "🤖"),
             ("Buy & Hold", "Benchmark: equal weight portfolio, no trading", "💰"),
         ]
-
+        
         cols = st.columns(len(strategies))
         for i, (name, desc, icon) in enumerate(strategies):
             with cols[i]:

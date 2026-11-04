@@ -1,10 +1,10 @@
 """Validator: extracts numbers from AI output, verifies against facts bundle."""
 import re
-
+from typing import Tuple, List
 from niveshdristi.data.contracts import AnalystNote, FactsBundle
 
 
-def validate_note(note: AnalystNote, bundle: FactsBundle) -> tuple[bool, list[str]]:
+def validate_note(note: AnalystNote, bundle: FactsBundle) -> Tuple[bool, List[str]]:
     """Extract all numbers from note, check each exists in facts bundle."""
     full_text = " ".join([
         note.summary,

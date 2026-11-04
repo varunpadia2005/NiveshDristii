@@ -927,3 +927,39 @@ defects fixed with follow-up commits; future work stays LOCAL until review.
   `hidden=True`) OR implement `nd backtest run` on top of run_backtest in
   a later phase; implementing all four duplicates the paper-fund/provider
   composition that already exists. Hiding is the honest stopgap.
+
+---
+
+# Phase 8 part 2 — design system, pages, demo fund (D1a–D1d, P8-S4..S10)
+
+Commits (LOCAL): D1a 8c078a3, D1b de20dc9, D1c 3d3d56e, D1d f4fd20e,
+P8-S4 2e9144a, S5 e07c2de, S6 1ee054d, S7 3122007, S8 66a42c8, S9 9edfb96,
+S10a 4d1153e, S10b a88f2c4. Final gate at the closeout commit: PASS.
+
+- D1a: zero banned surfaces in ui//services/ (audit raw in p8b_evidence);
+  hostile-string inertness AppTests; config.toml XSRF on / CORS closed.
+- D1b: live-mode anchor test — zero skipped covered sessions.
+- D1c: tools/make_demo_fund.py (offline, idempotent, SYN-named, real
+  TimeSeriesMomentum, 130 sessions, sidecars, SYNTHETIC DEMO header);
+  --tamper-ledger/--tamper-sidecar write SEPARATE <id>_tampered_<mode>
+  copies (the same-name overwrite bug found and fixed in-test).
+- D1d: PowerShell commands (NDR_FUND_BASE/NDR_FUND_ID env; UI reads env).
+- P8-S4: profile digit_grouping/compact_units (additions only); services
+  formatting with hand-computed answers (12,34,567.89 etc.); binding
+  vocabulary (named UNVALIDATED DEFAULT lean thresholds ±0.2; advice-verb
+  grep test); light+dark token sets with the WCAG report (all pairs ≥4.5
+  body / ≥3.0 borders after fixing borders to #64748B); shared components;
+  st.cache_data keyed by ledger tip + as_of (counter test: zero
+  recomputation).
+- P8-S5..S9: all six pages built on services (overview KPI formulas
+  hand-derived; signals board with per-model error isolation; deep-dive +
+  compare; Backtest Lab excluding the legacy TA scorer with the warmup
+  impossibility documented, verdict wording FIXED, promotable always
+  False; paper detail with paginated records and line-naming verification;
+  read-only Settings with key presence only). services allow-list extended
+  (alpha, marketdata) and enforced; run_backtest gained engine-side
+  defaults.
+- P8-S10: CLI epilogue with exit codes (0 ok/no-op, 1 operational, 2
+  usage); wireframes as-built; per-page manual checklist; UI_REACT_TRACK
+  design note (deferred endpoints struck with reasons; licence checks;
+  build-after-Phase-10 recommendation).

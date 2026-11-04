@@ -1,21 +1,24 @@
 """Shared Streamlit components - Groww-inspired."""
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import polars as pl
 import streamlit as st
+import plotly.graph_objects as go
+import plotly.express as px
+import polars as pl
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+from niveshdristi.app.theme import page_header, section_header, render_disclaimer
 
 
-def metric_card(label: str, value: str, change: str = None, change_type: str = "neutral",
+def metric_card(label: str, value: str, change: str = None, change_type: str = "neutral", 
                 icon: str = "", help_text: str = None):
     """Render a metric card with optional change indicator."""
     change_class = {"positive": "nv-change-positive", "negative": "nv-change-negative", "neutral": "nv-change-neutral"}.get(change_type, "nv-change-neutral")
     change_html = f'<div class="nv-metric-change {change_class}">{change}</div>' if change else ""
     icon_html = f'<span style="font-size: 20px; margin-right: 8px;">{icon}</span>' if icon else ""
-
+    
     help_attr = f' title="{help_text}"' if help_text else ""
-
+    
     st.markdown(f"""
     <div class="nv-metric"{help_attr}>
         <div class="nv-metric-label">{icon_html}{label}</div>
@@ -39,7 +42,7 @@ def signal_badge(score: float, label: str = None) -> str:
         cls = "neutral"
         text = "Neutral"
         dot = "🟡"
-
+    
     label_html = f" {label}" if label else ""
     return f'<span class="nv-badge {cls}">{dot} {text}{label_html}</span>'
 
@@ -49,13 +52,13 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
     """Create an interactive candlestick chart with volume."""
     pdf = df.to_pandas()
     emas = emas or [20, 50, 200]
-
+    
     # Create subplots
     rows = 2 if volume else 1
     row_heights = [0.7, 0.3] if volume else [1]
-
+    
     fig = go.Figure()
-
+    
     # Candlesticks
     fig.add_trace(go.Candlestick(
         x=pdf["date"],
@@ -69,7 +72,7 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
         increasing_fillcolor="#00B87C",
         decreasing_fillcolor="#E84D4D",
     ), row=1, col=1)
-
+    
     # EMAs
     colors = {"20": "#007AFF", "50": "#F5A623", "200": "#AF52DE"}
     for p in emas:
@@ -82,7 +85,7 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
                 opacity=0.8,
                 hovertemplate=f"EMA {p}: %{{y:.2f}}<extra></extra>",
             ), row=1, col=1)
-
+    
     # Indicators overlay
     if indicators:
         for ind in indicators:
@@ -93,10 +96,10 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
                     line=dict(width=1, dash='dot'),
                     opacity=0.6,
                 ), row=1, col=1)
-
+    
     # Volume
     if volume and "volume" in df.columns:
-        colors_vol = ["#E84D4D" if c < o else "#00B87C"
+        colors_vol = ["#E84D4D" if c < o else "#00B87C" 
                       for c, o in zip(pdf["adj_close"], pdf["adj_open"])]
         fig.add_trace(go.Bar(
             x=pdf["date"], y=pdf["volume"],
@@ -105,11 +108,11 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
             opacity=0.7,
             hovertemplate="Volume: %{y:,.0f}<extra></extra>",
         ), row=2, col=1)
-
+    
     # Layout
     theme = st.session_state.get("theme", "light")
     is_dark = theme == "dark"
-
+    
     fig.update_layout(
         template="plotly_dark" if is_dark else "plotly_white",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -140,21 +143,21 @@ def candle_chart(df: pl.DataFrame, ticker: str, emas: list = None, height: int =
         ),
         font=dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", size=11),
     )
-
+    
     if volume:
         fig.update_yaxes(title_text="Price (₹)", row=1, col=1, side="right")
         fig.update_yaxes(title_text="Vol", row=2, col=1, side="right", showgrid=False)
         fig.update_xaxes(row=2, col=1, showgrid=False)
     else:
         fig.update_yaxes(title_text="Price (₹)", side="right")
-
+    
     return fig
 
 
 def gauge_chart(score: float, title: str, height: int = 160) -> go.Figure:
     """Create a gauge chart for signal scores."""
     color = "#00B87C" if score > 0.2 else "#E84D4D" if score < -0.2 else "#F5A623"
-
+    
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=score,
@@ -188,11 +191,11 @@ def gauge_chart(score: float, title: str, height: int = 160) -> go.Figure:
     return fig
 
 
-def sparkline(data: list[float], color: str = None, height: int = 40) -> go.Figure:
+def sparkline(data: List[float], color: str = None, height: int = 40) -> go.Figure:
     """Create a mini sparkline chart."""
     if color is None:
         color = "#00B87C" if data[-1] >= data[0] else "#E84D4D"
-
+    
     fig = go.Figure(go.Scatter(
         x=list(range(len(data))),
         y=data,
@@ -218,15 +221,15 @@ def stock_card(ticker: str, signal_data: dict, price_data: dict, fundamentals: d
     """Render a stock card in grid view."""
     composite = signal_data.get("composite", 0)
     price = price_data.get("last_price", 0) if price_data else 0
-
+    
     signal_cls = "positive" if composite > 0.2 else "negative" if composite < -0.2 else "neutral"
     signal_text = "Bullish" if composite > 0.2 else "Bearish" if composite < -0.2 else "Neutral"
     signal_icon = "🟢" if composite > 0.2 else "🔴" if composite < -0.2 else "🟡"
     signal_color = "var(--success)" if composite > 0.2 else "var(--danger)" if composite < -0.2 else "var(--warning)"
-
+    
     pe = fundamentals.get("pe_ratio") if fundamentals else None
     roe = fundamentals.get("roe") if fundamentals else None
-
+    
     with st.container():
         st.markdown(f"""
         <div class="nv-card nv-fade-in" style="padding: 16px;">
@@ -262,7 +265,7 @@ def conviction_gauge(score: int, components: dict) -> None:
     """Render conviction score with component breakdown."""
     # Main score
     color = "#00B87C" if score >= 70 else "#F5A623" if score >= 50 else "#E84D4D"
-
+    
     st.markdown(f"""
     <div class="nv-card" style="text-align: center; padding: 24px;">
         <div style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
@@ -276,7 +279,7 @@ def conviction_gauge(score: int, components: dict) -> None:
         </div>
     </div>
     """, unsafe_allow_html=True)
-
+    
     # Component breakdown
     cols = st.columns(len(components))
     for i, (name, value) in enumerate(components.items()):
@@ -299,11 +302,11 @@ def signal_breakdown_chart(signal_data: dict) -> go.Figure:
     components = signal_data.get("components", {})
     if not components:
         return go.Figure()
-
+    
     names = list(components.keys())
     values = list(components.values())
     colors = ["#00B87C" if v > 0 else "#E84D4D" if v < 0 else "#F5A623" for v in values]
-
+    
     fig = go.Figure(go.Bar(
         x=values,
         y=names,
@@ -314,7 +317,7 @@ def signal_breakdown_chart(signal_data: dict) -> go.Figure:
         textfont=dict(size=11, color='var(--text-primary)'),
         hovertemplate="%{y}: %{x:.3f}<extra></extra>",
     ))
-
+    
     fig.update_layout(
         height=200,
         margin=dict(l=80, r=30, t=10, b=0),
@@ -336,10 +339,10 @@ def signal_breakdown_chart(signal_data: dict) -> go.Figure:
         ),
         font=dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", size=11),
     )
-
+    
     # Add zero line
     fig.add_vline(x=0, line_color="var(--border-medium)", line_width=1, line_dash="dash")
-
+    
     return fig
 
 
@@ -352,7 +355,7 @@ def regime_indicator(state: str, vix: float) -> None:
         "unknown": ("#888", "⚪", "Unknown"),
     }
     color, icon, label = state_colors.get(state.lower(), state_colors["unknown"])
-
+    
     st.markdown(f"""
     <div class="nv-card" style="display: flex; align-items: center; gap: 16px; padding: 16px;">
         <div style="font-size: 32px;">{icon}</div>
@@ -383,9 +386,9 @@ def sector_quadrant_chart(quadrants: dict) -> go.Figure:
         "Lagging": "#E84D4D",
         "Improving": "#007AFF",
     }
-
+    
     fig = go.Figure()
-
+    
     # Add quadrant backgrounds
     fig.add_shape(type="rect", x0=0, y0=0, x1=1, y1=1,
                   fillcolor="#00B87C15", line_width=0, layer="below")
@@ -395,7 +398,7 @@ def sector_quadrant_chart(quadrants: dict) -> go.Figure:
                   fillcolor="#E84D4D15", line_width=0, layer="below")
     fig.add_shape(type="rect", x0=0, y0=-1, x1=1, y1=0,
                   fillcolor="#007AFF15", line_width=0, layer="below")
-
+    
     # Add sector points
     for sector, quad in quadrants.items():
         if quad in quad_positions:
@@ -403,7 +406,7 @@ def sector_quadrant_chart(quadrants: dict) -> go.Figure:
             # Add some jitter
             x += np.random.uniform(-0.15, 0.15)
             y += np.random.uniform(-0.15, 0.15)
-
+            
             fig.add_trace(go.Scatter(
                 x=[x], y=[y],
                 mode="markers+text",
@@ -419,20 +422,20 @@ def sector_quadrant_chart(quadrants: dict) -> go.Figure:
                 showlegend=False,
                 hovertemplate=f"{sector}<br>Quadrant: {quad}<extra></extra>",
             ))
-
+    
     fig.update_layout(
         height=350,
         margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(range=[-1.3, 1.3], showgrid=True, gridcolor="var(--chart-grid)",
+        xaxis=dict(range=[-1.3, 1.3], showgrid=True, gridcolor="var(--chart-grid)", 
                    zeroline=True, zerolinecolor="var(--border-light)", showticklabels=False),
-        yaxis=dict(range=[-1.3, 1.3], showgrid=True, gridcolor="var(--chart-grid)",
+        yaxis=dict(range=[-1.3, 1.3], showgrid=True, gridcolor="var(--chart-grid)", 
                    zeroline=True, zerolinecolor="var(--border-light)", showticklabels=False),
         showlegend=False,
         font=dict(family="Inter, -apple-system, BlinkMacSystemFont, sans-serif", size=11),
     )
-
+    
     return fig
 
 
@@ -448,10 +451,10 @@ def analyst_note_card(note: dict) -> None:
         </div>
     </div>
     """, unsafe_allow_html=True)
-
+    
     # Two column layout for bull/bear
     col1, col2 = st.columns(2)
-
+    
     with col1:
         st.markdown("""
         <div class="nv-card" style="padding: 16px; border-left: 3px solid var(--success);">
@@ -462,7 +465,7 @@ def analyst_note_card(note: dict) -> None:
         for item in note.get("bull_case", []):
             st.markdown(f'<div style="margin: 8px 0; padding-left: 16px; border-left: 2px solid var(--success-light); color: var(--text-primary); font-size: 13px; line-height: 1.5;">• {item}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
+    
     with col2:
         st.markdown("""
         <div class="nv-card" style="padding: 16px; border-left: 3px solid var(--danger);">
@@ -473,10 +476,10 @@ def analyst_note_card(note: dict) -> None:
         for item in note.get("bear_case", []):
             st.markdown(f'<div style="margin: 8px 0; padding-left: 16px; border-left: 2px solid var(--danger-light); color: var(--text-primary); font-size: 13px; line-height: 1.5;">• {item}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
+    
     # Risks and catalysts
     col1, col2 = st.columns(2)
-
+    
     with col1:
         st.markdown("""
         <div class="nv-card" style="padding: 16px;">
@@ -487,7 +490,7 @@ def analyst_note_card(note: dict) -> None:
         for item in note.get("risks", []):
             st.markdown(f'<div style="margin: 6px 0; font-size: 13px; color: var(--text-primary);">• {item}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
+    
     with col2:
         st.markdown("""
         <div class="nv-card" style="padding: 16px;">
@@ -500,14 +503,14 @@ def analyst_note_card(note: dict) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-def watchlist_table(stocks: list[dict], on_select: callable = None) -> str | None:
+def watchlist_table(stocks: List[Dict], on_select: callable = None) -> Optional[str]:
     """Render interactive watchlist table."""
     if not stocks:
         st.info("No stocks in watchlist")
         return None
-
+    
     df = pd.DataFrame(stocks)
-
+    
     # Configure columns
     column_config = {
         "ticker": st.column_config.TextColumn("Symbol", width="small"),
@@ -520,7 +523,7 @@ def watchlist_table(stocks: list[dict], on_select: callable = None) -> str | Non
         "roe": st.column_config.NumberColumn("ROE %", format="%.1f%%", width="small"),
         "sector": st.column_config.TextColumn("Sector", width="small"),
     }
-
+    
     # Display with selection
     event = st.dataframe(
         df,
@@ -530,13 +533,13 @@ def watchlist_table(stocks: list[dict], on_select: callable = None) -> str | Non
         on_select="rerun" if on_select else "ignore",
         selection_mode="single-row",
     )
-
+    
     if on_select and event.selection.rows:
         return df.iloc[event.selection.rows[0]]["ticker"]
     return None
 
 
-def quick_stats_row(stats: list[dict]) -> None:
+def quick_stats_row(stats: List[Dict]) -> None:
     """Render a row of quick stat cards."""
     cols = st.columns(len(stats))
     for i, stat in enumerate(stats):
@@ -560,7 +563,7 @@ def empty_state(icon: str, title: str, message: str, action_label: str = None, a
         <p style="margin: 0; color: var(--text-secondary); font-size: 15px;">{message}</p>
     </div>
     """, unsafe_allow_html=True)
-
+    
     if action_label and action_key:
         st.button(action_label, key=action_key, type="primary", use_container_width=True)
 
@@ -616,11 +619,11 @@ def expandable_section(title: str, content: str, expanded: bool = False) -> None
         st.markdown(content)
 
 
-def tabs_container(tabs: list[tuple], render_func: callable) -> None:
+def tabs_container(tabs: List[tuple], render_func: callable) -> None:
     """Render tabs with custom content."""
     tab_labels = [t[0] for t in tabs]
     tab_keys = [t[1] for t in tabs]
-
+    
     selected = st.tabs(tab_labels)
     for i, tab in enumerate(selected):
         with tab:

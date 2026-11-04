@@ -1,8 +1,7 @@
 """Signal Engine: converts raw indicators to standardized -1 to +1 scores."""
-
 import numpy as np
 import polars as pl
-
+from typing import Dict, List
 from niveshdristi.config import CFG
 from niveshdristi.data.contracts import SignalReport
 

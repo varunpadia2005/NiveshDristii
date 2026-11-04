@@ -1,10 +1,8 @@
 """OpenRouter client with Jinja2 deterministic fallback."""
-import os
-from pathlib import Path
-
 import httpx
+import os
 from jinja2 import Environment, FileSystemLoader
-
+from pathlib import Path
 from niveshdristi.config import CFG
 
 
