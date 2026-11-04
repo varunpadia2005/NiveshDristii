@@ -986,3 +986,16 @@ first pytest run change the file and FAIL G18, so the committed content is
 functionally required and stays. The standing legacy-diff stop check
 therefore treats exactly that one fixture as a documented, expected
 difference (G03's own contract list excludes tests/fixtures).
+
+## Deferred to Phase 10 (core edit allowed)
+
+- **costs_not_modeled as a LIMITATION CODE**: the US path currently carries
+  "COSTS NOT MODELED" via the banner + marker only (decision (b), P9-S3);
+  the proper code requires extending the allowed set at
+  core/limitations.py:41-52. A strict-xfail test
+  (tests/test_two_market.py::TestDeferredCoreCodes) asserts the proper code
+  and flips loudly when Phase 10 lands.
+- **benchmark_unavailable code**: NOT needed for the US path — the US
+  profile has benchmark_symbol="" (no benchmark used at all, tested in
+  P9-S2); the existing benchmark_not_tri code already covers "a benchmark
+  was used but is not TRI".

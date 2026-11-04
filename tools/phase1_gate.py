@@ -673,10 +673,15 @@ def main() -> int:
                 xfail_count += 1
                 if "strict=True" in line:
                     strict_xfail = True
-    if xfail_count == 1 and strict_xfail:
-        pass_("G15", "Exactly one xfail marker, strict=True")
+    # P9-S3 (decision b): exactly TWO approved strict xfails — (1) the
+    # standing 2026-holidays test, (2) the deferred costs_not_modeled code
+    # (flips when Phase 10 extends core/limitations.py).
+    approved = 2
+    if xfail_count == approved and strict_xfail:
+        pass_("G15", f"Exactly {approved} xfail markers, both strict=True")
     else:
-        fail("G15", f"xfail_count={xfail_count}, strict={strict_xfail}")
+        fail("G15", f"xfail_count={xfail_count} (expected {approved}), "
+                    f"strict={strict_xfail}")
         fails += 1
 
     # G16: Docs exist, .gitignore contains .venv
