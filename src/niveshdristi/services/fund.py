@@ -7,6 +7,7 @@ orders, no targets, no UI imports.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -67,13 +68,35 @@ def read_fund(fund_id: str, base: str | Path | None = None) -> dict[str, Any]:
 
     positions = last["positions_after"] if last else []
     limitations = header.get("limitation_codes", [])
+    banner = (
+        "DATA LIMITATIONS: " + ", ".join(sorted(limitations))
+        if limitations else None
+    )
+    if header.get("banner_extra"):
+        banner = (
+            f"{header['banner_extra']} | {banner}" if banner
+            else header["banner_extra"]
+        )
+    from niveshdristi.markets.registry import get_registry
+
+    market_id = header.get("market_rules_digest") and json.loads(
+        header["market_rules_digest"]).get("market_id", "")
+    labels = None
+    if market_id:
+        try:
+            # importing market profile modules REGISTERS them (side effect
+            # by design) — both markets' labels resolve from the header
+            import niveshdristi.markets.in_us.profile  # noqa: F401
+            from niveshdristi.services.labels import market_labels
+
+            labels = market_labels(get_registry().get(market_id))
+        except Exception:  # noqa: BLE001 - unknown market: no labels
+            labels = None
     return {
         "fund_id": fund_id,
         "as_of": as_of,  # from the DATA
-        "banner": (
-            "DATA LIMITATIONS: " + ", ".join(sorted(limitations))
-            if limitations else None
-        ),
+        "market_labels": labels,
+        "banner": banner,
         "rates_banner": (
             None if header.get("rates_verified") else "RATES UNVERIFIED"
         ),

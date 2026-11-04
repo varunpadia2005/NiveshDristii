@@ -18,7 +18,6 @@ def render_app() -> None:
                             index=PAGES.index("Paper Fund"))
     from niveshdristi.services import market_labels, read_fund
 
-    labels = market_labels()
     fund_id = st.session_state.get("fund_id") or os.environ.get(
         "NDR_FUND_ID", "paper_test")
     base = st.session_state.get("fund_base") or os.environ.get("NDR_FUND_BASE")
@@ -27,6 +26,7 @@ def render_app() -> None:
     except Exception as exc:  # noqa: BLE001 - UI must not crash on state
         st.error(f"fund unreadable: {exc}")
         return
+    labels = payload.get("market_labels") or market_labels()
     if page == "Overview":
         from niveshdristi.ui.overview_page import render_fund_overview
 

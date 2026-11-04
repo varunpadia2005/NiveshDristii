@@ -66,20 +66,36 @@ def _synthetic_frames():
     return out
 
 
-def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
+def build_demo_fund(base: Path, fund_id: str = "demo_synthetic",
+                    market: str = "IN_NSE") -> Path:
     frames = _synthetic_frames()
     dates = sorted(frames["SYN090"]["date"].to_list())
+    from niveshdristi.markets.in_us.profile import us_market_rules
+    from niveshdristi.markets.registry import get_registry, to_rules
+
+    profile = get_registry().get(market)
+    if market == "US_NYSE":
+        # null-rate profile: refuse-without-flag, then zeros + banner
+        rules, marker = us_market_rules(costs_not_modeled=True)
+        extra_codes = frozenset({"rates_unverified", "derived_calendar"})
+        banner_extra = marker["banner"]  # "COSTS NOT MODELED"
+        rules_for_tick = rules
+    else:
+        rules = MarketRules(market_id=profile.market_id)
+        extra_codes = frozenset({"rates_unverified"})
+        banner_extra = None
+        rules_for_tick = rules
     # created the day before the FIRST TICKED session: the as-of frame at
     # that session still spans SESSIONS - N_TICKS rows (>= the momentum
     # lookback), and the ledger covers exactly the last N_TICKS sessions.
     created = date.fromisoformat(dates[SESSIONS - N_TICKS - 1])
     limitations = DataLimitations(CODES=frozenset({
-        "rates_unverified", "approximate_universe", "survivorship_universe",
+        "approximate_universe", "survivorship_universe",
         "stub_models_used", "benchmark_not_tri", "regime_vol_proxy",
-    }))
+    }) | extra_codes)
     create_fund(
         f"{fund_id}", base=base, created=created, config_digest="synthetic-demo",
-        rules=MarketRules(market_id=IN_NSE_PROFILE.market_id),
+        rules=rules,
         limitations=limitations, rates_verified=False,
         initial_cash=1_000_000.0, universe=["SYN090", "SYN091"],
     )
@@ -90,6 +106,8 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
     header = json.loads(lines[0])
     header["note"] = "SYNTHETIC DEMO - not real instruments, not real data"
+    if banner_extra:
+        header["banner_extra"] = banner_extra
     lines[0] = json.dumps(header, sort_keys=True, separators=(",", ":"))
     ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -102,7 +120,7 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic") -> Path:
             fund_id, base=base,
             fetch_bars=lambda u, day: frames,  # noqa: B023 - loop var unused
             clock_now=date.fromisoformat(d), models=bundle,
-            rules=MarketRules(market_id=IN_NSE_PROFILE.market_id),
+            rules=rules_for_tick,
             limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0,
                               turnover_max=1.0),
             rebalance=RebalanceSchedule(), universe=["SYN090", "SYN091"],
@@ -141,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", default=str(DEMO_BASE_DEFAULT),
                         help="funds directory (default: outside the repo)")
     parser.add_argument("--fund-id", default="demo_synthetic")
+    parser.add_argument("--market", default="IN_NSE",
+                        choices=["IN_NSE", "US_NYSE"])
     parser.add_argument("--tamper-ledger", action="store_true",
                         help="also write <id>_tampered with a corrupted ledger")
     parser.add_argument("--tamper-sidecar", action="store_true",
@@ -153,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     if base.resolve() == Path.cwd().resolve():
         print("refusing: --base must not be the repo/cwd", file=sys.stderr)
         return 2
-    path = build_demo_fund(base, args.fund_id)
+    path = build_demo_fund(base, args.fund_id, market=args.market)
     print(f"demo fund written: {path}")
     if args.tamper_ledger:
         print(f"tampered copy: {tampered_copy(base, args.fund_id, 'ledger')}")

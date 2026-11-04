@@ -5,6 +5,8 @@ disclaimer, sidecar-labelled decisions, and write actions OFF by default."""
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -38,6 +40,9 @@ def _run_app(tmp_path, *, write_actions=False):
             "paper_test")
     at.run(timeout=120)
     return at
+
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 def _texts(block):
@@ -545,3 +550,59 @@ class TestPaperDetailSettingsS9:
         at.checkbox(key="confirm_halt").check().run(timeout=180)
         at.button(key="halt_fund_btn").click().run(timeout=180)
         assert (tmp_path / "paper_test" / "halt.flag").exists()
+
+
+class TestUSDemoAppS6P9:
+    """P9-S6: a US demo fund renders USD labels, western grouping, the
+    COSTS NOT MODELED banner, and no rupee symbol or India labels anywhere;
+    the India fund is unchanged."""
+
+    @staticmethod
+    def _us_fund(tmp_path):
+        import subprocess
+
+        proc = subprocess.run(
+            [sys.executable, "tools/make_demo_fund.py", "--base",
+             str(tmp_path), "--market", "US_NYSE", "--fund-id", "us_demo"],
+            capture_output=True, text=True, cwd=REPO, timeout=600,
+        )
+        assert proc.returncode == 0, proc.stderr[-300:]
+
+    def test_us_demo_app(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        self._us_fund(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "us_demo"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "COSTS NOT MODELED" in texts          # banner_extra
+        assert "New York Stock Exchange" in texts    # USD labels
+        assert "USD" in texts
+        assert "₹" not in texts                      # no rupee symbol
+        assert "National Stock Exchange of India" not in texts
+
+    def test_india_demo_app_unchanged(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        proc = subprocess.run(
+            [sys.executable, "tools/make_demo_fund.py", "--base",
+             str(tmp_path), "--market", "IN_NSE", "--fund-id", "in_demo"],
+            capture_output=True, text=True, cwd=REPO, timeout=600,
+        )
+        assert proc.returncode == 0, proc.stderr[-300:]
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "in_demo"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "New York Stock Exchange" not in texts
+        assert "INR" in texts                        # ISO code from profile
+        assert "COSTS NOT MODELED" not in texts

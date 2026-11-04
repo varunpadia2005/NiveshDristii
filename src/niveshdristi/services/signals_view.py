@@ -43,7 +43,6 @@ def snapshot_signals(fund_id: str, base: str | Path | None = None,
     from niveshdristi.marketdata.context import build_from_full_frames
     from niveshdristi.paper.fund import FundPaths
     from niveshdristi.paper.ledger import PaperLedger
-
     from niveshdristi.services.rules import rules_from_header
 
     paths = FundPaths(base).for_fund(fund_id)
