@@ -15,9 +15,12 @@ from pathlib import Path
 import yaml
 
 from niveshdristi.core.errors import ConfigurationError
-from niveshdristi.markets.in_nse.profile import IN_NSE_PROFILE
 from niveshdristi.markets.registry import (
+    CostModel,
     MarketProfile,
+    PriceLimitConfig,
+    SessionTimes,
+    SettlementConfig,
     register_market,
     to_rules,
 )
@@ -80,13 +83,6 @@ def load_us_tax(*, costs_not_modeled: bool = False) -> dict[str, float | int | b
 # silently carry India's cost numbers). cost_model holds the NULL-YAML
 # zeros (only reachable with costs_not_modeled=True); tax_model is None
 # (tax not modeled). The authoritative US rates are the NULL YAML files.
-from niveshdristi.markets.registry import (
-    CostModel,
-    MarketProfile,
-    PriceLimitConfig,
-    SessionTimes,
-    SettlementConfig,
-)
 
 _us_costs = load_us_costs(costs_not_modeled=True)  # nulls -> 0.0
 

@@ -471,22 +471,30 @@ def main() -> int:
         "src/niveshdristi/markets/in_nse/providers/yfinance_adapter.py",
         "src/niveshdristi/markets/in_nse/providers/bhavcopy_file.py",
     }
-    providers_dir = repo_root / "src/niveshdristi/markets/in_nse/providers"
-    if providers_dir.exists():
-        adapter_issues = scan_market_literals(repo_root, scan_dirs=["src/niveshdristi/markets/in_nse/providers"])
-        rogue = sorted(
-            {_rel_posix(i["file"]) for i in adapter_issues} - ADAPTER_ALLOWLIST
-        )
-        if rogue:
-            fail("G10", f"Market literals outside the adapter allowlist: {rogue}")
-            fails += 1
-        else:
-            present = sorted(
-                p.relative_to(repo_root).as_posix()
-                for p in providers_dir.glob("*.py")
-                if p.relative_to(repo_root).as_posix() in ADAPTER_ALLOWLIST
+    US_ADAPTER_ALLOWLIST = {
+        "src/niveshdristi/markets/in_us/providers/us_adapter.py",
+    }
+    for providers_rel, allowlist in (
+        ("src/niveshdristi/markets/in_nse/providers", ADAPTER_ALLOWLIST),
+        ("src/niveshdristi/markets/in_us/providers",
+         US_ADAPTER_ALLOWLIST),
+    ):
+        providers_dir = repo_root / providers_rel
+        if providers_dir.exists():
+            adapter_issues = scan_market_literals(repo_root, scan_dirs=[providers_rel])
+            rogue = sorted(
+                {_rel_posix(i["file"]) for i in adapter_issues} - allowlist
             )
-            pass_("G10", f"Adapter allowlist enforced (present: {present})")
+            if rogue:
+                fail("G10", f"Market literals outside the adapter allowlist ({providers_rel}): {rogue}")
+                fails += 1
+            else:
+                present = sorted(
+                    p.relative_to(repo_root).as_posix()
+                    for p in providers_dir.glob("*.py")
+                    if p.relative_to(repo_root).as_posix() in allowlist
+                )
+                pass_("G10", f"Adapter allowlist enforced ({providers_rel}: {present})")
 
     # Non-vacuity: each scan target must contain scannable files
     for target in (
