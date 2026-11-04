@@ -3,8 +3,8 @@ from stored snapshots; no action buttons."""
 
 from __future__ import annotations
 
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
 
 def _candlestick(payload: dict) -> None:
@@ -18,7 +18,7 @@ def _candlestick(payload: dict) -> None:
         close=[c.get("adj_close", c["close"]) for c in candles],
     )])
     fig.update_layout(template="plotly_white", height=420,
-                      margin=dict(l=10, r=10, t=10, b=10))
+                      margin={"l": 10, "r": 10, "t": 10, "b": 10})
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -33,7 +33,10 @@ def _indicator_panes(payload: dict) -> None:
 
 def render_deep_dive(payload: dict, labels: dict) -> None:
     from niveshdristi.ui.components import (
-        banner_strip, empty_state, footer_strip, unavailable_panel,
+        banner_strip,
+        empty_state,
+        footer_strip,
+        unavailable_panel,
         why_expander,
     )
 
@@ -69,7 +72,9 @@ def render_deep_dive(payload: dict, labels: dict) -> None:
 
 def render_compare(payload: dict, labels: dict) -> None:
     from niveshdristi.ui.components import (
-        banner_strip, footer_strip, unavailable_panel,
+        banner_strip,
+        footer_strip,
+        unavailable_panel,
     )
 
     banner_strip(payload)

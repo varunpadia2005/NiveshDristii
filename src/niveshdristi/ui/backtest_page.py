@@ -3,14 +3,17 @@ with the FIXED wording; drag split into fees and slippage."""
 
 from __future__ import annotations
 
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
 
 def render_backtest_lab(payload: dict, labels: dict) -> None:
     from niveshdristi.services.backtest_lab import content_key, run_backtest_service
     from niveshdristi.ui.components import (
-        banner_strip, empty_state, footer_strip, unavailable_panel,
+        banner_strip,
+        empty_state,
+        footer_strip,
+        unavailable_panel,
     )
 
     banner_strip(payload)
@@ -44,7 +47,7 @@ def render_backtest_lab(payload: dict, labels: dict) -> None:
                 y=[v for _, v in result["gross_curve"]],
                 name="gross (before frictions)"))
             fig.update_layout(template="plotly_white", height=380,
-                              margin=dict(l=10, r=10, t=10, b=10))
+                              margin={"l": 10, "r": 10, "t": 10, "b": 10})
             st.plotly_chart(fig, use_container_width=True)
             c1, c2, c3 = st.columns(3)
             c1.metric("drag (NAV bps)", result["drag_bps"])

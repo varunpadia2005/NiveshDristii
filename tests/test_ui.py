@@ -4,6 +4,7 @@ disclaimer, sidecar-labelled decisions, and write actions OFF by default."""
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -444,3 +445,101 @@ class TestBacktestLabS8:
         # the 12-session fund honestly degrades (legacy warmup), so the
         # typed error state is the expected verdict-first display
         assert "backtest unavailable" in texts or             "pipeline demonstration only" in texts
+
+
+class TestPaperDetailSettingsS9:
+    """P8-S9: paginated records, session drill-down, verification naming the
+    failing line, events panel, sidecar decisions, flag-gated halt, and the
+    read-only Settings page (key presence only)."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=date.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, date.fromisoformat(dates[9]), None)
+        return tmp_path, dates
+
+    def test_records_pagination_and_verify(self, tmp_path):
+        from niveshdristi.services.paper_detail import (
+            records_page,
+            session_detail,
+            verify_detail,
+        )
+
+        tmp_path, _ = self._seeded(tmp_path)
+        pag = records_page("paper_test", tmp_path, page=0, per_page=5)
+        assert pag["total"] == 10 and pag["pages"] == 2
+        assert len(pag["rows"]) == 5
+        detail = session_detail("paper_test", tmp_path,
+                                pag["rows"][-1]["session_date"])
+        assert detail["available"] is True
+        assert "fees" in detail["costs"]
+        v = verify_detail("paper_test", tmp_path)
+        assert v["status"] == "verified" and v["problems"] == []
+
+    def test_verify_names_failing_line(self, tmp_path):
+        from niveshdristi.services.paper_detail import verify_detail
+
+        tmp_path, _ = self._seeded(tmp_path)
+        raw = (tmp_path / "paper_test" / "ledger.jsonl").read_text(
+            encoding="utf-8").splitlines()
+        raw[1] = raw[1].replace('"cash_after":1000000.0',
+                                '"cash_after":1000001.0', 1)
+        (tmp_path / "paper_test" / "ledger.jsonl").write_text(
+            "\n".join(raw) + "\n", encoding="utf-8")
+        v = verify_detail("paper_test", tmp_path)
+        assert v["status"] == "FAILED"
+        assert any("line 2" in p for p in v["problems"])
+
+    def test_settings_key_presence_only(self, tmp_path):
+        from niveshdristi.services.paper_detail import settings_view
+
+        s = settings_view()
+        text = json.dumps(s)
+        assert "OPENROUTER_API_KEY" in text
+        assert s["keys"]["OPENROUTER_API_KEY"] in (True, False)
+        assert "sk-" not in text
+
+    def test_settings_page_renders(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.sidebar.radio[0].set_value("Settings").run(timeout=180)
+        assert not at.exception, at.exception
+        texts = " ".join(_texts(at.main))
+        assert "Settings (read-only)" in texts
+        assert "RATES UNVERIFIED" in texts
+
+    def test_detail_page_renders_and_halt_flag(self, tmp_path):
+        from streamlit.testing.v1 import AppTest
+
+        from niveshdristi.paper.fund import FundPaths
+
+        tmp_path, _ = self._seeded(tmp_path)
+        at = AppTest.from_file(
+            Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+            / "ui" / "app.py")
+        at.session_state["fund_id"] = "paper_test"
+        at.session_state["fund_base"] = str(tmp_path)
+        at.run(timeout=180)
+        at.checkbox(key="show_detail").check().run(timeout=180)
+        texts = " ".join(_texts(at.main))
+        assert "Paper fund detail" in texts
+        assert not any("halt" in str(b.label).lower() for b in at.button)
+        at.session_state["allow_write_actions"] = True
+        at.session_state["fund_paths"] = FundPaths(tmp_path).for_fund(
+            "paper_test")
+        at.run(timeout=180)
+        at.checkbox(key="confirm_halt").check().run(timeout=180)
+        at.button(key="halt_fund_btn").click().run(timeout=180)
+        assert (tmp_path / "paper_test" / "halt.flag").exists()

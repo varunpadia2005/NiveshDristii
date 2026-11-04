@@ -1,5 +1,5 @@
-# NEW (P8-S3): local-only Streamlit configuration.
-# Bound to loopback, headless, usage stats OFF (never phoned home).
+# NEW (P8-S3/D1a/P8-S4): local-only Streamlit configuration.
+# Loopback, headless, usage stats OFF, XSRF on, CORS closed.
 [browser]
 gatherUsageStats = false
 serverAddress = "localhost"
@@ -8,14 +8,11 @@ serverAddress = "localhost"
 address = "127.0.0.1"
 port = 8501
 headless = true
-
-# D1a: security posture (loopback, XSRF on, CORS not relaxed).
-[server]
 enableXsrfProtection = true
 enableCORS = false
 
-# P8-S4: light theme default (tokens mirrored in ui/theme.py; the dark set
-# is defined there for reference and contrast testing).
+# Light theme default (dark tokens live in ui/theme.py for reference and
+# contrast testing).
 [theme]
 base = "light"
 primaryColor = "#4F46E5"

@@ -7,7 +7,9 @@ import streamlit as st
 
 def render_market_overview(payload: dict, labels: dict) -> None:
     from niveshdristi.ui.components import (
-        banner_strip, footer_strip, unavailable_panel,
+        banner_strip,
+        footer_strip,
+        unavailable_panel,
     )
 
     banner_strip(payload)
@@ -21,7 +23,11 @@ def render_market_overview(payload: dict, labels: dict) -> None:
 
 def render_signals_board(rows: list[dict], payload: dict, labels: dict) -> None:
     from niveshdristi.ui.components import (
-        banner_strip, empty_state, footer_strip, legend, unavailable_panel,
+        banner_strip,
+        empty_state,
+        footer_strip,
+        legend,
+        unavailable_panel,
         why_expander,
     )
 

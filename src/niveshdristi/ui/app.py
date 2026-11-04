@@ -84,6 +84,10 @@ def render_app() -> None:
         from niveshdristi.ui.paper_page import render_paper_fund
 
         render_paper_fund(payload, labels)
+    elif page == "Settings":
+        from niveshdristi.ui.paper_detail_page import render_settings
+
+        render_settings(payload, labels)
     else:
         from niveshdristi.ui.banners import render_banners, render_footer, unavailable_panel
 

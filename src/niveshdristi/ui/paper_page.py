@@ -52,4 +52,9 @@ def render_paper_fund(payload: dict, labels: dict) -> None:
                     event_id=f"halt-{payload['fund_id']}",
                 )
                 st.success(f"halted ({halt_payload.get('session')})")
+    if st.checkbox("Show session detail (paginated records, events)",
+                   key="show_detail"):
+        from niveshdristi.ui.paper_detail_page import render_paper_detail
+
+        render_paper_detail(payload, labels)
     render_footer(payload, labels)
