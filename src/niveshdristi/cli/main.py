@@ -184,7 +184,15 @@ def backtest_run(
 # Paper trading commands
 # ============================================================
 
-paper_app = typer.Typer(help="Paper trading commands")
+paper_app = typer.Typer(
+    help="Paper trading commands",
+    epilog=("Exit codes: 0 = ok or logged no-op; 1 = operational failure "
+            "(halt, verification failure, provider down); 2 = usage error. "
+            "nd paper tick failures that halt carry the recovery hint in "
+            "the payload ('nd paper recover'); stale locks: 'nd paper "
+            "unlock'. data/signals/backtest subcommands are documented "
+            "stubs (status not_implemented)."),
+)
 app.add_typer(paper_app, name="paper")
 
 

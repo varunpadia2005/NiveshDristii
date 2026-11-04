@@ -102,3 +102,44 @@ and ledger hash; no recompute on widget change; loading/empty/error states
 on every panel; no blocking LLM calls on page load; readable in light and
 dark themes; no color-only meaning (text labels accompany every status);
 keyboard navigable (native widgets only).
+
+---
+
+# AS BUILT (P8-S5..S9)
+
+All six pages exist; every page renders the shared banner strip + footer
+(as-of from data) and NO unsafe HTML:
+
+- **Overview** — KPI ribbon (fund value at last close, last-session net and
+  gross P&L separately), direction legend, positions (symbol, lean pill,
+  uncalibrated conviction, unrealised %, "Why?" expander with thesis and
+  horizon), sector/benchmark panel = unavailable, "What changed in the last
+  session" feed (ticks/quality/halt/resume/recover events), "Needs
+  attention" list (verify failure, halt, UNVERIFIED sidecar, limitation
+  count).
+- **Market Overview** — "Last data session" badge (never Open/Closed) with
+  the holiday-calendar note; regime/benchmark/VIX/heatmap/flows = honest
+  unavailable panels (the regime model needs aux frames snapshots lack).
+- **Signals** — board rows for every stored instrument: icon+word lean,
+  conviction (uncalibrated, -1 to +1), horizon, data_status, liquidity
+  (snapshot volume); conviction slider filter; type-ahead search; sector
+  filter displayed as unavailable; "Why?" expanders (inert text).
+- **Deep-Dive** — plotly candlestick + RSI/MACD/50-200-day text panes from
+  the TA wrapper's indicator frame; entry/stop zones from the price-range
+  evidence function labelled evidence-only; per-model leans; recorded gate
+  verdicts from the sidecar clamp log (never recomputed);
+  guardrails/fundamentals = unavailable. Compare view side-by-side, no
+  action buttons.
+- **Backtest Lab** — Run button executes the engine over stored snapshots
+  (live bundle minus the legacy TA scorer — warmup impossibility
+  documented); verdict FIXED: "pipeline demonstration only; not evidence
+  of performance"; promotable shown always-False; gross vs net chart; drag
+  split into fees/slippage; TrialRecorder summary = unavailable panel.
+- **Paper Fund** — header chips (verify verified/FAILED, halt state),
+  positions table, decisions panel (verified / UNVERIFIED / not recorded),
+  optional detail view: paginated records, session drill-down (fills,
+  costs, recorded clamp log), events panel, flag-gated halt with
+  confirmation (off by default).
+- **Settings** — read-only: market labels from the profile, provider/model
+  names (env-documented, VERIFY note), key PRESENCE only (never values),
+  data-source status table.
