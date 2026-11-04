@@ -1,0 +1,7 @@
+# US_NYSE tax model — P9-S2. ALL NULL: no numeric US tax rate exists here.
+enabled: null                    # UNVERIFIED: no value entered
+short_term_threshold_days: null  # UNVERIFIED: no value entered
+short_term_rate: null            # UNVERIFIED: no value entered
+long_term_rate: null             # UNVERIFIED: no value entered
+long_term_exemption: null        # UNVERIFIED: no value entered
+loss_setoff_years: null          # UNVERIFIED: no value entered

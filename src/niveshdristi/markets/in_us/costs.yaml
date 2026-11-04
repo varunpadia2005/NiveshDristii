@@ -1,0 +1,17 @@
+# US_NYSE Transaction Cost Model — P9-S2
+# EVERY RATE IS NULL: no numeric US fee or tax rate is written in this
+# project (no invented rates; nothing verified against a US source).
+# Each field carries "# UNVERIFIED: no value entered".
+
+brokerage_per_order: null        # UNVERIFIED: no value entered
+brokerage_pct: null              # UNVERIFIED: no value entered
+stt_delivery_buy_pct: null       # UNVERIFIED: no value entered (US analogue)
+stt_delivery_sell_pct: null      # UNVERIFIED: no value entered (US analogue)
+stt_intraday_sell_pct: null      # UNVERIFIED: no value entered (US analogue)
+exchange_charges_pct: null       # UNVERIFIED: no value entered
+sebi_fees_pct: null              # UNVERIFIED: no value entered (regulator fee)
+stamp_duty_buy_pct: null         # UNVERIFIED: no value entered
+dp_charge_per_scrip: null        # UNVERIFIED: no value entered
+gst_pct: null                    # UNVERIFIED: no value entered
+transaction_levy: null           # UNVERIFIED: no value entered
+slippage_base_bps: null          # UNVERIFIED: no value entered
