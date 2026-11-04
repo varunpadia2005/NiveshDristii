@@ -285,8 +285,8 @@ class TestMarketPagesS6:
         mo = market_overview("paper_test", base=tmp_path)
         assert mo["last_data_session"] == dates[9]
         assert "official holiday calendar is not loaded" in mo["holiday_note"]
-        assert "benchmark" in mo["unavailable"]
-        assert "India VIX" in mo["unavailable"]
+        assert "benchmark index" in mo["unavailable"]
+        assert "volatility index" in mo["unavailable"]
 
     def test_signals_board_rows_and_filter(self, tmp_path):
         from niveshdristi.services.market_view import signals_board
@@ -472,14 +472,16 @@ class TestPaperDetailSettingsS9:
 
         tmp_path, _ = self._seeded(tmp_path)
         pag = records_page("paper_test", tmp_path, page=0, per_page=5)
-        assert pag["total"] == 10 and pag["pages"] == 2
+        assert pag["total"] == 10
+        assert pag["pages"] == 2
         assert len(pag["rows"]) == 5
         detail = session_detail("paper_test", tmp_path,
                                 pag["rows"][-1]["session_date"])
         assert detail["available"] is True
         assert "fees" in detail["costs"]
         v = verify_detail("paper_test", tmp_path)
-        assert v["status"] == "verified" and v["problems"] == []
+        assert v["status"] == "verified"
+        assert v["problems"] == []
 
     def test_verify_names_failing_line(self, tmp_path):
         from niveshdristi.services.paper_detail import verify_detail

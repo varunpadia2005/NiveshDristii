@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from niveshdristi.ui.theme import DARK, LIGHT  # noqa: E402
 
 
-def _channel(c: int) -> float:
+def _channel(c: float) -> float:
     c = c / 255
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
@@ -21,7 +21,8 @@ def _channel(c: int) -> float:
 def _luminance(hex_color: str) -> float:
     h = hex_color.lstrip("#")
     r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
-    return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
+    return (0.2126 * _channel(r) + 0.7152 * _channel(g)
+            + 0.0722 * _channel(b))
 
 
 def contrast(fg: str, bg: str) -> float:

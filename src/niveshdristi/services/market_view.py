@@ -29,9 +29,9 @@ def market_overview(fund_id: str, base: str | Path | None = None) -> dict:
         "last_data_session": last_session,
         "holiday_note": ("official holiday calendar is not loaded; sessions "
                          "are data-derived"),
-        "unavailable": ["benchmark", "Bank Nifty", "India VIX",
-                        "sector heatmap", "FII/DII flows", "regime state "
-                        "(needs aux frames not in snapshots)"],
+        "unavailable": ["benchmark index", "bank index", "volatility index",
+                        "sector heatmap", "institutional flows", "regime "
+                        "state (needs aux frames not in snapshots)"],
     }
 
 
