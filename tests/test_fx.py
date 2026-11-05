@@ -6,29 +6,35 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from niveshdristi.markets.fx import (
-    BaseCurrency, FxConverter, FxRate, FxRateUnavailable,
+    BaseCurrency,
+    FxConverter,
+    FxRate,
+    FxRateUnavailable,
 )
 
 
 def _rate(**over):
-    base = dict(base_currency="INR", quote_currency="USD", rate=0.011,
-                source="test-source", as_of=date(2026, 11, 1))
+    base = {
+        "base_currency": "INR", "quote_currency": "USD", "rate": 0.011,
+        "source": "test-source", "as_of": date(2026, 11, 1),
+    }
     base.update(over)
     return FxRate(**base)
 
 
 class TestFxGroundwork:
     def test_rate_requires_source_and_as_of(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="source"):
             _rate(source="")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="as_of"):
             FxRate(base_currency="INR", quote_currency="USD", rate=0.011,
                    source="s")  # no as_of
 
     def test_distinct_currencies(self):
-        with pytest.raises(Exception, match="differ"):
+        with pytest.raises(ValidationError, match="differ"):
             _rate(base_currency="USD", quote_currency="USD")
 
     def test_same_currency_passthrough(self):
@@ -54,5 +60,5 @@ class TestFxGroundwork:
     def test_base_currency_type(self):
         bc = BaseCurrency(currency="USD")
         assert bc.currency == "USD"
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="string_too_long"):
             BaseCurrency(currency="usdollars")

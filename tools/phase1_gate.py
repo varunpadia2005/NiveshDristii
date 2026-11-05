@@ -323,7 +323,9 @@ def main() -> int:
                 skipped = int(skipped_m.group(1))
             break
 
-    if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110 and collected >= 111:
+    # P9-S3 (decision b): TWO approved strict xfails (2026 holidays +
+    # deferred costs_not_modeled) — consistent with G15.
+    if failed == 0 and errors == 0 and skipped == 0 and xfailed == 2 and passed >= 110 and collected >= 111:
         pass_("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
     else:
         fail("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")

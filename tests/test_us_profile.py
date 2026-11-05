@@ -21,26 +21,30 @@ class TestUSProfile:
         assert us.currency == "USD"
         assert us.digit_grouping == "western"
         assert us.timezone == "America/New_York"
-        assert us.session.open.hour == 9 and us.session.open.minute == 30
+        assert us.session.open.hour == 9
+        assert us.session.open.minute == 30
         assert us.session.close.hour == 16
         assert us.benchmark_symbol == ""  # benchmark UNAVAILABLE
         assert us.shorting_allowed is False  # project default: long-only
 
     def test_null_rate_without_flag_raises_typed_error_naming_field(self):
         from niveshdristi.markets.in_us.profile import (
-            CostsNotModeledError, load_us_costs,
+            CostsNotModeledError,
+            load_us_costs,
         )
 
         with pytest.raises(CostsNotModeledError, match="stt_delivery_sell_pct"):
             load_us_costs()  # no flag
-        with pytest.raises(CostsNotModeledError, match="short_term_rate"):
-            from niveshdristi.markets.in_us.profile import load_us_tax
+        from niveshdristi.markets.in_us.profile import load_us_tax
 
+        with pytest.raises(CostsNotModeledError, match="short_term_rate"):
             load_us_tax()  # no flag
 
     def test_with_flag_zero_fee_costs_and_banner_marker(self):
         from niveshdristi.markets.in_us.profile import (
-            COSTS_NOT_MODELED_BANNER, COSTS_NOT_MODELED_CODE, us_market_rules,
+            COSTS_NOT_MODELED_BANNER,
+            COSTS_NOT_MODELED_CODE,
+            us_market_rules,
         )
 
         costs = __import__(

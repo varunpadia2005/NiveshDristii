@@ -179,3 +179,16 @@ Before registering any real provider: accept its terms, verify model ids
 manually (they change), set explicit budgets, and keep pytest/the gate
 offline. Personas (spec C9) are NOT implemented in Phase 7; LlmView is
 evidence text only (binding rule R2).
+
+## 12. US market (P9-S2) — UNVERIFIED, architecture only
+
+A US_NYSE profile exists as a second-market PROOF. UNVERIFIED and
+deliberately unmodeled: every US cost/tax rate is NULL (costs.yaml /
+tax.yaml carry no numbers at all); the US holiday calendar is EMPTY; no US
+benchmark source; the US data provider is a typed shell with NO network
+capability; FX is a refusal-only groundwork type (no rates, no feed).
+Composing US MarketRules requires costs_not_modeled=True, which yields
+zero-fee costs and the COSTS NOT MODELED banner. NOTHING about US markets
+should be trusted for real use without verifying: broker fee schedules,
+SEC/FINRA fees, US tax rules, an official NYSE holiday list, a benchmark
+source, and an FX feed.

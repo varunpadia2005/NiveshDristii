@@ -999,3 +999,51 @@ difference (G03's own contract list excludes tests/fixtures).
   profile has benchmark_symbol="" (no benchmark used at all, tested in
   P9-S2); the existing benchmark_not_tri code already covers "a benchmark
   was used but is not TRI".
+
+---
+
+# Phase 9 — Global readiness proof (architecture, not validity)
+
+Commits (LOCAL): P9-S0 b985666 + 4c2b81b; S1 2698630; S2 8b60df3; S3
+19dfeb8; S4 56de895; S5 8523e67; S6 5b70350; closeout e529a4a-lineage
+(see git log). Final gate at the closeout commit: PASS.
+
+**EXPLICIT STATEMENT**: Phase 9 proves the ARCHITECTURE can host a second
+market — a US_NYSE profile registers beside IN_NSE, a provider shell keys
+off the registry by market_id, the SAME engine runs both markets on
+synthetic data with ZERO edits to core/ and engine/. It does NOT make US
+trading, US costs, US taxes, US holidays, US benchmarks or FX rates valid:
+every US rate is NULL (nothing verified against any US source), the US
+holiday calendar is EMPTY, no US benchmark source exists, and multi-market
+NAV is groundwork only (FxConverter refuses without an explicit sourced
+rate).
+
+- P9-S0: near-miss rules recorded (explicit-path staging; formatters on
+  NEW paths only; legacy-diff stop check); demo generator restructured
+  (132-session frames, ledger = last 8 sessions; offline tests 68s -> 6s);
+  the sweep repair completed (test_imports.py; fixture exception
+  documented).
+- P9-S1: seams threaded — alpha/currency.py (registry-sync-tested table;
+  the alpha boundary test bans markets imports), services/rules.py from
+  the header digest; TEST_M gone from services/tools.
+- P9-S2: US_NYSE profile — fresh (an inheritance draft silently produced
+  India rates for US_NYSE: caught, fixed); every rate NULL with the typed
+  refuse-without-flag policy (CostsNotModeledError naming the fields);
+  flag -> zeros + COSTS NOT MODELED banner marker; strict magnitude checks
+  still reject non-null absurd values; India unaffected.
+- P9-S3: two-market proof under decision (b) — the US state rides
+  rates_unverified; COSTS NOT MODELED rides banner+marker; strict xfail
+  for the deferred costs_not_modeled code (Phase 10: 2-line addition to
+  core/limitations.py:41-52); G15 expects exactly the TWO approved strict
+  xfails; core/engine diff vs e529a4a asserted EMPTY.
+- P9-S4: US provider SHELL (every role typed-refuses; no network, no
+  suffix logic) + market-id-keyed provider registry; G10 allowlist
+  generalised to both provider dirs.
+- P9-S5: FX groundwork in the MARKETS layer (FxRate REQUIRES source+as_of;
+  FxConverter refuses without an explicit rate; BaseCurrency); docs state
+  multi-market NAV is groundwork only.
+- P9-S6: demo generator --market {IN_NSE,US_NYSE} (US demo:
+  costs_not_modeled composition, banner_extra in the header); services
+  resolve market labels + banner from the header; AppTests prove the US
+  demo renders USD/NY labels + COSTS NOT MODELED with no rupee symbol or
+  India name, and the India demo unchanged.

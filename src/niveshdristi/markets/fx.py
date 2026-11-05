@@ -12,7 +12,6 @@ verified-true rule for cost schedules)."""
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic.config import ConfigDict
@@ -37,7 +36,7 @@ class FxRate(BaseModel):
     as_of: date
 
     @model_validator(mode="after")
-    def _distinct_currencies(self) -> "FxRate":
+    def _distinct_currencies(self) -> FxRate:
         if self.base_currency == self.quote_currency:
             raise ValueError("base and quote currencies must differ")
         return self

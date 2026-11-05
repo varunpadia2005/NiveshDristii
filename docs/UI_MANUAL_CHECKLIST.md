@@ -90,3 +90,18 @@ Launch exactly as in section 1 (demo fund + env vars). With
 - [ ] Settings: market labels from the profile; provider/model names with
       the VERIFY note; keys shown as set/not-set ONLY; data-source status
       table; RATES UNVERIFIED banner present.
+
+
+## 4. US demo fund (P9-S6)
+
+```powershell
+& "D:\venvs\niveshdristi\Scripts\python.exe" tools\make_demo_fund.py --base "D:\Nivesh Dristi\demo_funds" --market US_NYSE --fund-id us_demo_synthetic
+$env:NDR_FUND_ID = "us_demo_synthetic"   # then rerun the streamlit command from section 1
+```
+
+- [ ] Banner strip shows COSTS NOT MODELED (from the header) above the
+      DataLimitations list
+- [ ] Market label reads New York Stock Exchange - USD (western grouping
+      in any money display; no 3-2-2 grouping)
+- [ ] NO rupee symbol and NO 'National Stock Exchange of India' anywhere
+- [ ] Backtest Lab verdict unchanged (pipeline demonstration only)

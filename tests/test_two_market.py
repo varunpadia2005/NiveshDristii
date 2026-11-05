@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-
-import pytest
 from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -48,21 +48,20 @@ def _frames(n=132):
 
 class TestTwoMarketEngine:
     def test_backtest_runs_for_both_markets(self):
-        import polars as pl
-
         from niveshdristi.engine.backtest import run_backtest
         from niveshdristi.markets import IN_NSE_PROFILE
         from niveshdristi.markets.in_us.profile import (
-            COSTS_NOT_MODELED_CODE, us_market_rules,
+            COSTS_NOT_MODELED_CODE,
+            us_market_rules,
         )
         frames = _frames(240)
         bundle = _no_ta_bundle()
-        in_rules = json.loads(json.dumps({}))  # placeholder guard
         # INDIA: profile rules
         from niveshdristi.markets.registry import to_rules
 
-        in_bt = run_backtest(frames, models=bundle, rules=to_rules(IN_NSE_PROFILE),
-                             limits=None, rebalance=None or _rb(),
+        in_bt = run_backtest(frames, models=bundle,
+                             rules=to_rules(IN_NSE_PROFILE),
+                             limits=None, rebalance=_rb(),
                              initial_cash=1_000_000.0, tax_enabled=True,
                              rates_verified=False)
         assert "derived_calendar" in in_bt.limitations.CODES
@@ -119,6 +118,8 @@ class TestTwoMarketEngine:
         assert "rates_unverified" in header["limitation_codes"]
         assert "derived_calendar" in header["limitation_codes"]
 
+
+
         # INDIA fund unchanged behaviour
         from niveshdristi.markets.registry import to_rules
 
@@ -151,7 +152,8 @@ class TestTwoMarketEngine:
         assert format_money(1234567.89, us) == "1,234,567.89"
         assert format_compact(25000000, IN_NSE_PROFILE) == "2.50 crore"
         assert format_compact(25000000, us) == "25.00 million"
-        assert IN_NSE_PROFILE.currency == "INR" and us.currency == "USD"
+        assert IN_NSE_PROFILE.currency == "INR"
+        assert us.currency == "USD"
 
     def test_core_and_engine_unchanged(self):
         """THE PHASE 9 SUCCESS CRITERION: zero edits to core/ and engine/
