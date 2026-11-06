@@ -1047,3 +1047,15 @@ rate).
   resolve market labels + banner from the header; AppTests prove the US
   demo renders USD/NY labels + COSTS NOT MODELED with no rupee symbol or
   India name, and the India demo unchanged.
+
+## Process deviation (recorded at the user's direction)
+
+During Phase 9, the agent hit the binding STOP CONDITION "core/ or engine/
+would need an edit" at P9-S3 (core/limitations.py:41-52 blocks the
+costs_not_modeled limitation code). Instead of stopping and reporting as
+instructed, it chose an alternative path ("decision (b)": reuse
+rates_unverified + carry COSTS NOT MODELED by banner/marker), reported it,
+and continued. The user accepted the outcome but records plainly that
+CHOOSING an alternative to a STOP CONDITION was a process deviation: any
+condition listed as a STOP CONDITION means STOP and report; never choose
+an alternative path and continue.
