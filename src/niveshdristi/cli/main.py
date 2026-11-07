@@ -120,7 +120,7 @@ def data_fetch(
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
-    """Fetch price data for tickers."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: fetch {tickers} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -132,7 +132,7 @@ def data_refresh(
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
-    """Refresh all data for a universe."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: refresh {universe} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -151,7 +151,7 @@ def signals_generate(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
     as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
-    """Generate signals for a ticker."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: generate signal for {ticker}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -167,17 +167,61 @@ app.add_typer(backtest_app, name="backtest")
 @backtest_app.command("run")
 def backtest_run(
     ctx: typer.Context,
-    mandate: str = typer.Option("core", "--mandate", "-m", help="Mandate name"),
-    universe: str = typer.Option("nifty50", "--universe", "-u", help="Universe name"),
-    strategy: str = typer.Option("signal_based", "--strategy", "-s", help="Strategy name"),
-    start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    fund_id: str = typer.Argument(..., help="Fund ID whose snapshots to run over"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+    mandate: str = typer.Option("core", "--mandate", "-m",
+                                help="DEPRECATED: accepted, ignored"),
+    universe: str = typer.Option("nifty50", "--universe", "-u",
+                                 help="DEPRECATED: accepted, ignored"),
+    strategy: str = typer.Option("signal_based", "--strategy", "-s",
+                                 help="DEPRECATED: accepted, ignored"),
+    start: str | None = typer.Option(None, "--start", help="DEPRECATED: ignored"),
+    end: str | None = typer.Option(None, "--end", help="DEPRECATED: ignored"),
 ):
-    """Run backtest."""
-    _diagnostic(
-        f"Not implemented yet: backtest {mandate}/{universe}/{strategy}", ctx.obj["json_output"]
+    """Run the engine backtest over a fund's STORED snapshots (offline).
+
+    P10-S3: wraps services.run_backtest_service - no network, no refetch;
+    the verdict wording is fixed ("pipeline demonstration only; not
+    evidence of performance"). Exit 0 ok, 1 unavailable, 2 usage."""
+    from niveshdristi.services.backtest_lab import (
+        content_key,
+        run_backtest_service,
     )
-    _output({"status": "not_implemented"}, ctx.obj["json_output"])
+
+    deprecated_used = (
+        mandate != "core" or universe != "nifty50"
+        or strategy != "signal_based" or start or end
+    )
+    if deprecated_used:
+        _diagnostic(
+            "deprecated options --mandate/--universe/--strategy/--start/--end "
+            "are accepted but ignored (recorded in CHANGELOG)",
+            ctx.obj["json_output"],
+        )
+    try:
+        result = run_backtest_service(
+            fund_id, base=base, _key=content_key(fund_id, base))
+    except Exception as exc:  # noqa: BLE001 - typed degradation report
+        _output({"status": "error", "detail": f"{type(exc).__name__}: {exc}"},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    if not result.get("available"):
+        _output({"status": "unavailable", "reason": result.get("reason", "")},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=1)
+    _output({
+        "status": "ok",
+        "fund_id": fund_id,
+        "as_of": result["as_of"],
+        "verdict": result["verdict"],
+        "promotable": result["promotable"],
+        "drag_bps": result["drag_bps"],
+        "fees_total": result["fees_total"],
+        "slippage_total": result["slippage_total"],
+        "trade_count": result["trade_count"],
+        "limitation_codes": sorted(result["limitations"]),
+        "calendar_source": result["calendar_source"],
+    }, ctx.obj["json_output"])
 
 
 # ============================================================

@@ -227,3 +227,76 @@ class TestSchedulerCommandF4:
         doc = (repo / "docs" / "SCHEDULER.md").read_text(encoding="utf-8")
         assert "Start in" in doc
         assert "REPO ROOT" in doc
+
+
+class TestBacktestRunP10:
+    """P10-S3 (D5): nd backtest run over stored snapshots — offline, plain
+    JSON, fixed verdict wording, exit codes 0/1/2."""
+
+    @staticmethod
+    def _seeded(tmp_path):
+        from datetime import date as _d
+        from datetime import timedelta
+
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
+
+        frames = _momentum_frames(12)
+        dates = _momentum_session_dates(frames)
+        TestPaperFund._create(
+            tmp_path, created=_d.fromisoformat(dates[0]) - timedelta(days=1))
+        TestPaperFund._tick(tmp_path, frames, _d.fromisoformat(dates[9]), None)
+        return tmp_path
+
+    def test_success_json_and_verdict(self, tmp_path):
+        tmp_path = self._seeded(tmp_path)
+        result = runner.invoke(app, [
+            "--json", "backtest", "run", "paper_test", "--base", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)  # valid JSON at any width
+        assert data["status"] == "ok"
+        assert data["verdict"] == ("validation-gate result: pipeline "
+                                   "demonstration only; not evidence of "
+                                   "performance")
+        assert "costs_not_modeled" not in data["limitation_codes"]
+        assert "rates_unverified" in data["limitation_codes"]
+
+    def test_unavailable_fund_exits_1(self, tmp_path):
+        # a fund with NO stored sessions: verify (empty ledger)
+        from datetime import date as _dd
+
+        from niveshdristi.core.limitations import DataLimitations
+        from niveshdristi.core.market_rules import MarketRules
+        from niveshdristi.paper.fund import create_fund
+
+        create_fund("empty_bt", base=tmp_path, created=_dd(2026, 10, 1),
+                    config_digest="t", rules=MarketRules(market_id="TEST_M"),
+                    limitations=DataLimitations(
+                        CODES=frozenset({"rates_unverified"})),
+                    rates_verified=False, initial_cash=1_000_000.0,
+                    universe=["SYN090"])
+        result = runner.invoke(app, [
+            "--json", "backtest", "run", "empty_bt", "--base", str(tmp_path)])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data["status"] == "unavailable"
+
+    def test_usage_error_exit_2(self, tmp_path):
+        result = runner.invoke(app, ["backtest", "run"])  # missing fund_id
+        assert result.exit_code == 2
+
+    def test_json_valid_at_narrow_width(self, tmp_path):
+        tmp_path = self._seeded(tmp_path)
+        result = runner.invoke(app, [
+            "--json", "backtest", "run", "paper_test", "--base", str(tmp_path)],
+            env={"COLUMNS": "40"})
+        assert result.exit_code == 0
+        json.loads(result.output)  # must parse at 40 columns
+
+    def test_deprecated_options_accepted_with_stderr_notice(self, tmp_path):
+        tmp_path = self._seeded(tmp_path)
+        result = runner.invoke(app, [
+            "--json", "backtest", "run", "paper_test", "--base", str(tmp_path),
+            "--mandate", "core", "--universe", "nifty50", "--start",
+            "2026-01-01"])
+        assert result.exit_code == 0
+        assert "deprecated" in result.stderr
