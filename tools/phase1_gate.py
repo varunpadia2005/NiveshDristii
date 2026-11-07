@@ -323,9 +323,8 @@ def main() -> int:
                 skipped = int(skipped_m.group(1))
             break
 
-    # P9-S3 (decision b): TWO approved strict xfails (2026 holidays +
-    # deferred costs_not_modeled) — consistent with G15.
-    if failed == 0 and errors == 0 and skipped == 0 and xfailed == 2 and passed >= 110 and collected >= 111:
+    # P10-S2: back to ONE strict xfail (consistent with G15).
+    if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110 and collected >= 111:
         pass_("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
     else:
         fail("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
@@ -683,12 +682,11 @@ def main() -> int:
                 xfail_count += 1
                 if "strict=True" in line:
                     strict_xfail = True
-    # P9-S3 (decision b): exactly TWO approved strict xfails — (1) the
-    # standing 2026-holidays test, (2) the deferred costs_not_modeled code
-    # (flips when Phase 10 extends core/limitations.py).
-    approved = 2
+    # P10-S2: back to exactly ONE approved strict xfail (the 2026-holidays
+    # test); the deferred costs_not_modeled xfail was resolved.
+    approved = 1
     if xfail_count == approved and strict_xfail:
-        pass_("G15", f"Exactly {approved} xfail markers, both strict=True")
+        pass_("G15", "Exactly one xfail marker, strict=True")
     else:
         fail("G15", f"xfail_count={xfail_count} (expected {approved}), "
                     f"strict={strict_xfail}")

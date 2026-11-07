@@ -124,8 +124,10 @@ register_market(US_NYSE_PROFILE)
 def us_market_rules(*, costs_not_modeled: bool = False):
     """MarketRules for the US profile. REFUSES to produce a cost number from
     a null rate without the explicit flag; WITH the flag every rate is 0.0
-    and the caller must attach the COSTS NOT MODELED banner and the
-    costs_not_modeled limitation code (see the returned marker dict)."""
+    and the caller must attach the COSTS NOT MODELED banner. Since P10-S2
+    the costs_not_modeled LIMITATION CODE is first-class in
+    core/limitations.py and is expected in every US limitation set (the
+    marker documents it; the caller attaches it to the DataLimitations)."""
     load_us_costs(costs_not_modeled=costs_not_modeled)  # may raise
     load_us_tax(costs_not_modeled=costs_not_modeled)
     rules = to_rules(US_NYSE_PROFILE)

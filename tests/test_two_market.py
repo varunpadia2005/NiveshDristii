@@ -10,6 +10,8 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
+from niveshdristi.markets.in_us.profile import COSTS_NOT_MODELED_CODE
+
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
@@ -74,13 +76,12 @@ class TestTwoMarketEngine:
                              limits=None, rebalance=_rb(),
                              initial_cash=1_000_000.0, tax_enabled=False,
                              rates_verified=False,
-                             extra_limitations=frozenset())
-        # Decision (b): the US state rides the EXISTING rates_unverified
-        # code; COSTS NOT MODELED is carried by the banner + marker only.
-        assert "rates_unverified" in us_bt.limitations.CODES
+                             extra_limitations=frozenset({COSTS_NOT_MODELED_CODE}))
+        # P10-S2: costs_not_modeled is a first-class code; the banner/marker
+        # carries the operator-facing text.
+        assert "costs_not_modeled" in us_bt.limitations.CODES
         assert "derived_calendar" in us_bt.limitations.CODES
         assert marker["banner"] == "COSTS NOT MODELED"
-        assert marker["limitation_code"] == COSTS_NOT_MODELED_CODE
         assert us_bt.trade_count == in_bt.trade_count  # same engine, same data
 
     def test_paper_tick_path_for_both_markets(self, tmp_path):
@@ -97,7 +98,8 @@ class TestTwoMarketEngine:
         create_fund("us_demo", base=tmp_path, created=date(2026, 6, 20),
                     config_digest="p9", rules=us_rules,
                     limitations=DataLimitations(CODES=frozenset({
-                        "rates_unverified", "derived_calendar"})),
+                        "rates_unverified", "derived_calendar",
+                        COSTS_NOT_MODELED_CODE})),
                     rates_verified=False, initial_cash=1_000_000.0,
                     universe=["SYNA", "SYNB"])
         result = tick("us_demo", base=tmp_path,
@@ -112,11 +114,8 @@ class TestTwoMarketEngine:
                 encoding="utf-8").splitlines()[0])
         us_digest = json.loads(header["market_rules_digest"])
         assert us_digest["market_id"] == "US_NYSE"
-        # Decision (b): header codes use the EXISTING vocabulary; the
-        # COSTS NOT MODELED marker rides the banner/marker (deferred code
-        # entry in PROGRESS.md, strict xfail above)
-        assert "rates_unverified" in header["limitation_codes"]
-        assert "derived_calendar" in header["limitation_codes"]
+        # P10-S2: the header now carries the first-class code
+        assert "costs_not_modeled" in header["limitation_codes"]
 
 
 
@@ -156,10 +155,12 @@ class TestTwoMarketEngine:
         assert us.currency == "USD"
 
     def test_core_and_engine_unchanged(self):
-        """THE PHASE 9 SUCCESS CRITERION: zero edits to core/ and engine/
-        since the Phase 8 closeout commit e529a4a."""
+        """Zero UNAPPROVED edits to core/ and engine/: the diff is taken
+        against 6948457 — the P10-S2 commit carrying the ONE approved core
+        edit (costs_not_modeled, D4). Anything else appearing here is an
+        unapproved core/engine change."""
         proc = subprocess.run(
-            ["git", "diff", "--stat", "e529a4a", "--", "src/niveshdristi/core",
+            ["git", "diff", "--stat", "6948457", "--", "src/niveshdristi/core",
              "src/niveshdristi/engine"],
             capture_output=True, text=True, cwd=REPO, timeout=60)
         assert proc.returncode == 0
@@ -178,17 +179,29 @@ def _limits():
     return GateLimits(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0)
 
 
-class TestDeferredCoreCodes:
-    """Decision (b) deferral: costs_not_modeled as a LIMITATION CODE is
-    deferred to Phase 10 (a 2-line addition to core/limitations.py:41-52).
-    STRICT xfail: flips loudly the moment Phase 10 lands. Until then the
-    code REJECTED is the expected behaviour."""
+class TestCostsNotModeledCode:
+    """P10-S2 (D4): costs_not_modeled is now a FIRST-CLASS limitation code
+    (core/limitations.py) — the Phase 9 deferral is resolved."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Deferred to Phase 10 (core edit allowed): core/"
-               "limitations.py:41-52 gains costs_not_modeled")
     def test_costs_not_modeled_code_accepted(self):
         from niveshdristi.core.limitations import DataLimitations
 
-        DataLimitations(CODES=frozenset({"costs_not_modeled"}))
+        lim = DataLimitations(CODES=frozenset({"costs_not_modeled"}))
+        assert "costs_not_modeled" in lim.CODES
+
+    def test_us_backtest_carries_the_code(self, tmp_path):
+        from niveshdristi.engine.backtest import run_backtest
+        from niveshdristi.markets.in_us.profile import (
+            COSTS_NOT_MODELED_CODE, us_market_rules,
+        )
+        from tests.test_two_market import _no_ta_bundle
+        from tests.test_paper import _momentum_frames
+
+        rules, marker = us_market_rules(costs_not_modeled=True)
+        bt = run_backtest(_momentum_frames(240), models=_no_ta_bundle(),
+                          rules=rules, limits=None, rebalance=_rb(),
+                          initial_cash=1_000_000.0, tax_enabled=False,
+                          rates_verified=False,
+                          extra_limitations=frozenset({COSTS_NOT_MODELED_CODE}))
+        assert COSTS_NOT_MODELED_CODE in bt.limitations.CODES
+        assert marker["banner"] == "COSTS NOT MODELED"

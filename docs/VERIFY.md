@@ -188,7 +188,9 @@ tax.yaml carry no numbers at all); the US holiday calendar is EMPTY; no US
 benchmark source; the US data provider is a typed shell with NO network
 capability; FX is a refusal-only groundwork type (no rates, no feed).
 Composing US MarketRules requires costs_not_modeled=True, which yields
-zero-fee costs and the COSTS NOT MODELED banner. NOTHING about US markets
+zero-fee costs and the COSTS NOT MODELED banner. Since P10-S2 the
+costs_not_modeled limitation code is first-class (core/limitations.py) and
+appears in US limitation sets. NOTHING about US markets
 should be trusted for real use without verifying: broker fee schedules,
 SEC/FINRA fees, US tax rules, an official NYSE holiday list, a benchmark
 source, and an FX feed.

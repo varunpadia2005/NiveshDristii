@@ -51,6 +51,7 @@ class DataLimitations(BaseModel):
             "regime_vol_proxy",
             "stub_models_used",
             "price_level_rules_on_adjusted",
+            "costs_not_modeled",
         }
         unknown = sorted(self.CODES - allowed)
         if unknown:
