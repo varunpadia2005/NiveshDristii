@@ -12,8 +12,6 @@ from pathlib import Path
 
 from niveshdristi.markets.in_us.profile import COSTS_NOT_MODELED_CODE
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -192,10 +190,11 @@ class TestCostsNotModeledCode:
     def test_us_backtest_carries_the_code(self, tmp_path):
         from niveshdristi.engine.backtest import run_backtest
         from niveshdristi.markets.in_us.profile import (
-            COSTS_NOT_MODELED_CODE, us_market_rules,
+            COSTS_NOT_MODELED_CODE,
+            us_market_rules,
         )
-        from tests.test_two_market import _no_ta_bundle
         from tests.test_paper import _momentum_frames
+        from tests.test_two_market import _no_ta_bundle
 
         rules, marker = us_market_rules(costs_not_modeled=True)
         bt = run_backtest(_momentum_frames(240), models=_no_ta_bundle(),

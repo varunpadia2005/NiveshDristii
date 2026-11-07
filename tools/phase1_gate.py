@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -127,17 +128,60 @@ def main() -> int:
         "backtest", "data", "signals", "indicators", "app", "api",
         "fundamentals", "genai", "regime"
     ]
+    # P10-S4 (near-miss follow-up): the COMPLETE frozen list - the nine
+    # legacy folders, the THREE frozen legacy tests, AND tests/fixtures
+    # (the bhavcopy fixture csv is the ONE documented exception: its
+    # committed content is the legacy tests' deterministic rewrite output,
+    # required for G18; recorded in docs/PROGRESS.md).
+    frozen_tests = ["tests/test_characterization.py", "tests/test_imports.py",
+                    "tests/create_fixtures.py"]
     diff_args = ["git", "diff", "--diff-filter=MD", "--name-only", "82f76d8", "HEAD"]
     for folder in legacy_folders:
         diff_args.extend(["--", f"src/niveshdristi/{folder}"])
-    diff_args.extend(["--", "tests/test_characterization.py"])
+    for ft in frozen_tests:
+        diff_args.extend(["--", ft])
+    diff_args.extend(["--", "tests/fixtures"])
 
     result = run(diff_args, cwd=repo_root)
-    if result.stdout.strip():
-        fail("G03", f"Legacy folders have changes:\n{result.stdout}")
+    _documented = ("tests/fixtures/"
+                   "bhavcopy_SYNTHETIC_sec_bhavdata_full.csv")
+    changed = [line for line in result.stdout.strip().splitlines()
+               if line.strip() and line.strip() != _documented]
+    if changed:
+        fail("G03", "Legacy folders have changes:\n" + "\n".join(changed))
         fails += 1
     else:
-        pass_("G03", "Legacy contract intact")
+        pass_("G03", "Legacy contract intact (complete frozen list)")
+
+    # P10-S4: secrets — no TRACKED file may contain key-shaped strings
+    # outside the documented placeholders (docs/VERIFY + tests). Raw-grep
+    # fail-proof: the pattern list itself catches a planted key.
+    import re as _re
+    import subprocess as _sp
+
+    _key_re = "sk-or-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}"
+    tracked = _sp.run(["git", "ls-files"], cwd=repo_root, capture_output=True,
+                      text=True).stdout.splitlines()
+    # test files PLANT fake keys by design (redaction/secret tests, P7/P8);
+    # the scan therefore covers everything EXCEPT tests/
+    hits = []
+    for rel in tracked:
+        if rel.startswith("tests/"):
+            continue
+        fp = repo_root / rel
+        if not fp.is_file() or fp.suffix in {".parquet", ".png", ".ico"}:
+            continue
+        try:
+            content = fp.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _re.search(_key_re, content):
+            hits.append(rel)
+    if hits:
+        fail("G19", f"key-shaped strings in tracked files: {hits}")
+        fails += 1
+    else:
+        pass_("G19", "No key-shaped strings in tracked files")
 
     # Also check for additions (diff without --diff-filter=MD)
     result = run(["git", "diff", "82f76d8", "HEAD", "--"] +
@@ -298,7 +342,6 @@ def main() -> int:
     # G06: pytest results (derived from the single shared run)
     print("\n=== G06: Pytest results ===")
     assert shared_pytest is not None
-    import re
     collected_m = re.search(r"collected (\d+) items?", shared_pytest.stdout)
     collected = int(collected_m.group(1)) if collected_m else 0
 
