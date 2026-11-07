@@ -108,3 +108,23 @@ backtest_sessions == paper_sessions + (data sessions after the last ticked
 one) + (data sessions on/before the created date)). The paper tick's
 catch-up is capped at 10 sessions, so long histories are ticked once per
 session in a loop.
+
+## Verification (that the task exists and last ran)
+
+```powershell
+schtasks /query /tn "NiveshDristiTick" /v /fo LIST
+```
+
+Also check `<base>/<fund-id>/heartbeat.json` (mtime) and
+`nd paper status` (last_session). Run the task once manually from the
+Task Scheduler UI ("Run") before trusting the schedule.
+
+## Snapshot retention trade-off
+
+`nd paper prune-snapshots --keep-last 60 --apply` (P10-S6) deletes the
+as-of snapshot parquet files of all but the last 60 sessions to bound
+disk usage. TRADE-OFF: `nd paper replay` can only verify sessions whose
+snapshots survive — pruned sessions are reported explicitly as
+"snapshots unavailable" (never a silent pass). The LEDGER is never
+pruned. If you need full-history replay, do not prune (or raise
+--keep-last).

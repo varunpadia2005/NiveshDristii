@@ -194,3 +194,27 @@ appears in US limitation sets. NOTHING about US markets
 should be trusted for real use without verifying: broker fee schedules,
 SEC/FINRA fees, US tax rules, an official NYSE holiday list, a benchmark
 source, and an FX feed.
+
+## 13. Final statuses (P10-S5)
+
+| Item | Status |
+|---|---|
+| yfinance (unofficial feed) | accepted for personal/educational use; terms re-check before any heavier use |
+| bhavcopy file parser | offline fixture-verified |
+| Cost rates (IN) | UNVERIFIED — every value a placeholder |
+| Tax rates (IN) | UNVERIFIED — every value a placeholder |
+| Nifty TRI benchmark | UNAVAILABLE — no source |
+| Index constituents | UNAVAILABLE — no source |
+| Announcement-dated fundamentals | UNAVAILABLE — no source |
+| 2026 NSE holidays | BLOCKED — awaiting the official list (strict xfail) |
+| US market (everything) | UNVERIFIED — architecture proof only (see section 12) |
+| LLM providers | UNVERIFIED — no live call made; model ids change |
+| FX rates | GROUNDWORK — refusal-only types, no rates |
+
+## What this is not
+
+This tool is not investment advice, not a broker interface, not a data
+vendor, and not a validated quantitative system. It has no verified data
+source beyond one unofficial feed; no verified rate; no official calendar;
+no benchmark. Its outputs are research artifacts for one person's
+education. See README "What this is — and what it is NOT".

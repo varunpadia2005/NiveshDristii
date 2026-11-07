@@ -70,3 +70,20 @@ legacy files.
 full `rebuild/v2` history; `repo_snapshot_*.txt` records HEAD, branches and
 the environment. Restore from a bundle with
 `git clone niveshdristi-rebuild-v2.bundle restored && cd restored && git checkout rebuild/v2`.
+
+## 5. Paper-fund backup / restore (operator procedure)
+
+The fund directory `<base>/<fund-id>/` is self-contained:
+`ledger.jsonl` (truth), `broker_cache.json` (derivable),
+`decisions/` (R9b sidecars, derivable display artifacts),
+`snapshots/` (the as-of frames replay needs),
+`events.jsonl` + `heartbeat.json` (observability), `halt.flag` (state).
+
+**Backup**: stop ticking (or accept a torn tail), then copy the WHOLE
+directory. Restore: copy back and run `nd paper verify <fund-id>` — it
+must print verified; then `nd paper replay` must be byte-identical for
+every session whose snapshots exist.
+
+**Do NOT** hand-edit the ledger: a one-byte change fails verification
+(by design; see the tamper tests). A damaged fund is never auto-repaired —
+`nd paper recover` rebuilds the DERIVABLE cache from the ledger only.

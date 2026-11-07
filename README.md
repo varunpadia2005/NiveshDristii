@@ -1,141 +1,83 @@
 # NiveshDristi (निवेश दृष्टि)
 
-**Investment Vision** — AI-driven research assistant for Indian equities.
+**Investment Vision** — an AI-assisted portfolio-RESEARCH tool for Indian
+equities. Educational, personal-use, offline-first.
 
-## Overview
+## What this is — and what it is NOT (read first)
 
-NiveshDristi collects market data and company filings, turns them into structured evidence (trend, momentum, valuation, risk, market regime, model probabilities), tests ideas with honest backtests, and explains results in plain language.
+> **NiveshDristi is an educational research tool.** It is NOT investment
+> advice and it is NOT a trading system. Everything is tested on synthetic
+> data; its only live data path is one unofficial feed (yfinance) whose
+> terms you must accept yourself. All cost and tax rates are UNVERIFIED
+> placeholders — every number the tool shows about real costs is a
+> hypothesis. The paper fund, ledger, and validation gate are honest
+> bookkeeping of a simulation, not a record of real money. US-market
+> support is an architecture proof only: no US data source, rates,
+> holidays, or benchmarks are provided. Never fund it, never connect it to
+> a broker, and never treat any of its output as a recommendation.
 
-**Five Principles:**
-1. Honesty over hype
-2. No look-ahead, ever
-3. Everything explainable
-4. Engine computes, LLM narrates
-5. Every feature testable
+Five principles: honesty over hype · no look-ahead, ever · everything
+explainable · engine computes, LLM narrates · every feature testable.
 
-## Quick Start
+## Quickstart (Windows first, ~10 minutes)
 
-### Prerequisites
-- Python 3.11+
-- Docker & Docker Compose (for local stack)
-- OpenRouter API key (for AI analyst)
-
-### Local Development
-
-```bash
-# 1. Clone and enter
+```powershell
+git clone https://github.com/varunpadia2005/NiveshDristii.git
 cd NiveshDristii
+git checkout rebuild/v2
+py -3.13 -m venv "D:\venvs\niveshdristi"
+& "D:\venvs\niveshdristi\Scripts\pip" install -e ".[dev]"
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
+# legacy fixtures (one-time; the characterization tests need them)
+& "D:\venvs\niveshdristi\Scripts\python" tests\create_fixtures.py
 
-# 3. Start stack (PostgreSQL + FastAPI + Streamlit)
-docker-compose up --build
+# a SYNTHETIC demo paper fund (no network; 130+ sessions, fills, sidecars)
+& "D:\venvs\niveshdristi\Scripts\python" tools\make_demo_fund.py --base "D:\Nivesh Dristi\demo_funds" --tamper-ledger --tamper-sidecar
 
-# 4. Open UI
-# Streamlit: http://localhost:8501
-# FastAPI docs: http://localhost:8000/docs
+# the UI (binds 127.0.0.1 only; usage stats off)
+$env:NDR_FUND_BASE = "D:\Nivesh Dristi\demo_funds"
+$env:NDR_FUND_ID   = "demo_synthetic"
+& "D:\venvs\niveshdristi\Scripts\python" -m streamlit run src\niveshdristi\ui\app.py
 ```
 
-### Manual Python Setup (without Docker)
+What you should see: the DataLimitations banner, a RATES UNVERIFIED banner,
+the educational disclaimer on every page, and honest per-page states —
+including "unavailable: no verified data source" panels. Full walkthrough:
+docs/UI_MANUAL_CHECKLIST.md.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Start PostgreSQL separately, then:
-uvicorn niveshdristi.api.main:app --reload  # Terminal 1
-streamlit run src/niveshdristi/app/main.py   # Terminal 2
-```
-
-## Architecture
+## The offline gate (the heart of the project)
 
 ```
-Raw Sources (yfinance .NS)
-    │
-    ▼
-Data Layer: download, cache (Parquet+PG), validate, adjust
-    │
-    ▼
-Analysis Layer: indicators (Polars), signals, fundamentals, regimes
-    │
-    ▼
-Decision Layer: backtest (1-day delay, Indian costs), portfolio, ML
-    │
-    ▼
-Explanation Layer: grounded AI (OpenRouter + Jinja2 fallback), validator
-    │
-    ▼
-Interface: Streamlit (light/dark) + FastAPI
+& "D:\venvs\niveshdristi\Scripts\python" tools\phase1_gate.py --phase0 <phase0-worktree>
 ```
+18+ named checks (G01–G19): clean-tree, legacy contract, literal guard,
+ruff/mypy on new paths, the offline suite, zero-write proof, and the
+legacy-equality comparison against the frozen Phase-0 snapshot. See
+docs/CI.md and docs/RESTORE.md.
 
-## Key Features
+## Command surface
 
-| Layer | Implementation |
-|-------|----------------|
-| **Data** | yfinance → Parquet + PG cache, abstract `DataProvider` for Kite/Upstox/NSE |
-| **Indicators** | 8 indicators as Polars expressions (vectorized, no loops) |
-| **Signals** | 4-group engine (-1 to +1), composite with plain-English reasons |
-| **Fundamentals** | yfinance `.info` weekly PG cache, config-driven guardrails |
-| **Regimes** | RRG sector rotation + Bull/Choppy/Bear market states |
-| **Backtest** | Event-driven, 1-day delay, full Indian cost model, walk-forward |
-| **ML** | Feature registry, purged CV, LightGBM + Optuna, SHAP, calibration |
-| **GenAI** | OpenRouter (any model) + Jinja2 deterministic fallback |
-| **Validator** | Number extraction → bundle verification → retry → fallback |
-| **UI** | Streamlit, light theme default, dark toggle, 8 pages |
+`nd --help` — validate, config, models, paper (create/tick/status/verify/
+replay/explain/...), backtest run (offline over stored snapshots).
+`nd data fetch`, `nd data refresh`, `nd signals generate` are stubs ("Not
+available yet: no verified data source").
 
-## Configuration
+## Docs
 
-All parameters in `config.yaml`:
-- Data sources, cache, universe, validation thresholds
-- Indicator periods, signal weights, normalization
-- Fundamental guardrails, regime parameters
-- Backtest costs, portfolio constraints
-- Model hyperparameters, GenAI settings
-- App theme, pages
+| Doc | What it covers |
+|---|---|
+| docs/VERIFY.md | what is verified vs UNVERIFIED (data sources, rates, models) |
+| docs/PROGRESS.md | phase-by-phase build history from raw outputs |
+| docs/RESTORE.md | rebuild everything on a new machine |
+| docs/CI.md | the GitHub Actions workflow |
+| docs/SCHEDULER.md | Windows Task Scheduler for the paper tick |
+| docs/UI_WIREFRAMES.md, docs/UI_MANUAL_CHECKLIST.md | the UI |
+| docs/DISCLAIMER.md | the educational-use disclaimer (shown in every UI page) |
+| docs/UI_REACT_TRACK.md | the future Next.js/FastAPI client (deferred) |
 
-## Deployment
+## Status
 
-### Render (Backend) + Streamlit Cloud (Frontend)
-
-1. Push to GitHub
-2. **Render**: New Web Service → Docker → Set `OPENROUTER_API_KEY`, `DATABASE_URL` (Neon/Supabase)
-3. **Streamlit Cloud**: Connect repo → Set `API_BASE=https://your-render-app.onrender.com`
-
-## Project Structure
-
-```
-niveshdristi/
-├── config.yaml              # All parameters
-├── docker-compose.yml       # Local stack
-├── Dockerfile
-├── pyproject.toml
-├── src/niveshdristi/
-│   ├── config.py            # Pydantic Settings
-│   ├── data/                # Providers, cache, adjust, validate, loader
-│   ├── indicators/          # Polars expressions
-│   ├── signals/             # Engine, conviction
-│   ├── fundamentals/        # Loader, guardrails
-│   ├── regime/              # RRG, market state
-│   ├── backtest/            # Engine, walk-forward
-│   ├── genai/               # OpenRouter, analyst, validator, templates
-│   ├── api/                 # FastAPI endpoints
-│   └── app/                 # Streamlit UI
-├── tests/
-│   ├── fixtures/            # Characterization test fixtures (committed)
-│   └── test_*.py            # Import + characterization tests
-├── docs/                    # AUDIT.md, CHANGES.md, CLEANUP_PLAN.md, DISCLAIMER.md, PROGRESS.md, VERIFY.md
-├── cache/                   # Parquet cache (gitignored, regenerated on demand)
-├── migrations/              # Alembic (placeholder)
-├── prompts/                 # Versioned prompts (placeholder)
-├── scripts/                 # CLI entry points (placeholder)
-└── _quarantine/             # Quarantined files during cleanup (gitignored)
-```
-
-## Disclaimer
-
-**NiveshDristi is an educational research tool, not investment advice.**
-It does not recommend buying or selling any security. No SEBI registration.
-All signals are computational outputs — verify independently before acting.
+Phase 10 (hardening). CI: GitHub Actions (see docs/CI.md; fill the three
+action SHAs before the first push). Known blocked items: official 2026 NSE
+holiday list, verified fee/tax rates, TRI benchmark, constituents,
+announcement-dated fundamentals — see docs/VERIFY.md.
