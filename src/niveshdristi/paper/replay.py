@@ -59,7 +59,8 @@ def replay_fund(
             comparisons.append({
                 "session": session.isoformat(),
                 "match": None,
-                "note": "no stored snapshot (tick predates snapshots)",
+                "note": "snapshots unavailable for this session "
+                           "(pruned or tick predates snapshots)",
             })
             byte_identical = False
             continue

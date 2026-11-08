@@ -643,6 +643,31 @@ def paper_recover(
     _output({"status": "recovered", **result}, ctx.obj["json_output"])
 
 
+@paper_app.command("prune-snapshots")
+def paper_prune_snapshots(
+    ctx: typer.Context,
+    fund_id: str = typer.Argument(..., help="Fund ID"),
+    keep_last: int = typer.Option(60, "--keep-last",
+                                  help="Sessions whose snapshots survive"),
+    apply: bool = typer.Option(False, "--apply",
+                               help="REQUIRED to delete (dry-run by default)"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+):
+    """OPERATOR: delete snapshot dirs older than the last --keep-last
+    sessions to bound disk usage. TRADE-OFF: replay of pruned sessions is
+    impossible (reported explicitly as 'snapshots unavailable'). The
+    ledger, header, decision sidecars, cache, halt and heartbeat files are
+    NEVER touched. Dry-run is the default."""
+    from niveshdristi.paper.retention import prune_snapshots
+
+    result = prune_snapshots(fund_id, base=base, keep_last=keep_last,
+                             apply=apply)
+    _events_log(fund_id, base).append(
+        "prune-snapshots", fund_id=fund_id, **result)
+    _output({"status": "applied" if result["applied"] else "dry-run",
+             **result}, ctx.obj["json_output"])
+
+
 @paper_app.command("unlock")
 def paper_unlock(
     ctx: typer.Context,

@@ -28,16 +28,30 @@ def utc_clock() -> datetime:
 
 
 class EventLog:
-    """Append-only events.jsonl (one JSON object per line)."""
+    """Append-only events.jsonl (one JSON object per line).
+
+    Rotation (P10-S6 / D7): when the file exceeds rotation_threshold_bytes
+    (injectable, UNVALIDATED DEFAULT 5 MB), it is renamed to
+    events.jsonl.1 — keeping exactly ONE rotated generation — before the
+    new event is appended."""
 
     def __init__(
-        self, path: Path, *, clock: Clock = utc_clock
+        self, path: Path, *, clock: Clock = utc_clock,
+        rotation_threshold_bytes: int = 5 * 1024 * 1024,
     ) -> None:
         self.path = Path(path)
         self._clock = clock
+        self._rotation_threshold = rotation_threshold_bytes
+
+    def _rotate_if_needed(self) -> None:
+        if (not self.path.exists()
+                or self.path.stat().st_size < self._rotation_threshold):
+            return
+        self.path.replace(self.path.with_name(self.path.name + ".1"))
 
     def append(self, event_type: str, **fields: Any) -> dict:
         """Append one event; wall-clock timestamp from the INJECTED clock."""
+        self._rotate_if_needed()
         payload = {
             "event": event_type,
             "timestamp": self._clock().isoformat(),

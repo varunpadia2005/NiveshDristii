@@ -31,8 +31,23 @@ def _row_dates(df: pl.DataFrame) -> list[str]:
 
 
 def truncate_to_as_of(df: pl.DataFrame, as_of: date) -> pl.DataFrame:
-    """Keep only rows dated on or before as_of."""
+    """Keep only rows dated on or before as_of.
+
+    P10-S6 perf: the dominant backtest cost was one boolean-filter collect
+    per (symbol, session) — 125k collects on a 500x250 run. The rows are
+    date-ordered, so a positional slice via search_sorted returns the SAME
+    rows (the str.slice(0,10) normalization is applied to the boundary
+    probe only; ISO strings compare lexicographically, so a date-prefixed
+    row like '2026-01-03T10:00' sorts immediately after its own date and
+    is excluded by the right-side index exactly as the old filter did).
+    Output is byte-identical; asserted by the replay/backtest equality
+    suites."""
     cutoff = as_of.isoformat()
+    dates = df.get_column("date").cast(pl.String)
+    if dates.is_sorted():
+        idx = dates.str.slice(0, 10).search_sorted(cutoff, side="right")
+        return df.slice(0, idx)
+    # unsorted frames: keep the original filter semantics (identical bytes)
     return df.filter(pl.col("date").cast(pl.String).str.slice(0, 10) <= cutoff)
 
 
