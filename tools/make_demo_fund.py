@@ -27,8 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum  # noqa: E402
 from niveshdristi.core.limitations import DataLimitations  # noqa: E402
-from niveshdristi.markets import IN_NSE_PROFILE
-from niveshdristi.core.market_rules import MarketRules  # noqa: E402
 from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule  # noqa: E402
 from niveshdristi.paper.fund import create_fund, tick  # noqa: E402
 from niveshdristi.portfolio.risk_gates import GateLimits  # noqa: E402
@@ -74,14 +72,26 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic",
     from niveshdristi.markets.registry import get_registry, to_rules
 
     profile = get_registry().get(market)
+    from niveshdristi.engine.advance import (
+        ModelBundle as _MB,
+    )
+    from niveshdristi.engine.advance import (
+        RebalanceSchedule as _RS,
+    )
+    from niveshdristi.paper.composition import record_composition
+    from niveshdristi.portfolio.risk_gates import GateLimits as _GL
+
+    demo_bundle = _MB([TimeSeriesMomentum()])
+    composition = record_composition(demo_bundle, _GL(), _RS())
     if market == "US_NYSE":
         # null-rate profile: refuse-without-flag, then zeros + banner
         rules, marker = us_market_rules(costs_not_modeled=True)
-        extra_codes = frozenset({"rates_unverified", "derived_calendar"})
+        extra_codes = frozenset({"rates_unverified", "derived_calendar",
+                                 "costs_not_modeled"})
         banner_extra = marker["banner"]  # "COSTS NOT MODELED"
         rules_for_tick = rules
     else:
-        rules = MarketRules(market_id=profile.market_id)
+        rules = to_rules(profile)  # real IN_NSE rates (nonzero, unverified)
         extra_codes = frozenset({"rates_unverified"})
         banner_extra = None
         rules_for_tick = rules
@@ -95,7 +105,7 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic",
     }) | extra_codes)
     create_fund(
         f"{fund_id}", base=base, created=created, config_digest="synthetic-demo",
-        rules=rules,
+        rules=rules, composition=composition,
         limitations=limitations, rates_verified=False,
         initial_cash=1_000_000.0, universe=["SYN090", "SYN091"],
     )
