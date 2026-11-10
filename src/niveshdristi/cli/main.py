@@ -395,9 +395,16 @@ def paper_create(
         "approximate_universe", "survivorship_universe", "no_pit_fundamentals",
         "benchmark_not_tri",
     }))
-    from niveshdristi.core.market_rules import MarketRules
+    from niveshdristi.markets import IN_NSE_PROFILE
+    from niveshdristi.markets.registry import to_rules
+    from niveshdristi.paper.composition import record_composition
+    from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
+    from niveshdristi.portfolio.risk_gates import GateLimits
 
-    rules = MarketRules(market_id="TEST_MARKET")  # neutral default
+    rules = to_rules(IN_NSE_PROFILE)
+    composition = record_composition(
+        ModelBundle(_live_models_bundle()), GateLimits(), RebalanceSchedule()
+    )
     universe_list = [s.strip() for s in universe.split(",") if s.strip()]
     try:
         ledger_path = create_fund(
@@ -406,6 +413,7 @@ def paper_create(
             config_digest="cli-created", rules=rules,
             limitations=limitations, rates_verified=False,
             initial_cash=capital, universe=universe_list,
+            composition=composition,
         )
     except LedgerError as exc:
         _output({"status": "error", "error": str(exc)}, ctx.obj["json_output"])
@@ -454,14 +462,24 @@ def paper_tick(
     del stub_used
     candidate = date.fromisoformat(as_of) if as_of else _today()
     start_window = candidate - timedelta(days=30)
+    from niveshdristi.paper.composition import compose_from_recorded
+    from niveshdristi.services.rules import rules_from_header
+
+    recorded_comp = header.get("composition")
+    if recorded_comp:
+        models, limits, rebalance = compose_from_recorded(recorded_comp)
+    else:
+        models = ModelBundle(_live_models_bundle())
+        limits = GateLimits()
+        rebalance = RebalanceSchedule()
+    rules = rules_from_header(fund_id, base)
     try:
         result = run_tick(
             fund_id, base=base,
             fetch_bars=lambda universe_, day: _paper_fetch_bars(universe_, start_window),
             clock_now=candidate,
-            models=ModelBundle(_live_models_bundle()),
-            rules=MarketRules(market_id="TEST_MARKET"),
-            limits=GateLimits(), rebalance=RebalanceSchedule(),
+            models=models, rules=rules,
+            limits=limits, rebalance=rebalance,
             universe=universe, tax_enabled=False,
         )
     except Exception as exc:  # noqa: BLE001 - amendment F: halt on any tick exception
@@ -608,11 +626,26 @@ def paper_replay(
     from niveshdristi.engine.advance import RebalanceSchedule as RS
     from niveshdristi.paper.replay import replay_fund
     from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
+    from niveshdristi.paper.composition import compose_from_recorded
 
+    header = __import__(
+        "niveshdristi.paper.ledger", fromlist=["PaperLedger"]
+    ).PaperLedger(_fund_paths(fund_id, base).ledger).header()
+    recorded = header.get("composition")
+    if recorded:
+        models, limits, rebalance = compose_from_recorded(recorded)
+        composition_recorded = True
+    else:
+        models = MB(_live_models_bundle())
+        limits = GLimits()
+        rebalance = RS()
+        composition_recorded = False
+        print("WARNING: fund has no recorded composition; replay uses the "
+              "CURRENT composition and may not match.", file=sys.stderr)
     result = replay_fund(
-        fund_id, base=base, models=MB(_live_models_bundle()),
-        limits=GLimits(), rebalance=RS(),
+        fund_id, base=base, models=models, limits=limits, rebalance=rebalance,
     )
+    result["composition_recorded"] = composition_recorded
     _output(result, ctx.obj["json_output"])
     if not result.get("byte_identical", False):
         raise typer.Exit(code=1)

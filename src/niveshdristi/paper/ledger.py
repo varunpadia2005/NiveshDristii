@@ -41,8 +41,12 @@ def build_header(
     rules: MarketRules,
     limitations: DataLimitations,
     rates_verified: bool,
+    composition: dict | None = None,
 ) -> dict:
-    """Fund header (ledger line 1) per amendment C."""
+    """Fund header (ledger line 1) per amendment C.
+
+    composition (NEW, FX-A): recorded model/limits/rebalance composition,
+    stored OUTSIDE the hash chain (verify() skips line 1)."""
     import polars
 
     return {
@@ -55,6 +59,7 @@ def build_header(
         "market_rules_digest": _dump(rules.model_dump(mode="json")),
         "limitation_codes": sorted(limitations.CODES),
         "rates_verified": rates_verified,
+        **({"composition": composition} if composition else {}),
         "library_versions": {
             "python": sys.version.split()[0],
             "polars": polars.__version__,

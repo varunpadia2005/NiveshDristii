@@ -144,6 +144,7 @@ def create_fund(
     rates_verified: bool,
     initial_cash: float,
     universe: list[str],
+    composition: dict | None = None,
 ) -> Path:
     """Create a fund directory + ledger header (amendment J snapshot)."""
     paths = FundPaths(base).for_fund(fund_id)
@@ -158,6 +159,7 @@ def create_fund(
         rules=rules,
         limitations=limitations,
         rates_verified=rates_verified,
+        composition=composition,
     )
     header["initial_cash_paise"] = to_paise(initial_cash)
     header["universe"] = sorted(universe)
