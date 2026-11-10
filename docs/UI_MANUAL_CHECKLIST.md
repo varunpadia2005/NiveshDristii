@@ -105,3 +105,7 @@ $env:NDR_FUND_ID = "us_demo_synthetic"   # then rerun the streamlit command from
       in any money display; no 3-2-2 grouping)
 - [ ] NO rupee symbol and NO 'National Stock Exchange of India' anywhere
 - [ ] Backtest Lab verdict unchanged (pipeline demonstration only)
+
+- [ ] Expected Streamlit startup warning: enableCORS is overridden
+      to true while XSRF protection is on. This is CORRECT on
+      loopback; the access control IS the 127.0.0.1 binding.

@@ -9,6 +9,9 @@ address = "127.0.0.1"
 port = 8501
 headless = true
 enableXsrfProtection = true
+# NOTE: Streamlit overrides enableCORS to true while XSRF protection
+# is on (it sends a CSRF cookie). Harmless on loopback - the access
+# control IS the 127.0.0.1 binding. See docs/UI_MANUAL_CHECKLIST.md.
 enableCORS = false
 
 # Light theme default (dark tokens live in ui/theme.py for reference and
