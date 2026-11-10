@@ -251,6 +251,23 @@ def _market_rules_from_header(fund_id: str, base: str | None) -> Any:
     header = PaperLedger(_fund_paths(fund_id, base).ledger).header()
     return MarketRules.model_validate(json.loads(header["market_rules_digest"]))
 
+def _check_fund(fund_id: str, base: str | None, ctx: typer.Context) -> Any:
+    """FX-D: load the fund ledger or emit the plain JSON error payload
+    (status error, detail naming the fund, next_step) and exit 1."""
+    from niveshdristi.paper.ledger import PaperLedger
+
+    fp = _fund_paths(fund_id, base)
+    if not fp.ledger.exists():
+        _output({
+            "status": "error",
+            "detail": f"fund {fund_id!r} not found (searched {fp.ledger})",
+            "next_step": f"run `nd paper create {fund_id}` or "
+                         "`nd paper list` to see available funds",
+        }, ctx.obj["json_output"])
+        raise typer.Exit(code=1)
+    return PaperLedger(fp.ledger)
+
+
 def _today() -> date:
     """NEW (F5): the ONE wall-clock read in cli/. Tests patch this helper;
     persisted artifacts should prefer data-derived dates (see paper_halt)."""
@@ -395,10 +412,10 @@ def paper_create(
         "approximate_universe", "survivorship_universe", "no_pit_fundamentals",
         "benchmark_not_tri",
     }))
+    from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
     from niveshdristi.markets import IN_NSE_PROFILE
     from niveshdristi.markets.registry import to_rules
     from niveshdristi.paper.composition import record_composition
-    from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
     from niveshdristi.portfolio.risk_gates import GateLimits
 
     rules = to_rules(IN_NSE_PROFILE)
@@ -437,7 +454,6 @@ def paper_tick(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Execute one paper trading tick (idempotent; fails non-zero)."""
-    from niveshdristi.core.market_rules import MarketRules
     from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
     from niveshdristi.paper.events import write_heartbeat
     from niveshdristi.paper.fund import tick as run_tick
@@ -454,6 +470,7 @@ def paper_tick(
     # UNIVERSE from the fund header (stored at create), never hardcoded
     from niveshdristi.paper.fund import load_fund
 
+    _check_fund(fund_id, base, ctx)
     header = load_fund(fund_id, base=base).header()
     universe = header.get("universe", [])
     stub_used = any(
@@ -516,10 +533,9 @@ def paper_status(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Show paper fund status."""
-    from niveshdristi.paper.fund import load_fund
     from niveshdristi.paper.killswitch import is_halted
 
-    ledger = load_fund(fund_id, base=base)
+    ledger = _check_fund(fund_id, base, ctx)
     header = ledger.header()
     halted, halt_reason = is_halted(_fund_paths(fund_id, base), fund_id=fund_id)
     last = ledger.last_session_date()
@@ -561,12 +577,11 @@ def paper_halt(
 ):
     """Halt paper fund (kill switch)."""
     from niveshdristi.paper.killswitch import halt
-    from niveshdristi.paper.ledger import PaperLedger
 
     # F5: the session stamped into the persisted flag is DATA-DERIVED (the
     # ledger's last session; the created date when the ledger is empty),
     # never the wall clock.
-    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+    ledger = _check_fund(fund_id, base, ctx)
     stamp = ledger.last_session_date() or _today()
     payload = halt(
         _fund_paths(fund_id, base), fund_id=fund_id, reason=reason,
@@ -586,6 +601,7 @@ def paper_resume(
     """Resume halted paper fund."""
     from niveshdristi.paper.killswitch import KillSwitchResumeError, resume
 
+    _check_fund(fund_id, base, ctx)
     try:
         resume(_fund_paths(fund_id, base), note=note)
     except KillSwitchResumeError as exc:
@@ -602,9 +618,7 @@ def paper_verify(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Verify the ledger hash chain (loud failure names the line)."""
-    from niveshdristi.paper.ledger import PaperLedger
-
-    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+    ledger = _check_fund(fund_id, base, ctx)
     problems = ledger.verify()
     if problems:
         _output({"status": "failed", "problems": problems}, ctx.obj["json_output"])
@@ -624,10 +638,11 @@ def paper_replay(
     """Replay stored snapshots through advance() and compare with the ledger."""
     from niveshdristi.engine.advance import ModelBundle as MB
     from niveshdristi.engine.advance import RebalanceSchedule as RS
+    from niveshdristi.paper.composition import compose_from_recorded
     from niveshdristi.paper.replay import replay_fund
     from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
-    from niveshdristi.paper.composition import compose_from_recorded
 
+    _check_fund(fund_id, base, ctx)
     header = __import__(
         "niveshdristi.paper.ledger", fromlist=["PaperLedger"]
     ).PaperLedger(_fund_paths(fund_id, base).ledger).header()
@@ -663,6 +678,8 @@ def paper_recover(
     from niveshdristi.engine.advance import ModelBundle as MB
     from niveshdristi.engine.advance import RebalanceSchedule as RS
     from niveshdristi.paper.fund import recover_fund
+
+    _check_fund(fund_id, base, ctx)
     from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
 
     result = recover_fund(
@@ -693,6 +710,7 @@ def paper_prune_snapshots(
     NEVER touched. Dry-run is the default."""
     from niveshdristi.paper.retention import prune_snapshots
 
+    _check_fund(fund_id, base, ctx)
     result = prune_snapshots(fund_id, base=base, keep_last=keep_last,
                              apply=apply)
     _events_log(fund_id, base).append(
@@ -708,6 +726,7 @@ def paper_unlock(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """OPERATOR: remove a stale tick lock (logged)."""
+    _check_fund(fund_id, base, ctx)
     lock = _fund_paths(fund_id, base).root / "tick.lock"
     if lock.exists():
         lock.unlink()
@@ -749,11 +768,17 @@ def paper_explain(
     try:
         ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
         record = next(
-            (r for r in ledger.records() if r.get("session_date") == session),
+            (r for r in ledger.records()
+             if r.get("session_date") == session),
             None,
         )
     except LedgerError as exc:
-        _output({"status": "no-op", "detail": str(exc)}, ctx.obj["json_output"])
+        _output({
+            "status": "no-op",
+            "detail": str(exc),
+            "next_step": f"run `nd paper create {fund_id}` or "
+                         "`nd paper list` to see available funds",
+        }, ctx.obj["json_output"])
         return
     if record is None:
         _output(

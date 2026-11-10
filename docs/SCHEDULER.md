@@ -128,3 +128,13 @@ snapshots survive — pruned sessions are reported explicitly as
 "snapshots unavailable" (never a silent pass). The LEDGER is never
 pruned. If you need full-history replay, do not prune (or raise
 --keep-last).
+
+
+## Exit-code contract (FX-D)
+
+`nd paper explain` is display-only: it exits 0 on ANY failure (missing
+fund, no stored session, LLM error) and returns a no-op JSON payload
+(R11: LLM-layer failures degrade to a logged no-op and never raise).
+Every other fund-taking subcommand (status, verify, replay, tick, halt,
+resume, recover, unlock, prune-snapshots) exits 1 on a missing fund with
+a clean JSON error payload suggesting `nd paper create`.

@@ -7,6 +7,7 @@ Protects the rule that nd CLI commands work and --json outputs valid JSON.
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from niveshdristi.cli.main import app
@@ -300,3 +301,54 @@ class TestBacktestRunP10:
             "2026-01-01"])
         assert result.exit_code == 0
         assert "deprecated" in result.stderr
+
+
+class TestMissingFundErrorsFXD:
+    """FX-D: every nd paper subcommand on a missing fund exits 1 with the
+    plain JSON error payload (status error, detail naming the fund,
+    next_step). Never a traceback."""
+
+    @pytest.mark.parametrize("cmd_args", [
+        ["paper", "status", "ghost"],
+        ["paper", "verify", "ghost"],
+        ["paper", "replay", "ghost"],
+        ["paper", "tick", "ghost"],
+        ["paper", "halt", "ghost"],
+        ["paper", "resume", "ghost", "--note", "x"],
+        ["paper", "recover", "ghost"],
+        ["paper", "unlock", "ghost"],
+        ["paper", "prune-snapshots", "ghost"],
+    ])
+    def test_missing_fund_json_error(self, tmp_path, cmd_args):
+        result = runner.invoke(app, ["--json", *cmd_args,
+                                     "--base", str(tmp_path)])
+        assert result.exit_code == 1, (cmd_args, result.output)
+        data = json.loads(result.output)
+        assert data["status"] == "error"
+        assert "ghost" in data["detail"]
+        assert "next_step" in data
+        assert "nd paper create" in data["next_step"]
+
+    def test_backtest_run_missing_fund(self, tmp_path):
+        result = runner.invoke(app, [
+            "--json", "backtest", "run", "ghost", "--base", str(tmp_path)])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data["status"] in ("error", "unavailable")
+
+
+    def test_explain_missing_fund_exits_0_noop(self, tmp_path):
+        """FX-D amended: nd paper explain on a missing fund exits 0 with
+        a no-op payload (R11: LLM-layer failures degrade to a logged
+        no-op and never raise)."""
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "ghost", "--base",
+            str(tmp_path), "--session", "2026-10-01",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["status"] == "no-op"
+        assert "ghost" in data["detail"]
+        assert "next_step" in data
+        assert "nd paper create" in data["next_step"]
+        assert "Traceback" not in result.output
