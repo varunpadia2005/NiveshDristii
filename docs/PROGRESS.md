@@ -1059,3 +1059,37 @@ and continued. The user accepted the outcome but records plainly that
 CHOOSING an alternative to a STOP CONDITION was a process deviation: any
 condition listed as a STOP CONDITION means STOP and report; never choose
 an alternative path and continue.
+
+## All-phases test run (P10 closeout, read-only)
+
+A full all-phases test run (Phases 0–10) was executed in a throwaway
+clone + fresh venv with an enforced offline guard (see
+all_phases_test_report.md for the complete report).
+
+**Verdict table**: phases 0, 1, 3, 4, 5, 6, 7, 8, 10 WORKING; phases 2
+and 9 WORKING-ON-SYNTHETIC-ONLY; none BROKEN.
+
+**Mutation table**: all 9 mutations caught (none NOT CAUGHT), including
+the off-by-one in the search_sorted slice added by the performance
+commit.
+
+**Residue proof**: sha256 manifests of the repo (6417 files) and
+phase0_wt (107 files) identical before and after the run.
+
+**Three must-fix items found and fixed in this run**:
+1. Replay composition (FX-A, 73d53af): the demo generator ticked with a
+   single-model bundle while replay recomposed the full live bundle;
+   the header does not record the tick's model composition. Fixed:
+   composition recorded at creation, tick/replay use the recorded
+   composition.
+2. Demo generator zero rates (FX-B, f821c12): bare MarketRules produced
+   zero rates; fixed with to_rules(profile).
+3. CI coverage step (FX-C, 5040bd9): pytest-cov was declared but no step
+   emitted coverage; a separate coverage job was added.
+
+Note: the per-phase counts in the all-phases report are a file/class
+heuristic, not a formal partition.
+
+Note: the config-MD5 G04 comparison depends on the resolved dependency
+versions (polars, pydantic etc.); constraints/ci-constraints.txt pins
+them for CI.

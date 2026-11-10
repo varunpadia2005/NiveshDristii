@@ -15,3 +15,9 @@ Against docs/CHANGES.md section 12 ("Definition of done (v1, India)"):
 Plain statement: items 1 and 7 are partial for the same two reasons the
 whole project carries — no verified TRI source, and CI not yet pushed.
 Everything else is done and tested.
+
+## P10-S7 updates
+
+Item 7 (CI green): CI workflow exists but has NOT run (needs the 3 action
+SHAs and a push). Status stays PARTIAL.
+Item 1 (offline backtest vs Nifty TRI): still PARTIAL — no TRI source.
