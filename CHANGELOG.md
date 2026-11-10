@@ -3,6 +3,14 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Fix run 3 - all-phases defects] 2026-11-08
+
+### Fixed
+- Replay composition recorded at creation; tick and replay use it.
+- Demo generator uses to_rules(profile) rates (nonzero, unverified).
+- Missing-fund JSON errors for all paper subcommands.
+- CI coverage job; offline network guard; Streamlit CORS note.
+
 ## [Phase 10 — Hardening] 2026-11-03 → 2026-11-08
 
 ### Added
