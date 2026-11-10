@@ -127,8 +127,8 @@ def compose_from_recorded(
     known = _known_model_classes()
     if _ignore_recorded:
         models = [cls() for cls in known.values()]
-        from niveshdristi.portfolio.risk_gates import GateLimits
         from niveshdristi.engine.advance import RebalanceSchedule
+        from niveshdristi.portfolio.risk_gates import GateLimits
         return ModelBundle(models), GateLimits(), RebalanceSchedule()
     models = []
     for entry in composition.get("models", []):

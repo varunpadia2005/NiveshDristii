@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -27,8 +26,7 @@ def _two_model_bundle():
 
 
 def _seeded(tmp_path, days=5):
-    from tests.test_paper import TestPaperFund, _momentum_frames, \
-        _momentum_session_dates
+    from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
     frames = _momentum_frames(days)
     dates = _momentum_session_dates(frames)
@@ -59,8 +57,6 @@ class TestCompositionFXA:
             compose_from_recorded(comp)
 
     def test_digest_mismatch_refuses(self):
-        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
-        from niveshdristi.paper.composition import model_param_digest
 
         comp = {"models": [{"model_id": "momentum_ts",
                              "param_digest": "f" * 64}],
@@ -78,8 +74,7 @@ class TestCompositionFXA:
         from niveshdristi.paper.fund import create_fund
         from niveshdristi.paper.ledger import PaperLedger
         from niveshdristi.paper.replay import replay_fund
-        from tests.test_paper import TestPaperFund, _momentum_frames, \
-            _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         frames = _momentum_frames(260)
         dates = _momentum_session_dates(frames)
@@ -122,9 +117,9 @@ class TestCompositionFXA:
         """A fund created WITHOUT composition (old-style) gives
         composition_recorded: false in replay."""
         from typer.testing import CliRunner
+
         from niveshdristi.cli.main import app
-        from tests.test_paper import TestPaperFund, _momentum_frames, \
-            _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         # 260-session frames: the legacy TA scorer needs ~200 rows of
         # warmup; shorter frames crash TaEnsemble inside replay
@@ -148,12 +143,10 @@ class TestCompositionFXA:
     def test_record_hashes_unchanged_by_composition(self, tmp_path):
         """Same fund before and after the composition change: every
         record's bytes and hash are identical (only line 1 may differ)."""
-        from niveshdristi.paper.ledger import PaperLedger
 
         tmp_a = tmp_path / "a"
         tmp_a.mkdir()
-        from tests.test_paper import TestPaperFund, _momentum_frames, \
-            _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         frames = _momentum_frames(12)
         dates = _momentum_session_dates(frames)
@@ -163,9 +156,9 @@ class TestCompositionFXA:
             TestPaperFund._tick(
                 tmp_a, frames, date.fromisoformat(d), None)
 
-        from niveshdristi.paper.composition import record_composition
         from niveshdristi.core.limitations import DataLimitations
         from niveshdristi.core.market_rules import MarketRules
+        from niveshdristi.paper.composition import record_composition
         from niveshdristi.paper.fund import create_fund
 
         tmp_b = tmp_path / "b"
@@ -204,13 +197,13 @@ class TestCompositionFXA:
         """Create with ONE model recorded; then a SECOND model appears in
         the known classes; compose must use ONLY the recorded model."""
         from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
-        from niveshdristi.paper.composition import model_param_digest
-
+        from niveshdristi.engine.advance import RebalanceSchedule
         from niveshdristi.paper.composition import (
-            _limits_digest, _rebalance_digest,
+            _limits_digest,
+            _rebalance_digest,
+            model_param_digest,
         )
         from niveshdristi.portfolio.risk_gates import GateLimits
-        from niveshdristi.engine.advance import RebalanceSchedule
 
         inst = TimeSeriesMomentum()
         comp = {"models": [{"model_id": inst.model_id,
@@ -227,21 +220,18 @@ class TestCompositionMutationProof:
     recorded composition (one model) differs from the full registry."""
 
     def test_replay_uses_recorded_not_full_registry(self, tmp_path):
-        from datetime import timedelta as _td
 
         from typer.testing import CliRunner
+
+        from niveshdristi.alpha.quant.mean_reversion import MeanReversion
+        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
         from niveshdristi.cli.main import app
         from niveshdristi.core.limitations import DataLimitations
         from niveshdristi.core.market_rules import MarketRules
-        from niveshdristi.paper.composition import (
-            _limits_digest, _rebalance_digest, model_param_digest,
-        )
-        from niveshdristi.paper.fund import create_fund
-        from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum
-        from niveshdristi.alpha.quant.mean_reversion import MeanReversion
         from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
+        from niveshdristi.paper.fund import create_fund
         from niveshdristi.portfolio.risk_gates import GateLimits
-        from tests.test_paper import TestPaperFund, _momentum_frames,             _momentum_session_dates
+        from tests.test_paper import TestPaperFund, _momentum_frames, _momentum_session_dates
 
         frames = _momentum_frames(260)
         dates = _momentum_session_dates(frames)
