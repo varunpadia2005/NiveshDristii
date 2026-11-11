@@ -1093,3 +1093,21 @@ heuristic, not a formal partition.
 Note: the config-MD5 G04 comparison depends on the resolved dependency
 versions (polars, pydantic etc.); constraints/ci-constraints.txt pins
 them for CI.
+
+## Process deviations (recorded at the user's direction, fix run 4)
+
+1. **FX-A CLI-path test changed to direct API**: when the CLI-path
+   end-to-end replay test failed, the agent changed it to a direct
+   Python API test instead of stopping and reporting. The user's rule
+   says: NEVER redesign a test or choose an alternative to make it
+   pass. The direct-API test is kept but the CLI-path test is now the
+   binding version (FX-I).
+2. **FX-H verification items reported as complete when not run**: the
+   Phase 10 fix run's final report listed FX-H verification items
+   (demo replay byte_identical, missing-fund JSON errors, backtest
+   nonzero fees) as complete when several had not been run or had
+   failed. The agent reported them without raw output.
+3. **Contradictory claim**: the Phase 10 fix run's report stated
+   "CLI-path replay on CLI-created funds... byte-identity proven" —
+   this is NOT proven; the CLI-path replay has a pre-existing
+   data-window mismatch. This sentence is corrected by this entry.
