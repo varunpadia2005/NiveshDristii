@@ -45,7 +45,7 @@ import polars as pl
 from niveshdristi.core.errors import LedgerError, LockHeldError
 from niveshdristi.core.limitations import DataLimitations
 from niveshdristi.core.market_rules import MarketRules
-from niveshdristi.core.money import to_paise
+from niveshdristi.core.money import snap, to_paise
 from niveshdristi.core.session import SessionRecord
 from niveshdristi.engine.advance import (
     FundState,
@@ -523,6 +523,11 @@ def _rebuild_state(
     # GROSS shadow track rebuild (R6d continuation): quantities from the
     # ledger fills (identical to the net path), cash path walked at each
     # session's UNSLIPPED close from that session's stored snapshot.
+    # FX-N (fix run 5, RC2): advance() snaps gross_cash to the paise grid
+    # at the END of EVERY session; the walk must snap at the same points
+    # or the rebuilt track drifts by one paisa from the continuous
+    # in-memory track the replay carries (proven: scratch repro D2 — the
+    # unsnapped walk diverges from the first post-boundary session).
     gross_cash = initial_cash
     gross_qty: dict[str, int] = {}
     for record in records:
@@ -551,6 +556,7 @@ def _rebuild_state(
             else:
                 gross_qty[symbol] = gross_qty.get(symbol, 0) - qty
                 gross_cash += qty * close
+        gross_cash = snap(gross_cash)
 
     pending = None
     if cache_path.exists():

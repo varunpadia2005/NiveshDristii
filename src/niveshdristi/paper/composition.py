@@ -88,9 +88,21 @@ def record_composition(
         default=0,
     )
     required = min_hist + REQUIRED_HISTORY_MARGIN
+    # FX-N (fix run 5, RC1): the composition records the ACTUAL limits and
+    # rebalance VALUES next to their digests. Recording only the digest
+    # made any fund built with non-default limits unreplayable
+    # (compose_from_recorded could only rebuild defaults), and the demo
+    # generator silently recorded defaults while ticking permissive ones
+    # — the replay then gated with different limits than the tick used
+    # (proven: 5x fill difference, R2 repro Part A).
     return {
         "models": entries,
+        "limits": limits.model_dump(mode="json"),
         "limits_digest": _limits_digest(limits),
+        "rebalance": {
+            "every_n_sessions": rebalance.every_n_sessions,
+            "first_session_on": rebalance.first_session_on,
+        },
         "rebalance_digest": _rebalance_digest(rebalance),
         "price_basis": "adjusted",
         "required_history_sessions": required,
@@ -162,7 +174,17 @@ def compose_from_recorded(
             )
         models.append(instance)
 
-    limits = GateLimits()
+    # FX-N (fix run 5, RC1): rebuild the limits/rebalance from the
+    # RECORDED VALUES when present (compositions recorded from FX-N on).
+    # Older compositions carry only the digests: fall back to the defaults
+    # and keep verifying the digest against them (refusal, never a silent
+    # substitute). The digest is always verified over the values actually
+    # used — a tampered "limits" payload refuses here.
+    recorded_limits = composition.get("limits")
+    if recorded_limits is not None:
+        limits = GateLimits.model_validate(recorded_limits)
+    else:
+        limits = GateLimits()
     current_hist = max(
         (getattr(m, "min_history_sessions", 0) for m in models),
         default=0,
@@ -176,11 +198,16 @@ def compose_from_recorded(
     if _limits_digest(limits) != composition.get("limits_digest"):
         raise CompositionError(
             "GateLimits digest differs from the recorded composition; "
-            "the default limits changed since the fund was created"
+            "the recorded limits were tampered with or the default limits "
+            "changed since the fund was created"
         )
     from niveshdristi.engine.advance import RebalanceSchedule
 
-    rebalance = RebalanceSchedule()
+    recorded_rebalance = composition.get("rebalance")
+    if recorded_rebalance is not None:
+        rebalance = RebalanceSchedule(**recorded_rebalance)
+    else:
+        rebalance = RebalanceSchedule()
     if _rebalance_digest(rebalance) != composition.get("rebalance_digest"):
         raise CompositionError(
             "RebalanceSchedule digest differs from the recorded composition"

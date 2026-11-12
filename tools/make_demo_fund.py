@@ -27,9 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from niveshdristi.alpha.quant.momentum import TimeSeriesMomentum  # noqa: E402
 from niveshdristi.core.limitations import DataLimitations  # noqa: E402
-from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule  # noqa: E402
+from niveshdristi.engine.advance import ModelBundle  # noqa: E402
 from niveshdristi.paper.fund import create_fund, tick  # noqa: E402
-from niveshdristi.portfolio.risk_gates import GateLimits  # noqa: E402
 
 DEMO_BASE_DEFAULT = Path(r"D:\Nivesh Dristi\demo_funds")  # OUTSIDE the repo
 SESSIONS = 132
@@ -82,7 +81,13 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic",
     from niveshdristi.portfolio.risk_gates import GateLimits as _GL
 
     demo_bundle = _MB([TimeSeriesMomentum()])
-    composition = record_composition(demo_bundle, _GL(), _RS())
+    # FX-N (fix run 5, RC1): the composition records the SAME limits and
+    # rebalance instances the tick below uses — recording defaults while
+    # ticking permissive ones made the replay gate with different limits
+    # than the tick used (5x fill difference; R2 repro Part A).
+    demo_limits = _GL(max_position_pct=1.0, min_cash_pct=0.0, turnover_max=1.0)
+    demo_rebalance = _RS()
+    composition = record_composition(demo_bundle, demo_limits, demo_rebalance)
     if market == "US_NYSE":
         # null-rate profile: refuse-without-flag, then zeros + banner
         rules, marker = us_market_rules(costs_not_modeled=True)
@@ -131,9 +136,8 @@ def build_demo_fund(base: Path, fund_id: str = "demo_synthetic",
             fetch_bars=lambda u, day: frames,  # noqa: B023 - loop var unused
             clock_now=date.fromisoformat(d), models=bundle,
             rules=rules_for_tick,
-            limits=GateLimits(max_position_pct=1.0, min_cash_pct=0.0,
-                              turnover_max=1.0),
-            rebalance=RebalanceSchedule(), universe=["SYN090", "SYN091"],
+            limits=demo_limits, rebalance=demo_rebalance,
+            universe=["SYN090", "SYN091"],
         )
     return base / fund_id
 
