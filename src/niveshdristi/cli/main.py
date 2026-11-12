@@ -219,6 +219,9 @@ def backtest_run(
         "fees_total": result["fees_total"],
         "slippage_total": result["slippage_total"],
         "trade_count": result["trade_count"],
+        # FX-O (fix run 5): the fund's banner (COSTS NOT MODELED for US
+        # funds) is surfaced with the backtest output.
+        "banner": result.get("banner"),
         "limitation_codes": sorted(result["limitations"]),
         "calendar_source": result["calendar_source"],
     }, ctx.obj["json_output"])

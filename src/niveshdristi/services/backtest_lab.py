@@ -80,10 +80,20 @@ def run_backtest_service(fund_id: str, base: str | Path | None = None,
         # limits=None -> the ENGINE constructs its default GateLimits (the
         # services boundary forbids importing portfolio/); broker=None ->
         # the engine's default SimBroker. Documented, display-only.
+        # FX-O (fix run 5): the fund header's costs_not_modeled code
+        # (recorded at creation for US_NYSE funds) propagates into the
+        # backtest result through the engine's existing extra_limitations
+        # parameter — no core/engine edit; a US backtest never presents
+        # itself without the costs-not-modeled disclosure.
+        header = PaperLedger(paths.ledger).header()
+        costs_flag = set(header.get("limitation_codes", [])) & {
+            "costs_not_modeled",
+        }
         bt = run_backtest(
             frames, models=lab_bundle, rules=rules,
             rebalance=_rebalance(), initial_cash=1_000_000.0,
             tax_enabled=True,
+            extra_limitations=frozenset(costs_flag),
         )
     except Exception as exc:  # noqa: BLE001 - typed, honest degradation
         return {**_base_banners(fund_id, base), "available": False,
