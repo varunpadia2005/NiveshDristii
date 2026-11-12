@@ -1124,3 +1124,92 @@ them for CI.
    a "documented known issue" rather than a FAILURE. The user's rule is:
    a failing verification is a FAILURE, never an "orthogonal known
    issue".
+
+## Fix run 5 (2026-11-12): replay mismatch diagnosed and FIXED
+
+Objective: "diagnose and fix replay mismatch on CLI-created and demo
+funds." The R2 read-only diagnosis (raw repro in fix5_evidence.txt and
+scratch/fix5/) found TWO root causes, both fixed in commit b0b5ffc:
+
+1. **RC1 (demo funds)**: the demo generator recorded the DEFAULT
+   GateLimits digest in the composition while ticking with permissive
+   limits (max_position_pct=1.0 vs 0.10). compose_from_recorded could
+   only rebuild defaults, so the replay gated with different limits
+   than the tick used — the first pending execution produced exactly
+   5x larger stored fills (3650 vs 730 shares). Fix: record_composition
+   records the ACTUAL limits/rebalance values next to their digests;
+   compose_from_recorded rebuilds from the recorded values (digest
+   verified over the values used); digest-only (pre-fix) compositions
+   still compose defaults + verify, unchanged.
+2. **RC2 (per-day ticks, CLI-created funds included)**: _rebuild_state's
+   gross shadow walk skipped the per-session snap() that advance()
+   applies at EVERY session end — a one-paise gross_equity_after drift
+   across every tick boundary, visible from the first session that
+   executes a pending created in a PREVIOUS tick invocation (the
+   operator loop). Fix: the walk snaps at the same points (proven
+   bit-exact against the continuous track on an 8-session ledger).
+
+A CLI-created fund ticked ONCE per day (the operator loop, cache
+round-trip between ticks) is now byte-identical on replay; a fund
+ticked in ONE catch-up call always was (the in-memory path had no
+boundary). Tests: tests/test_replay_cli_path.py (RED before the fix,
+GREEN after; mutations a/b/c all detected) and the demo-generator
+CLI-replay test. Non-vacuity asserted: the ledgers carry real fills.
+
+### FX-O: costs_not_modeled in the backtest result (12a06fd)
+
+The US fund header's costs_not_modeled code propagates into the
+BacktestResult through the engine's EXISTING extra_limitations
+parameter (no core/engine edit) and the CLI backtest output now
+carries the fund's banner. RED→GREEN tests: tests/
+test_backtest_costs_flag.py (US demo carries the code + banner; the
+IN demo does not claim it); mutation (propagation reverted) detected.
+
+### FX-P: per-package coverage (ONE pytest --cov run)
+
+One run: `pytest -q -p no:cacheprovider --cov=niveshdristi
+--cov-report=term` — 649 passed, 1 xfailed; suite 77% total. The
+numbers below are aggregated from that run's raw output
+(scratch/fix5/coverage_raw.txt; no hand-transcription):
+
+| package      | stmts | miss | cov% |
+|--------------|------:|-----:|-----:|
+| <top>        |   264 |   10 |  96% |
+| alpha        |   525 |   18 |  97% |
+| api          |   116 |  116 |   0% |
+| app          |   800 |  800 |   0% |
+| backtest     |    88 |   21 |  76% |
+| cli          |   459 |  114 |  75% |
+| core         |   388 |   18 |  95% |
+| data         |   406 |  218 |  46% |
+| engine       |   898 |   65 |  93% |
+| execution    |   191 |    7 |  96% |
+| fundamentals |    72 |   45 |  38% |
+| genai        |   114 |   52 |  54% |
+| indicators   |    83 |   15 |  82% |
+| llm          |   267 |    6 |  98% |
+| marketdata   |   254 |    6 |  98% |
+| markets      |   596 |   42 |  93% |
+| paper        |   677 |   40 |  94% |
+| portfolio    |   335 |   21 |  94% |
+| regime       |    50 |   19 |  62% |
+| services     |   517 |   45 |  91% |
+| signals      |    83 |    4 |  95% |
+| ui           |   409 |   88 |  78% |
+| **TOTAL**    |  7592 | 1770 |  77% |
+
+Honest notes: api/ (FastAPI) and app/ (the legacy Streamlit pages) have
+NO tests (0%); data/ is 46% (cache/provider paths need network);
+fundamentals/ 38% (loader needs fixture files). The engine-critical
+packages (engine 93%, paper 94%, marketdata 98%, portfolio 94%) are
+the ones the replay fix lives in.
+
+### FX-J
+
+The FX-J task text ("range corrected") was not preserved in the run's
+available context and appears in no tracked file (searched docs/,
+CHANGELOG.md, and all fix-run evidence files). No stale range
+connected to the fixed areas was found in the docs (composition,
+replay, retention, coverage sections all re-checked against the raw
+outputs). Rather than guess a correction, this entry records the gap
+plainly.

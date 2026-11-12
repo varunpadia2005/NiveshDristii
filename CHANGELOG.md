@@ -3,6 +3,24 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Fix run 5 — replay mismatch] 2026-11-12
+
+### Fixed
+- Replay byte-identity on CLI-created and demo funds (b0b5ffc): TWO root
+  causes — (1) the demo generator recorded the DEFAULT GateLimits digest
+  while ticking with permissive limits (the replay then gated with
+  different limits: a 5x fill difference from the first pending
+  execution); the composition now records the ACTUAL limits/rebalance
+  values next to their digests and composes from them (older digest-only
+  compositions still compose defaults + verify); (2) the tick-boundary
+  gross shadow walk skipped the per-session paise snap that advance()
+  applies, drifting gross_equity_after by one paisa across every
+  per-day tick boundary; the walk now snaps at the same points.
+- US costs_not_modeled disclosure now reaches the backtest result
+  (12a06fd) via the engine's existing extra_limitations parameter — no
+  core/engine edit — and the CLI backtest output carries the fund's
+  banner. A US backtest can never present itself without it.
+
 ## [Fix run 3 - all-phases defects] 2026-11-08
 
 ### Fixed
