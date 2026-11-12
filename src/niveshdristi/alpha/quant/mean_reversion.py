@@ -34,6 +34,7 @@ def zscore_last(closes: list[float]) -> float | None:
 
 
 class MeanReversion:
+    min_history_sessions = Z_WINDOW + 1  # 21 rows
     """Contrarian z-score model (NEW)."""
 
     @property

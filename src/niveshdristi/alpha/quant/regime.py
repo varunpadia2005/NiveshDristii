@@ -54,6 +54,7 @@ def _truncate_aux(frame: pl.DataFrame, as_of: date) -> pl.DataFrame:
 
 
 class RegimeModel:
+    min_history_sessions = TREND_WINDOW + 1  # 61 rows (but needs aux data too)
     """Evidence-only trend/vol regime classifier (NEW)."""
 
     @property

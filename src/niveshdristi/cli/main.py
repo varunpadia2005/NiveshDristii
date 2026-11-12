@@ -477,19 +477,50 @@ def paper_tick(
         entry.data_status != "live" for entry in registry.entries()
     )  # noted: limitation codes are fixed on the ledger header
     del stub_used
+
+    _CALENDAR_DAYS_PER_SESSION = 1.5  # UNVALIDATED DEFAULT: ~1.5 calendar
+    # days per trading session (accounts for weekends and holidays)
+
     candidate = date.fromisoformat(as_of) if as_of else _today()
-    start_window = candidate - timedelta(days=30)
     from niveshdristi.paper.composition import compose_from_recorded
     from niveshdristi.services.rules import rules_from_header
 
     recorded_comp = header.get("composition")
     if recorded_comp:
         models, limits, rebalance = compose_from_recorded(recorded_comp)
+        # FX-I: derive the fetch window from the recorded composition
+        required_sessions = recorded_comp.get(
+            "required_history_sessions", 30
+        )
+        start_window = candidate - timedelta(
+            days=int(required_sessions * _CALENDAR_DAYS_PER_SESSION)
+        )
     else:
         models = ModelBundle(_live_models_bundle())
         limits = GateLimits()
         rebalance = RebalanceSchedule()
+        start_window = candidate - timedelta(days=30)
     rules = rules_from_header(fund_id, base)
+    # FX-I: if the fund has fewer ticked sessions than the required
+    # history, emit an insufficient_history event listing each model and
+    # its shortfall. The provider's actual row count depends on the fetch
+    # window; a simple comparison suffices.
+    _insufficient: list[dict] = []
+    if recorded_comp:
+        required_hist = recorded_comp.get("required_history_sessions", 0)
+        ticked = len(__import__(
+            "niveshdristi.paper.ledger", fromlist=["PaperLedger"]
+        ).PaperLedger(_fund_paths(fund_id, base).ledger).records())
+        if ticked < required_hist:
+            for m in models.models:
+                mhs = getattr(m, "min_history_sessions", 0)
+                if mhs > 0:
+                    _insufficient.append({
+                        "model_id": m.model_id,
+                        "required": mhs,
+                        "ticked": ticked,
+                        "shortfall": mhs - ticked,
+                    })
     try:
         result = run_tick(
             fund_id, base=base,
@@ -520,6 +551,10 @@ def paper_tick(
         last_tick=result["outcome"],
     )
     _events_log(fund_id, base).append("tick", fund_id=fund_id, **result)
+    if _insufficient:
+        _events_log(fund_id, base).append(
+            "insufficient_history", fund_id=fund_id, models=_insufficient
+        )
     if result["outcome"] == "failure":
         _output({"status": "failure", **result}, ctx.obj["json_output"])
         raise typer.Exit(code=1)
@@ -540,6 +575,16 @@ def paper_status(
     halted, halt_reason = is_halted(_fund_paths(fund_id, base), fund_id=fund_id)
     last = ledger.last_session_date()
     records = ledger.records()
+
+    comp = header.get("composition", {})
+    required_hist = comp.get("required_history_sessions")
+    warming = (
+        {"required": required_hist, "ticked": len(records),
+         "status": ("warming up (" + str(len(records)) + " of "
+                    + str(required_hist) + " sessions)")
+                    if len(records) < required_hist else "active"}
+        if required_hist else None
+    )
     _output({
         "fund_id": fund_id,
         "last_session": last.isoformat() if last else None,
@@ -547,6 +592,7 @@ def paper_status(
         "halted": halted,
         "halt_reason": halt_reason or None,
         "limitations": header["limitation_codes"],
+        "warming_up": warming,
         "rates_verified": header["rates_verified"],
         "rates_banner": "" if header["rates_verified"] else "RATES UNVERIFIED",
     }, ctx.obj["json_output"])

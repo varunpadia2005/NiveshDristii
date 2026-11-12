@@ -52,6 +52,7 @@ def _to_adj_close_benchmark(df: pl.DataFrame) -> pl.DataFrame:
 
 
 class SectorRotation:
+    min_history_sessions = 0  # stub: needs sector data, not price history
     """RRG sector rotation over the 'sector_index' role frame (PORT + NEW glue)."""
 
     @property

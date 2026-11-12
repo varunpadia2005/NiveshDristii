@@ -3,6 +3,7 @@ explicit replay trade-off."""
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from niveshdristi.paper.events import EventLog
@@ -81,3 +82,59 @@ class TestEventsRotation:
                        rotation_threshold_bytes=10_000_000)
         log.append("tick", i=0)
         assert not (tmp_path / "events.jsonl.1").exists()
+
+
+class TestInsufficientHistoryFXI:
+    """FX-I 3: a provider returning 30 sessions yields the
+    insufficient_history event, status shows "warming up", no crash."""
+
+    def test_insufficient_history_event(self, tmp_path):
+        from typer.testing import CliRunner
+
+        import niveshdristi.cli.main as cm
+        from niveshdristi.cli.main import app
+        from tests.test_paper_cli import _fake_frames, _long_dates
+
+        # 30-session provider (insufficient for the 200-session TaEnsemble)
+        frames = _fake_frames(_long_dates(n=30))
+        cm._paper_fetch_bars = lambda u, d: frames
+        runner = CliRunner()
+        base = tmp_path / "funds"
+
+        r = runner.invoke(app, ["--json", "paper", "create", "short_f",
+                                "--base", str(base), "--created", "2026-09-29",
+                                "--universe", "SYN090,SYN091"])
+        assert r.exit_code == 0
+        r = runner.invoke(app, ["--json", "paper", "tick", "short_f",
+                                "--as-of", "2026-10-30", "--base", str(base)])
+        assert r.exit_code == 0  # no crash, no halt
+        # the insufficient_history event should be in events.jsonl
+        events_file = base / "short_f" / "events.jsonl"
+        events = [json.loads(l) for l in
+                  events_file.read_text(encoding="utf-8").splitlines()
+                  if l.strip()]
+        insuff = [e for e in events if e.get("event") == "insufficient_history"]
+        assert insuff, "insufficient_history event not found"
+        assert any(m["model_id"] == "ta_ensemble" for m in insuff[0]["models"])
+
+    def test_warming_up_status(self, tmp_path):
+        from typer.testing import CliRunner
+
+        import niveshdristi.cli.main as cm
+        from niveshdristi.cli.main import app
+        from tests.test_paper_cli import _fake_frames, _long_dates
+
+        frames = _fake_frames(_long_dates(n=30))
+        cm._paper_fetch_bars = lambda u, d: frames
+        runner = CliRunner()
+        base = tmp_path / "funds"
+        runner.invoke(app, ["--json", "paper", "create", "short_f",
+                            "--base", str(base), "--created", "2026-09-29",
+                            "--universe", "SYN090,SYN091"])
+        runner.invoke(app, ["--json", "paper", "tick", "short_f",
+                            "--as-of", "2026-10-30", "--base", str(base)])
+        r = runner.invoke(app, ["--json", "paper", "status", "short_f",
+                                "--base", str(base)])
+        assert r.exit_code == 0
+        d = json.loads(r.output)
+        assert d.get("warming_up"), "status should show warming_up"

@@ -49,6 +49,8 @@ def _instrument(ctx: AsOfContext, symbol: str) -> Instrument:
 class TimeSeriesMomentum:
     """Per-symbol trailing-return momentum (NEW)."""
 
+    min_history_sessions = LOOKBACK_DAYS + SKIP_DAYS + 1  # 126 rows
+
     @property
     def model_id(self) -> str:
         return "momentum_ts"
@@ -96,6 +98,8 @@ class TimeSeriesMomentum:
 
 class CrossSectionalMomentum:
     """Rank-based momentum across the symbols in inputs (NEW)."""
+
+    min_history_sessions = LOOKBACK_DAYS + SKIP_DAYS + 1  # same trailing_return
 
     @property
     def model_id(self) -> str:

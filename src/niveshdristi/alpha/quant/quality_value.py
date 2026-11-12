@@ -23,6 +23,7 @@ HORIZON_DAYS = 60
 
 
 class QualityValue:
+    min_history_sessions = 0  # stub: needs PIT records, not price history
     """Two-leg quality/value score over PIT records (NEW, stub)."""
 
     @property

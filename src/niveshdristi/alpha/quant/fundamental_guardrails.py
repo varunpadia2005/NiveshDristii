@@ -50,6 +50,7 @@ def quality_score(max_score_cap: int, flags: list[dict]) -> tuple[int, bool]:
 
 
 class FundamentalGuardrails:
+    min_history_sessions = 0  # stub: needs PIT fundamentals, not price history
     """Quality score + hard exclusions over PIT fundamentals (PORT of rules maths)."""
 
     @property

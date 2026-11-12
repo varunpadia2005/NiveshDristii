@@ -92,10 +92,18 @@ def read_fund(fund_id: str, base: str | Path | None = None) -> dict[str, Any]:
             labels = market_labels(get_registry().get(market_id))
         except Exception:  # noqa: BLE001 - unknown market: no labels
             labels = None
+    composition = header.get("composition", {})
+    required_hist = composition.get("required_history_sessions")
+    warming = (
+        {"required_history": required_hist, "recorded": len(records),
+         "status": "warming up" if len(records) < required_hist else "active"}
+        if required_hist else None
+    )
     return {
         "fund_id": fund_id,
         "as_of": as_of,  # from the DATA
         "market_labels": labels,
+        "warming_up": warming,
         "banner": banner,
         "rates_banner": (
             None if header.get("rates_verified") else "RATES UNVERIFIED"

@@ -62,6 +62,7 @@ def compute_price_evidence(df: pl.DataFrame) -> dict[str, float | int | str]:
 
 
 class PriceRangeModel:
+    min_history_sessions = max(LOOKBACK_DAYS, ATR_PERIOD) + 1  # 21 rows
     """Evidence-only AlphaModel: conviction is always exactly 0.0."""
 
     @property

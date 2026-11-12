@@ -44,6 +44,7 @@ REGIME_WEIGHTS: dict[str, dict[str, float]] = {
 
 
 class TaEnsemble:
+    min_history_sessions = 200  # legacy EMA-200 warmup (compute_all_indicators)
     """TA ensemble AlphaModel wrapping the legacy indicator/signal engine."""
 
     def __init__(self, *, regime_aware: bool = False) -> None:

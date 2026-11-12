@@ -26,6 +26,7 @@ HORIZON_DAYS = 20
 
 
 class EarningsDrift:
+    min_history_sessions = 0  # stub: needs announcement dates, not price history
     """Post-announcement drift over PIT announcements + price frames (NEW, stub)."""
 
     @property

@@ -33,6 +33,7 @@ def realized_vol(closes: list[float]) -> float | None:
 
 
 class LowVolatility:
+    min_history_sessions = VOL_WINDOW + 1  # 61 rows
     """Below-median-volatility tilt (NEW)."""
 
     @property
