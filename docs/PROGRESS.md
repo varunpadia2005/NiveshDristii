@@ -1,5 +1,34 @@
 # Phase 1 Progress Report
 
+## Phase numbering (CHANGELOG vs this file, derived P11-S3)
+
+CHANGELOG.md numbers the middle phases one higher than this file; the
+mapping is derived from titles, date windows and commit lists:
+
+- CHANGELOG "Phases 0–6 — rebuild foundation" (2026-10-22 → 10-27) =
+  this file's Phases 0–5 (core domain … validation gate + reports;
+  PaperBroker is P4-S6 `f2f2000`, line 366 of this file's Phase 4).
+- CHANGELOG "Phase 7 — Paper fund, ledger" (2026-10-27 → 10-31) = this
+  file's "# Phase 6 — Paper fund, ledger, scheduler" (P6-S1 3f4cfa4 …
+  P6-S5 99686c3/91477c6/74a06ba — same window, same commits).
+- CHANGELOG "Phase 8 — UI + design system" (2026-10-31 → 11-01) = this
+  file's "# Phase 7 — LLM layer" PLUS P8-S1..S3 (services/ui shell)
+  merged; the llm/ commits 4ead367/9995061 fall inside that window.
+- CHANGELOG "Phase 9/10" and the fix runs match this file's numbering.
+- This file has NO "# Phase 10" section: Phase 10 (S1–S7) is recorded
+  in CHANGELOG.md "## [Phase 10 — Hardening]" and the commits d1a3ead
+  (S1), 04c1501 (S2), c01ea70 (S3), 7de3112/e7a7017 (S4a/b), 5d3ffb4
+  (S5), 5868bd7 (S6), 9d353fd (S7).
+
+## Phase 8 part 1 pointer (P8-S1..S3, added P11-S3)
+
+P8-S1..S3 predate this file's "# Phase 8 part 2" header and have no
+step records here: services/ composition layer `b3d4d44`, UI wireframes
+`a075338`, ui/ shell + Paper Fund page `1f07e13`; see also CHANGELOG.md
+"## [Phase 8 — UI + design system]".
+
+---
+
 Rewritten 2026-10-24 from verified command output of the takeover session. Every
 number below was produced by a command in this session; nothing is carried over
 from earlier claims.
@@ -921,12 +950,19 @@ defects fixed with follow-up commits; future work stays LOCAL until review.
   tests; the F3 subprocess test covers the unset case); legacy
   characterization tests need the gitignored fixture parquet
   (bootstrap documented in docs/RESTORE.md, F2 automation pending).
-- **CLI stub commands** (status quo, no change made): `nd data fetch`,
-  `nd data refresh`, `nd signals generate`, `nd backtest run` print
-  "not_implemented". RECOMMENDATION: hide them from `nd --help` (typer
-  `hidden=True`) OR implement `nd backtest run` on top of run_backtest in
-  a later phase; implementing all four duplicates the paper-fund/provider
-  composition that already exists. Hiding is the honest stopgap.
+- **CLI stub commands** (status updated P11-S3): `nd data fetch`,
+  `nd data refresh`, `nd signals generate` print "not_implemented"
+  (interface-stability stubs kept for the exit-code contract). `nd
+  backtest run` is NO LONGER a stub: implemented P10-S3 (cli/main.py
+  backtest_run, commit c01ea70) over run_backtest on stored snapshots —
+  the original recommendation to implement it in a later phase was
+  taken. OLD TEXT (quoted for the record): "`nd data fetch`, `nd data
+  refresh`, `nd signals generate`, `nd backtest run` print
+  \"not_implemented\". RECOMMENDATION: hide them from `nd --help` (typer
+  `hidden=True`) OR implement `nd backtest run` on top of run_backtest
+  in a later phase; implementing all four duplicates the
+  paper-fund/provider composition that already exists. Hiding is the
+  honest stopgap."
 
 ---
 
@@ -1212,4 +1248,6 @@ CHANGELOG.md, and all fix-run evidence files). No stale range
 connected to the fixed areas was found in the docs (composition,
 replay, retention, coverage sections all re-checked against the raw
 outputs). Rather than guess a correction, this entry records the gap
-plainly.
+plainly. CLOSED P11-S3: DROPPED by user decision — the original task
+text is lost; no correction is possible without it and none was
+guessed.
