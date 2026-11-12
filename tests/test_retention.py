@@ -110,9 +110,9 @@ class TestInsufficientHistoryFXI:
         assert r.exit_code == 0  # no crash, no halt
         # the insufficient_history event should be in events.jsonl
         events_file = base / "short_f" / "events.jsonl"
-        events = [json.loads(l) for l in
+        events = [json.loads(x) for x in
                   events_file.read_text(encoding="utf-8").splitlines()
-                  if l.strip()]
+                  if x.strip()]
         insuff = [e for e in events if e.get("event") == "insufficient_history"]
         assert insuff, "insufficient_history event not found"
         assert any(m["model_id"] == "ta_ensemble" for m in insuff[0]["models"])

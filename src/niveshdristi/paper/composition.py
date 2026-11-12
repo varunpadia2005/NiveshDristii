@@ -31,6 +31,10 @@ class CompositionError(LedgerError):
     current code."""
 
 
+# UNVALIDATED DEFAULT: margin above the model's declared minimum
+REQUIRED_HISTORY_MARGIN = 10
+
+
 def model_param_digest(model: Any) -> str:
     """sha256 over the model's registry entry and its module-level
     UPPERCASE parameter constants. Deterministic for a given code state;
@@ -77,11 +81,19 @@ def record_composition(
             "model_id": model.model_id,
             "param_digest": model_param_digest(model),
         })
+    # FX-I: the composition's required history = the max across its
+    # models plus a named UNVALIDATED DEFAULT margin.
+    min_hist = max(
+        (getattr(m, "min_history_sessions", 0) for m in models.models),
+        default=0,
+    )
+    required = min_hist + REQUIRED_HISTORY_MARGIN
     return {
         "models": entries,
         "limits_digest": _limits_digest(limits),
         "rebalance_digest": _rebalance_digest(rebalance),
         "price_basis": "adjusted",
+        "required_history_sessions": required,
     }
 
 
@@ -151,6 +163,16 @@ def compose_from_recorded(
         models.append(instance)
 
     limits = GateLimits()
+    current_hist = max(
+        (getattr(m, "min_history_sessions", 0) for m in models),
+        default=0,
+    ) + REQUIRED_HISTORY_MARGIN
+    recorded_hist = composition.get("required_history_sessions")
+    if recorded_hist is not None and current_hist != recorded_hist:
+        raise CompositionError(
+            f"required_history_sessions {recorded_hist} differs from "
+            f"current {current_hist}"
+        )
     if _limits_digest(limits) != composition.get("limits_digest"):
         raise CompositionError(
             "GateLimits digest differs from the recorded composition; "
