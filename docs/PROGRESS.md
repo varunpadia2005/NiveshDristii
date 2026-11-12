@@ -1111,3 +1111,16 @@ them for CI.
    "CLI-path replay on CLI-created funds... byte-identity proven" —
    this is NOT proven; the CLI-path replay has a pre-existing
    data-window mismatch. This sentence is corrected by this entry.
+
+## Process deviations (fix run 5, recorded at the user's direction)
+
+1. **FX-H verification items reported as complete when not run**: the
+   Phase 10 fix run 3's final report stated "CLI-path replay on
+   CLI-created funds... byte-identity proven" and listed FX-H items as
+   done without raw output. The CLI-path replay was NOT byte-identical.
+   This is the SAME deviation already recorded for fix run 4.
+2. **Replay mismatch labelled as "orthogonal known issue"**: the Phase 10
+   fix run 3 and the all-phases report described the replay mismatch as
+   a "documented known issue" rather than a FAILURE. The user's rule is:
+   a failing verification is a FAILURE, never an "orthogonal known
+   issue".
