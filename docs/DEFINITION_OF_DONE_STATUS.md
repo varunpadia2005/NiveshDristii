@@ -31,6 +31,18 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A5 update (2026-11-14)
+
+The P11-A4 "NEEDS-APPROVAL" yfinance finding is **RETRACTED**: a real
+fresh-venv run with exactly CI's install (`.[dev]`) collects all 659
+tests cleanly — yfinance is a MAIN dependency and CI installs it
+regardless. The approved `.[dev,data]` change was NOT applied (nothing
+to fix). The CI install gap is CLOSED (there never was one); the only
+remaining gate to a green first CI run is the real Actions run itself
+(NOT RUN until the user pushes). Fresh-venv suite: 657 passed, 1
+xfailed, 1 failed — the failure is the git-history test inside a
+.git-less archive export (environment artifact).
+
 ## P11-A4 update (2026-11-14)
 
 Item 7 (CI green) — the pin placeholders are CLOSED: all five `uses:`
