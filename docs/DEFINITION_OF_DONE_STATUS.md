@@ -31,6 +31,14 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A2 update (2026-11-14)
+
+S1 (NSE 2026 holidays) and S2 (CI action pins) remain BLOCKED: the
+supplied inputs were blank again; never filled by the agent. The live
+yfinance probe remains NOT RUN (INPUT-3 unanswered). The S5 fake
+signature accommodation is now disclosed in PROGRESS.md with a
+consistency guard (f346a57).
+
 ## P10-S7 updates
 
 Item 7 (CI green): CI workflow exists but has NOT run (needs the 3 action

@@ -1330,3 +1330,24 @@ Still open after this phase: S1 (holiday list — awaiting INPUT-1), S2
 4 stub models, verified IN rates, api/app frozen (accepted out of
 scope), the type: ignore at engine/advance.py:425, Python 3.11 never
 run locally, CI run status (NOT RUN — the user pushes and reports).
+
+## Phase 11-A2 (2026-11-14): unblock attempt — S1/S2 STAY BLOCKED
+
+The user's 11-A2 prompt again carried blank INPUT-1 ("(PASTE)") and
+blank INPUT-2 ("<sha>" placeholders) — under the block rule S1 (NSE
+2026 holidays) and S2 (CI action pins) REMAIN BLOCKED; nothing was
+filled by the agent. INPUT-3 (live yfinance probe) was unanswered, so
+the probe stays NOT RUN (documented assumption; the offline proof in
+96408f3 stands, and its RED run already demonstrated via the recording
+fake that the pre-fix call (start == end) returned zero rows).
+
+Executed:
+- **S3 (f346a57)**: the S5 test-fake signature disclosure added to this
+  file (the five fakes, one-parameter change each), with a consistency
+  guard (RED disclosure missing → GREEN 3 passed → mutation removed →
+  FAIL).
+- **S4**: this close-out + the DoD register update + the local tag
+  p11a2-complete.
+
+Core/engine diff vs e529a4a unchanged: exactly the one approved line
+in core/limitations.py. Gate after S3: 657 passed, 1 xfailed.
