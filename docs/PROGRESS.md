@@ -1251,3 +1251,70 @@ outputs). Rather than guess a correction, this entry records the gap
 plainly. CLOSED P11-S3: DROPPED by user decision — the original task
 text is lost; no correction is possible without it and none was
 guessed.
+
+---
+
+# Phase 11-A — Harden and close gaps (S1..S6, 2026-11-13)
+
+Scope: Option A from the project state audit. INPUT-1 (NSE 2026
+official holiday list) and INPUT-2 (GitHub action pins) were NOT
+supplied — S1 and S2 are BLOCKED by the run's block rule (never fill
+the gap). S3, S4, S5 executed; S6 closes out.
+
+- **S3 (1ae0d39)** doc alignment: PROGRESS.md no longer lists `nd
+  backtest run` among the not_implemented stubs (implemented P10-S3,
+  cli/main.py backtest_run, commit c01ea70; old text quoted in place);
+  AUDIT.md 1.2 gains a HISTORICAL PHASE 0 RECORD note (pre-rebuild
+  entry points kept verbatim; current entry points stated; app/ and
+  api/ flagged frozen-legacy); FX-J CLOSED as DROPPED by user decision;
+  the CHANGELOG↔PROGRESS phase-numbering mapping derived with
+  commit/date evidence (CHANGELOG 7 = PROGRESS 6, CHANGELOG 8 =
+  PROGRESS 7 + P8-S1..S3, CHANGELOG "Phases 0–6" = PROGRESS 0–5); the
+  missing P8-S1..S3 evidence pointer added; tests/test_docs_consistency.py
+  guards (RED 2 failed before the fix, GREEN after, mutation: stale
+  line restored → FAIL).
+- **S4 (aab1549)** TrialRecorder wiring at the CALLER: every successful
+  run_backtest_service call records ONE trial derived from the net
+  equity curve, idempotent by content key (identical content does NOT
+  inflate the trial count — duplicate trials would inflate E[max
+  Sharpe]); result + CLI expose trials_recorded. run_validation_gate is
+  NOT invoked on single-trial runs (a one-trial verdict would be
+  statistically meaningless). NOTHING inside engine/ or core/ changes.
+  RED (KeyError trials_recorded) → GREEN (3 tests) → mutation (unwire →
+  2 FAIL) → restore. Both markets: IN records; US records AND still
+  carries costs_not_modeled + banner.
+- **S5 (96408f3)** fetch-window defect FIXED: _paper_fetch_bars passed
+  `start` as BOTH bounds to YFinanceClient._fetch; yfinance's end is
+  EXCLUSIVE (fact supplied by the spec) → the real CLI tick fetched
+  ZERO rows. Now [start_window, candidate). Proven offline by
+  tests/test_fetch_window.py (recording end-exclusive fake client at
+  the ADAPTER level: RED start==end + 0 rows; GREEN start<end + rows>0;
+  mutation revert → FAIL). Existing provider fakes accommodated by
+  SIGNATURE ONLY (one added parameter; identical behavior, identical
+  assertions — test_paper_cli fake_provider + failing, test_retention
+  ×2, test_replay_cli_path real_window_provider). Live yfinance probe:
+  NOT RUN (INPUT-3 unanswered = no network authorization; documented
+  assumption). Replay re-verified: CLI per-day byte_identical, demo IN
+  7 fills, demo US 2 fills, all 8/8 match.
+- **S6** this section + the CHANGELOG entry + the DoD refresh + the
+  local tag p11a-complete.
+
+Gate evidence per step: S3 651 passed/1 xfailed; S4 654/1; S5 656/1 —
+all substantive G-checks PASS, only the expected pre-commit dirty-tree
+G01 fails. The core/engine diff vs e529a4a is unchanged throughout:
+exactly the one approved line in core/limitations.py.
+
+Process notes (recorded for honesty): (1) the first S4 gate failed G14
+on three mypy no-any-return errors in the new wiring — fixed with a
+TYPE_CHECKING-precise return type before commit; (2) one gate run saw a
+G18 "new file" violation because tests/test_fetch_window.py was created
+while that gate was running — the file was parked outside the tree for
+the re-run; no product defect; (3) an S5 re-apply script asserted
+against a stale expectation and crashed (cli/main.py was already at
+HEAD with S4's content) — re-applied the S5-only delta and re-verified.
+
+Still open after this phase: S1 (holiday list — awaiting INPUT-1), S2
+(CI pins — awaiting INPUT-2), the US-usable milestone (external data),
+4 stub models, verified IN rates, api/app frozen (accepted out of
+scope), the type: ignore at engine/advance.py:425, Python 3.11 never
+run locally, CI run status (NOT RUN — the user pushes and reports).

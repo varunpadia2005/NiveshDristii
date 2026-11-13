@@ -16,6 +16,21 @@ Plain statement: items 1 and 7 are partial for the same two reasons the
 whole project carries — no verified TRI source, and CI not yet pushed.
 Everything else is done and tested.
 
+## P11-A updates (2026-11-13)
+
+- Item 7 (CI green): the branch IS pushed (rebuild/v2 at 96408f3+,
+  tag p9-complete) but the workflow's action pins remain
+  placeholders ({SHA:*} unfilled, INPUT-2 not supplied) — CI has STILL
+  never run; a real Actions run remains NOT RUN. The live-fetch window
+  defect found by the audit is fixed (96408f3).
+- Phase 11-A closed: docs consistency guards, TrialRecorder wiring at
+  the services caller (item 1's gate-verdict data accumulates via
+  trials_recorded), FX-J closed as DROPPED (user decision).
+- Still open: TRI source (item 1), CI run (item 7), US-usable
+  milestone, 4 stub models, verified IN rates, api/app frozen
+  (accepted out of scope), the type: ignore at engine/advance.py:425,
+  Python 3.11 never run locally.
+
 ## P10-S7 updates
 
 Item 7 (CI green): CI workflow exists but has NOT run (needs the 3 action

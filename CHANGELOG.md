@@ -3,6 +3,28 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A — harden and close gaps] 2026-11-13
+
+### Fixed
+- The live-fetch window defect (96408f3): `_paper_fetch_bars` passed
+  `start` as BOTH bounds to the yfinance adapter (end is EXCLUSIVE →
+  an empty window on every real CLI tick); the window is now
+  [start_window, candidate), proven offline by an adapter-level
+  recording fake (tests/test_fetch_window.py).
+
+### Added
+- TrialRecorder wired at the services composition point (aab1549):
+  every real backtest run records one trial (idempotent by content
+  key); `trials_recorded` surfaces in the service result and the CLI.
+- Docs consistency guards (1ae0d39): PROGRESS↔code drift tests; the
+  stale `nd backtest run` stub claim corrected; AUDIT.md historical
+  note; FX-J closed (DROPPED by user decision); CHANGELOG↔PROGRESS
+  phase-numbering map; P8-S1..S3 + Phase 10 evidence pointers.
+
+### Blocked
+- S1 (NSE 2026 holidays) and S2 (CI action pins): inputs not supplied;
+  never filled by the agent (block rule).
+
 ## [Fix run 5 — replay mismatch] 2026-11-12
 
 ### Fixed
