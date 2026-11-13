@@ -97,7 +97,7 @@ class TestInsufficientHistoryFXI:
 
         # 30-session provider (insufficient for the 200-session TaEnsemble)
         frames = _fake_frames(_long_dates(n=30))
-        cm._paper_fetch_bars = lambda u, d: frames
+        cm._paper_fetch_bars = lambda u, s, e: frames
         runner = CliRunner()
         base = tmp_path / "funds"
 
@@ -125,7 +125,7 @@ class TestInsufficientHistoryFXI:
         from tests.test_paper_cli import _fake_frames, _long_dates
 
         frames = _fake_frames(_long_dates(n=30))
-        cm._paper_fetch_bars = lambda u, d: frames
+        cm._paper_fetch_bars = lambda u, s, e: frames
         runner = CliRunner()
         base = tmp_path / "funds"
         runner.invoke(app, ["--json", "paper", "create", "short_f",

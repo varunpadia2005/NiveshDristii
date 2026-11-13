@@ -50,7 +50,7 @@ def fake_provider(monkeypatch):
     legacy 200-session warmup is satisfied."""
     frames = _fake_frames(_long_dates())
 
-    def fake_fetch(universe, day):
+    def fake_fetch(universe, start, end):
         return frames
 
     monkeypatch.setattr(
@@ -116,7 +116,7 @@ class TestPaperCLI:
         assert ledger.read_bytes() == before  # byte-for-byte unchanged
 
     def test_tick_provider_failure_exit_1_no_halt(self, tmp_path, monkeypatch):
-        def failing(universe, day):
+        def failing(universe, start, end):
             raise ConnectionError("provider down")
 
         monkeypatch.setattr("niveshdristi.cli.main._paper_fetch_bars", failing)

@@ -286,9 +286,13 @@ def _fund_paths(fund_id: str, base: str | None) -> Any:
     return FundPaths(base).for_fund(fund_id)
 
 
-def _paper_fetch_bars(universe: list[str], start: date) -> dict:
+def _paper_fetch_bars(universe: list[str], start: date, end: date) -> dict:
     """COMPOSITION POINT (cli/ only): fetch EOD bars through the IN_NSE
-    yfinance adapter (amendment E). Never run by pytest or the gate."""
+    yfinance adapter (amendment E). Never run by pytest or the gate.
+    P11-S5: the window is [start, end) — start_window to the candidate.
+    The old code passed `start` as BOTH bounds; yfinance's end is
+    EXCLUSIVE, so the window was empty (proven offline by
+    tests/test_fetch_window.py)."""
     import polars as pl
 
     from niveshdristi.markets.in_nse.providers.yfinance_adapter import YFinanceClient
@@ -297,7 +301,7 @@ def _paper_fetch_bars(universe: list[str], start: date) -> dict:
     out: dict = {}
     for symbol in universe:
         hist = client._fetch(  # noqa: SLF001 - adapter composition in cli/
-            f"{symbol}.NS", start, start, auto_adjust=True
+            f"{symbol}.NS", start, end, auto_adjust=True
         )
         pdf = hist.reset_index()
         pdf.columns = [str(c).lower() for c in pdf.columns]
@@ -530,7 +534,8 @@ def paper_tick(
     try:
         result = run_tick(
             fund_id, base=base,
-            fetch_bars=lambda universe_, day: _paper_fetch_bars(universe_, start_window),
+            fetch_bars=lambda universe_, day: _paper_fetch_bars(
+                universe_, start_window, day),
             clock_now=candidate,
             models=models, rules=rules,
             limits=limits, rebalance=rebalance,

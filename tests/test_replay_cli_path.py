@@ -73,7 +73,7 @@ def real_window_provider(monkeypatch):
     semantics of a real provider fetch, not a full-history dump."""
     full = _fake_frames(_long_dates())
 
-    def fetch(universe, start):
+    def fetch(universe, start, end):
         out: dict[str, pl.DataFrame] = {}
         for sym, frame in full.items():
             out[sym] = frame.filter(
