@@ -31,6 +31,17 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A4 update (2026-11-14)
+
+Item 7 (CI green) — the pin placeholders are CLOSED: all five `uses:`
+lines in ci.yml are pinned to 40-hex SHAs resolved from the official
+action repos (checkout v5.1.0, setup-python v5.6.0, cache v4.3.0),
+guarded by tests/test_ci_workflow_pins.py. A real Actions run remains
+NOT RUN until the user pushes. NEW BLOCKER for a green first run:
+the CI install ([dev] only) fails at collection on yfinance (finding
+documented in PROGRESS Phase 11-A4 S3); the proposed fix
+(".[dev,data]") needs the user's approval before it can be applied.
+
 ## P11-A2 update (2026-11-14)
 
 S1 (NSE 2026 holidays) and S2 (CI action pins) remain BLOCKED: the

@@ -1403,3 +1403,16 @@ occurrences in ci.yml, the matrix job and the coverage job):**
 FORBIDDEN: data/ is one of the nine frozen legacy folders, G03 fails on
 any change. The workflow-side fix is the only in-scope option; data/
 already imports cleanly under the local venv, which HAS yfinance.)
+
+## Phase 11-A4 close-out
+
+Commits this phase: 55bad6f (S2 pins + guard), c0020d9 (S3 readiness
+findings), this one (S4 close-out). Tag p11a4-complete on the final
+HEAD (local only). Still open, with owners: real Actions run (user
+pushes; will fail at collection until finding 1 is approved and
+applied), NSE-2026 holidays xfail (user supplies the official list),
+US-usable milestone (external data), 4 stub models (external data),
+verified IN rates (external data), api/app frozen (Option 1 accepted),
+type: ignore at engine/advance.py:425 (engine edit = R1 STOP), Python
+3.11 never run locally (no 3.11 interpreter on this machine), live
+yfinance probe (INPUT-3 still unanswered).
