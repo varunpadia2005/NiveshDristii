@@ -3,6 +3,22 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A4 — CI pins self-resolved] 2026-11-14
+
+### Fixed
+- The CI workflow's action pins resolved from the official repos by
+  read-only ls-remote (double cross-checked, commit dates vetted):
+  checkout v5.1.0, setup-python v5.6.0, cache v4.3.0 (55bad6f).
+
+### Added
+- tests/test_ci_workflow_pins.py: no {SHA: placeholders, 40-hex pins
+  only, "# vX.Y.Z" comments required (55bad6f).
+- CI readiness findings (static): ONE NEEDS-APPROVAL RISK — the CI
+  install ([dev] only) cannot import niveshdristi.data at collection
+  because data/macro.py imports yfinance at module level; proposed
+  fix (needs approval): install ".[dev,data]" (yfinance pinned in
+  constraints as 1.5.1). See docs/PROGRESS.md Phase 11-A4 S3.
+
 ## [Phase 11-A — harden and close gaps] 2026-11-13
 
 ### Fixed
