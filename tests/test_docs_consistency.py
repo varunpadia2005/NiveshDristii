@@ -52,3 +52,20 @@ class TestDocsConsistency:
             "PROGRESS.md lacks the CHANGELOG-to-PROGRESS phase numbering "
             "mapping note (audit finding)"
         )
+
+    def test_s5_fake_signature_disclosure_present(self):
+        """P11-A2: PROGRESS.md must disclose the five provider fakes whose
+        SIGNATURE was accommodated (one added parameter each) by the S5
+        fetch-window fix — behavior and assertions unchanged."""
+        progress = _read("docs/PROGRESS.md")
+        for fake in ("tests/test_paper_cli.py `fake_provider`",
+                     "tests/test_paper_cli.py `failing`",
+                     "tests/test_retention.py",
+                     "tests/test_replay_cli_path.py `real_window_provider`"):
+            assert fake in progress, (
+                f"the S5 fake-signature disclosure is missing the {fake!r} "
+                "entry"
+            )
+        assert "S5 test-fake signature change" in progress, (
+            "PROGRESS.md lacks the S5 fake-signature disclosure section"
+        )

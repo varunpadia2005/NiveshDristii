@@ -1296,6 +1296,18 @@ the gap). S3, S4, S5 executed; S6 closes out.
   NOT RUN (INPUT-3 unanswered = no network authorization; documented
   assumption). Replay re-verified: CLI per-day byte_identical, demo IN
   7 fills, demo US 2 fills, all 8/8 match.
+- **S5 test-fake signature change (disclosure, added P11-A2)**: the S5
+  fix changed `_paper_fetch_bars` to (universe, start, end), so five
+  provider fakes each gained ONE parameter — identical behavior,
+  identical assertions, no assertion weakened or removed:
+  tests/test_paper_cli.py `fake_provider` (fake_fetch(universe, day) →
+  (universe, start, end)); tests/test_paper_cli.py `failing`
+  (same one-parameter change); tests/test_retention.py ×2
+  (cm._paper_fetch_bars = lambda u, d: … → lambda u, s, e: …);
+  tests/test_replay_cli_path.py `real_window_provider` (fetch(universe,
+  start) → (universe, start, end) — the end is ignored by the fake, its
+  window filter still keys on start). No other test change was made in
+  S5.
 - **S6** this section + the CHANGELOG entry + the DoD refresh + the
   local tag p11a-complete.
 
