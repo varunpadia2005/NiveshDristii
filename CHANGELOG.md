@@ -3,6 +3,19 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A5 — fresh-venv proof] 2026-11-14
+
+### Corrected
+- The Phase 11-A4 "yfinance collection break" finding is RETRACTED:
+  a real fresh-venv run with EXACTLY CI's install (`.[dev]`) collects
+  all 659 tests cleanly - yfinance is a MAIN dependency
+  (pyproject dependencies), so CI installs it regardless. The approved
+  `.[dev,data]` change was therefore NOT applied (nothing to fix).
+  Full fresh-venv suite: 657 passed, 1 xfailed, 1 failed - the failure
+  is `test_core_and_engine_unchanged` shelling out to `git diff` inside
+  a .git-less archive export (environment artifact; a real CI clone
+  passes it).
+
 ## [Phase 11-A4 — CI pins self-resolved] 2026-11-14
 
 ### Fixed

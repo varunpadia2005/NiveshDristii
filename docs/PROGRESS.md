@@ -1416,3 +1416,60 @@ verified IN rates (external data), api/app frozen (Option 1 accepted),
 type: ignore at engine/advance.py:425 (engine edit = R1 STOP), Python
 3.11 never run locally (no 3.11 interpreter on this machine), live
 yfinance probe (INPUT-3 still unanswered).
+
+## Phase 11-A5 (2026-11-14): fresh-venv proof — the A4 yfinance finding DISPROVEN
+
+The approved ci.yml install change (`.[dev,data]`) was NOT applied: the
+real fresh-venv proof DISPROVED the Phase 11-A4 finding #1. Procedure:
+`git archive HEAD | tar -x` into a throwaway dir (pristine, no repo
+writes), a fresh 3.13 venv, EXACTLY CI's install command
+(`pip install -c constraints/ci-constraints.txt -e ".[dev]"`), then
+pytest collection and the FULL suite.
+
+- Collection: CLEAN — 659 tests collected, zero errors.
+- Root cause of the disproof: **yfinance is a MAIN dependency**
+  (pyproject.toml `dependencies`, `yfinance>=0.2.40`, third entry).
+  The CI-exact install list includes yfinance-1.5.1 (and curl_cffi,
+  multitasking, peewee, websockets). The A4 finding misread the
+  constraints marker "DIRECT (pyproject tree)" as extra-related; the
+  import-blocker experiment was real (yfinance IS imported at
+  collection via data/__init__ -> data/macro.py) but CI installs
+  yfinance regardless, so there was never a gap. Finding #1 is
+  RETRACTED; the approval for `.[dev,data]` remains unused — applying
+  it would add an unnecessary extra.
+- Full suite in the fresh venv: **657 passed, 1 xfailed, 1 failed** —
+  the SAME 659-test population as the in-repo gate (658+1). The single
+  failure is `tests/test_two_market.py::test_core_and_engine_unchanged`,
+  which shells out to `git diff` against commit 6948457: the archive
+  export has NO `.git`, so git exits 129 (usage message). Environment
+  artifact of the export method, NOT a product defect; a real CI
+  checkout is a clone with full history and passes this test. No other
+  difference; nothing hidden.
+
+P4 findings: the `data` extra = yfinance alone; `dev` = pytest,
+pytest-asyncio, pytest-cov, ruff, black, mypy, pre-commit — all pinned
+in constraints/ci-constraints.txt EXCEPT **pre-commit** (unpinned;
+reproducibility RISK reported, not fixed — it is a dev-workflow tool,
+unused by CI and the suite). yfinance's transitive deps (multitasking,
+peewee, platformdirs, python-dateutil, websockets, requests) are all
+pinned. ci.yml has exactly two `pip install -c … -e ".[dev]"` lines
+(53, 95) plus two `pip install --upgrade pip` lines (52, 94; pip
+itself, unconstrained — noted).
+
+### Phase 11-A5 S2: checkout-major disclosure
+
+A4 pinned actions/checkout to **v5.1.0** where ci.yml's comment said
+"v4 (or v5)" — choosing v5 was a judgement call between the two
+authorized majors (the newest authorized one; the prompt's P4 would
+have required a STOP had the comment named a single undeliverable
+major). Checkout-version behavior audit: the MATRIX job uses
+`fetch-depth: 0` (full history), which is REQUIRED by the gate —
+`git worktree add phase0_wt 82f76d8` and the G03b/G04/G05 comparisons
+against 82f76d8 need those commits present; v5.1.0 provides the same
+checkout semantics. The COVERAGE job's checkout has NO fetch-depth
+(shallow default) and needs no history (pytest only — no gate, no
+worktree). `persist-credentials` stays at its default with
+`permissions: contents: read` (informational). No checkout-v4-specific
+behavior (submodules, lfs, sparsify) is used. **No NEEDS-APPROVAL item
+emerges from S2**; the e529a4a lineage note needs nothing extra (it is
+a descendant of 82f76d8, inside the full history).
