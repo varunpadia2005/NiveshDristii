@@ -1351,3 +1351,30 @@ Executed:
 
 Core/engine diff vs e529a4a unchanged: exactly the one approved line
 in core/limitations.py. Gate after S3: 657 passed, 1 xfailed.
+
+## Phase 11-A4 (2026-11-14): CI pins self-resolved
+
+The user's 11-A4 prompt replaces the manual INPUT-2 step: the pins were
+resolved from the OFFICIAL action repositories with read-only commands
+only (`git ls-remote` ×2 per tag, plus one `--depth=1` fetch per tag
+into a throwaway bare repo to read the commit date). Raw outputs in the
+run report. Resolution table:
+
+| action | intended major (from ci.yml comments) | tag | commit SHA | commit date | age days | peeled? |
+|---|---|---|---|---|---|---|
+| actions/checkout | v4 (or v5) → v5 | v5.1.0 | fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 | 2026-07-16 | 121 | lightweight |
+| actions/setup-python | v5 | v5.6.0 | a26af69be951a213d495a4c3e4e4022e16d87065 | 2025-04-23 | 570 | lightweight |
+| actions/cache | v4 | v4.3.0 | 0057852bfaa89a56745cba8c7296529d2fc39830 | 2025-09-24 | 416 | lightweight |
+
+All tags are three-part semver, lightweight (no `^{}` peel lines — the
+tag SHA IS the commit), none newer than 2026-10-31, each cross-checked
+by a second ls-remote of the exact tag. tests/test_ci_workflow_pins.py
+(RED on the placeholders → GREEN after the pins → three mutations:
+placeholder reintroduced / 39-char SHA / version comment deleted, each
+FAILS) guards every workflow file: no `{SHA:` anywhere, every `uses:`
+pinned to a 40-hex SHA, every pin carrying a "# vX.Y.Z" comment.
+ci.yml's placeholder doc block (lines 31-34) was replaced by the
+resolution-provenance comment — it was itself placeholder text, so it
+could not survive the no-`{SHA:` guard. A real Actions run: NOT RUN
+(needs the user's push). Python 3.11: not installed on this machine
+(`py -0p` shows only 3.13) — the 3.11 matrix cell remains CI-only.

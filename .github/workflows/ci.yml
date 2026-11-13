@@ -26,19 +26,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      # Pin by COMMIT SHA before the first real run. Look up (once, by a
-      # human) the SHA of:
-      #   {SHA:checkout}      -> actions/checkout @ v4 (or v5)
-      #   {SHA:setup-python}  -> actions/setup-python @ v5
-      #   {SHA:cache}         -> actions/cache @ v4
-      # and replace the placeholders below. Docs/CI.md lists these lookups.
-      - uses: actions/checkout@{SHA:checkout}
+      # Pinned by COMMIT SHA (resolved P11-A4 via `git ls-remote` against
+      # the official action repos; lightweight tags, commit dates checked,
+      # double cross-checked). Docs/CI.md lists the procedure.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0# v5.1.0
         with:
           fetch-depth: 0   # full history: the gate diffs against 82f76d8
-      - uses: actions/setup-python@{SHA:setup-python}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: actions/cache@{SHA:cache}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'constraints/ci-constraints.txt') }}
@@ -86,10 +83,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@{SHA:checkout}
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@{SHA:setup-python}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
       - name: Install
