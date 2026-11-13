@@ -9,7 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from niveshdristi.engine.validation_inputs import Trial, TrialRecorder
 
 
 def content_key(fund_id: str, base: str | Path | None = None) -> str:
@@ -117,6 +120,10 @@ def run_backtest_service(fund_id: str, base: str | Path | None = None,
         "verdict": ("validation-gate result: pipeline demonstration only; "
                     "not evidence of performance"),
         "promotable": bt.limitations.promotable,
+        # P11-S4: the caller-recorded trial (Phase 6 need); the count is
+        # the recorder's cumulative total for this process.
+        "trials_recorded": _record_trial(
+            _key or content_key(fund_id, base), fund_id, as_of, bt),
     }
 
 
@@ -124,6 +131,51 @@ def _rebalance() -> Any:
     from niveshdristi.engine.advance import RebalanceSchedule
 
     return RebalanceSchedule()
+
+
+# P11-S4: TrialRecorder wiring at the CALLER (Phase 6 need: "TrialRecorder
+# integration into every real backtest run"). The recorder is PURE (no
+# I/O) and lives for the process lifetime; a recorder row is derived
+# from the run's net equity curve. Identical content (same content key)
+# is NOT re-recorded — duplicate trials would inflate E[max Sharpe] and
+# are statistically dishonest. Nothing inside engine/ changes.
+_TRIAL_RECORDER: TrialRecorder | None = None
+
+
+def _trial_recorder() -> TrialRecorder:
+    global _TRIAL_RECORDER
+    if _TRIAL_RECORDER is None:
+        from niveshdristi.engine.validation_inputs import TrialRecorder
+
+        _TRIAL_RECORDER = TrialRecorder()
+    return _TRIAL_RECORDER
+
+
+def recorded_trials() -> tuple[Trial, ...]:
+    """The module recorder's trials (read-only accessor for tests)."""
+    return _trial_recorder().trials
+
+
+def _record_trial(content: str, fund_id: str, as_of: str, bt: Any) -> int:
+    """Record ONE trial for this backtest run; idempotent by content key.
+    Returns the recorder's cumulative trial count."""
+    recorder = _trial_recorder()
+    if any(t.trial_id == content for t in recorder.trials):
+        return recorder.trial_count
+    equity = [1_000_000.0] + [float(v) for _, v in bt.net_equity_curve]
+    returns = [
+        equity[i + 1] / equity[i] - 1.0 for i in range(len(equity) - 1)
+    ]
+    recorder.record(
+        content,
+        {
+            "fund_id": fund_id,
+            "as_of": as_of,
+            "source": "backtest_lab",
+        },
+        returns,
+    )
+    return recorder.trial_count
 
 
 def _base_banners(fund_id: str, base: str | Path | None) -> dict:

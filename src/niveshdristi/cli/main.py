@@ -219,6 +219,9 @@ def backtest_run(
         "fees_total": result["fees_total"],
         "slippage_total": result["slippage_total"],
         "trade_count": result["trade_count"],
+        # P11-S4: the caller-recorded trial count (TrialRecorder at the
+        # services composition point).
+        "trials_recorded": result.get("trials_recorded", 0),
         # FX-O (fix run 5): the fund's banner (COSTS NOT MODELED for US
         # funds) is surfaced with the backtest output.
         "banner": result.get("banner"),
