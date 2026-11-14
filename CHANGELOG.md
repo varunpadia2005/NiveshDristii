@@ -12,6 +12,21 @@ follows Keep a Changelog; dates are the commit dates from git log.
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
 
+## [Phase 11-A7 — the three CI fixes] 2026-11-14
+
+- RC-3: the two-market core/engine guard diffed against 6948457, an
+  amended-away commit reachable from no ref — the test failed in any
+  clone (CI coverage job, run 43574549786). Base is now 04c1501 (the
+  on-branch P10-S2 commit; tree-identical). A reachability guard
+  (tests/test_git_baselines_reachable.py) now asserts every hard-coded
+  git base is an ancestor of HEAD.
+- RC-2: the 3.11 CI matrix cells removed (the constraints freeze has
+  no scipy 1.18.1 distribution for 3.11); matrix guard added.
+- RC-1: the worktree step creates phase0_wt/tools before its cp;
+  worktree-step guard added. Coverage job GREEN in CI for the first
+  time (run 43620550944). Three further CI failures (RC-4/5/6) are
+  diagnosed with proposed fixes awaiting approval.
+
 ## [Phase 11-A6 — pre-push check + push] 2026-11-14
 
 - Static + shallow-clone check: the one git-shelling test

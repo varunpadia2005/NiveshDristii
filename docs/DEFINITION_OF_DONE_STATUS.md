@@ -31,6 +31,16 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A7 update (2026-11-14)
+
+CI run 43620550944 (head bc34ab3): coverage job **SUCCESS** (first
+green job in the project's CI history); the two matrix gate jobs fail
+only on the three pre-diagnosed findings (RC-4 pytest collection of
+the worktree's frozen tests, RC-5 fixture-JSON CRLF dirtying, RC-6
+relative --phase0 PYTHONPATH) — each documented in PROGRESS with a
+proposed fix awaiting user approval. Pins, install, bootstrap,
+worktree: all verified working in production.
+
 ## P11-A5 update (2026-11-14)
 
 The P11-A4 "NEEDS-APPROVAL" yfinance finding is **RETRACTED**: a real
