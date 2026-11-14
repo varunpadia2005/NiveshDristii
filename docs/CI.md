@@ -2,8 +2,11 @@
 
 ## What runs
 
-`.github/workflows/ci.yml` — one job per matrix cell (Python 3.11 and 3.13
-× ubuntu-latest and windows-latest), each executing the FULL phase gate:
+`.github/workflows/ci.yml` — one job per matrix cell (Python 3.13 ×
+ubuntu-latest and windows-latest), each executing the FULL phase gate
+(the 3.11 cells were removed in P11-A7: the constraints freeze has no
+scipy 1.18.1 distribution for 3.11 — CI run 43574549786 proved the
+install is impossible):
 
 ```
 python tools/phase1_gate.py --phase0 phase0_wt

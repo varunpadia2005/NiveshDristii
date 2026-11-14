@@ -1537,3 +1537,24 @@ the on-branch P10-S2 commit — tree-identical for core/ and engine/
 - Process note (honesty): a `git checkout -- tests/test_two_market.py`
   during the mutation check DISCARDED the uncommitted RC-3 edit; it
   was re-applied and re-verified (8 passed) before the gate.
+
+## Phase 11-A7 S2 (RC-2): the 3.11 CI cells removed — claimed-but-untested RISK recorded
+
+CI run 43574549786 proved both 3.11 cells CANNOT install: the
+constraints freeze (Windows × 3.13.7) pins scipy==1.18.1, which ships
+no 3.11 distribution → ResolutionImpossible at the install step
+(raw log in the run report). Per the approved option (a), the matrix
+is now `python-version: ["3.13"]` on ubuntu-latest + windows-latest;
+the coverage job was already 3.13-only. Guard:
+tests/test_ci_matrix_versions.py derives the allowed versions from the
+tracked freeze provenance in docs/CI.md (RED: 3.11 present → FAIL;
+GREEN after; mutation: re-adding 3.11 → FAIL). docs/CI.md's matrix
+description updated.
+
+**RISK (claimed but untested)**: `pyproject.toml:6` still says
+`requires-python = ">=3.11"` (and the mypy/ruff tool config references
+3.11), while CI now covers 3.13 ONLY and no 3.11 interpreter exists on
+this machine. 3.11 is NOT RUN anywhere. Proposed (NOT applied, needs
+approval): either raise the floor to ">=3.13" in a future commit, or
+generate a 3.11 constraints file in a real 3.11 environment later. No
+classifier is present in pyproject.toml.
