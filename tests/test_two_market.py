@@ -154,11 +154,11 @@ class TestTwoMarketEngine:
 
     def test_core_and_engine_unchanged(self):
         """Zero UNAPPROVED edits to core/ and engine/: the diff is taken
-        against 6948457 — the P10-S2 commit carrying the ONE approved core
+        against 04c1501 — the P10-S2 commit carrying the ONE approved core
         edit (costs_not_modeled, D4). Anything else appearing here is an
         unapproved core/engine change."""
         proc = subprocess.run(
-            ["git", "diff", "--stat", "6948457", "--", "src/niveshdristi/core",
+            ["git", "diff", "--stat", "04c1501", "--", "src/niveshdristi/core",
              "src/niveshdristi/engine"],
             capture_output=True, text=True, cwd=REPO, timeout=60)
         assert proc.returncode == 0

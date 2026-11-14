@@ -3,6 +3,15 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A7 — the three CI fixes] 2026-11-14
+
+- RC-3: the two-market core/engine guard diffed against 6948457, an
+  amended-away commit reachable from no ref — the test failed in any
+  clone (CI coverage job, run 43574549786). Base is now 04c1501 (the
+  on-branch P10-S2 commit; tree-identical). A reachability guard
+  (tests/test_git_baselines_reachable.py) now asserts every hard-coded
+  git base is an ancestor of HEAD.
+
 ## [Phase 11-A6 — pre-push check + push] 2026-11-14
 
 - Static + shallow-clone check: the one git-shelling test

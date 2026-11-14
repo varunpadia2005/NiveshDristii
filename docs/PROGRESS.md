@@ -1513,3 +1513,27 @@ phase-1-complete). CI run status: NOT VERIFIED from this machine (no
 gh binary) — https://github.com/varunpadia2005/NiveshDristii/actions
 Tag p11a6-complete follows this commit and is pushed as a separate
 plain push (it carries this close-out commit to origin).
+
+## Phase 11-A7 S1 (RC-3): the two-market guard diffed against a DANGLING commit
+
+CI root cause (run 43574549786, coverage job): `fatal: bad revision
+'6948457'`. 6948457 is the ORIGINAL P10-S2 commit — amended away,
+reachable from no branch, tag, or origin ref (verified: `git branch -a
+--contains` and `git branch -r --contains` both empty) — it existed
+only in one machine's reflog, so the test passed locally and failed in
+any clone. Fix (APPROVED, scoped): the diff base is now **04c1501**,
+the on-branch P10-S2 commit — tree-identical for core/ and engine/
+(`git diff 6948457 04c1501 -- core engine` is EMPTY; `git diff
+04c1501 HEAD -- core engine` is EMPTY). The assertion is unchanged.
+- RED (full clone of HEAD): `bad revision '6948457'`, 1 failed —
+  reproduces CI exactly. GREEN (clone + patch): 1 passed. Mutation
+  (base back to 6948457 in the clone): BOTH tests fail in the clone.
+- tests/test_git_baselines_reachable.py (NEW): inventories every
+  git-base SHA hard-coded in a git-command line in tests/ and
+  tools/phase1_gate.py (currently 04c1501 + 82f76d8 ×2), asserts each
+  is an ancestor of HEAD, fails loudly when no .git exists (never
+  skips), and pins the expected bases so the inventory cannot silently
+  shrink.
+- Process note (honesty): a `git checkout -- tests/test_two_market.py`
+  during the mutation check DISCARDED the uncommitted RC-3 edit; it
+  was re-applied and re-verified (8 passed) before the gate.
