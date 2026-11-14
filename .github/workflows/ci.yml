@@ -59,6 +59,7 @@ jobs:
         shell: bash
         run: |
           git worktree add phase0_wt 82f76d8
+          mkdir -p phase0_wt/tools
           cp tools/dump_config.py tools/compare_backtest.py phase0_wt/tools/
           mkdir -p phase0_wt/tests/fixtures
           cp tests/fixtures/prices_reliance_30d.parquet phase0_wt/tests/fixtures/

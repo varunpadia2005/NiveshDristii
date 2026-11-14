@@ -1558,3 +1558,48 @@ this machine. 3.11 is NOT RUN anywhere. Proposed (NOT applied, needs
 approval): either raise the floor to ">=3.13" in a future commit, or
 generate a 3.11 constraints file in a real 3.11 environment later. No
 classifier is present in pyproject.toml.
+
+## Phase 11-A7 S3 (RC-1 + FULL OFFLINE SIMULATION)
+
+RC-1 applied: one `mkdir -p phase0_wt/tools` line in the worktree step
+(shell: bash, verified). Guard: tests/test_ci_worktree_step.py
+(RED without the line / GREEN with / mutation-delete → FAIL).
+
+**FULL OFFLINE MATRIX-JOB SIMULATION** (full clone + fresh venv + CI's
+exact install + every `run:` step verbatim, Windows/3.13): steps 1-4
+ALL exit 0 — line-ending policy, fixture bootstrap, worktree add,
+mkdir/cp (RC-1 VERIFIED WORKING). The gate step then FAILED with 6
+items, decoding to FOUR probable-CI failures beyond the approvals:
+
+- RC-4: the gate's pytest (phase1_gate.py:98, `pytest -v -p
+  no:cacheprovider`, no path argument) collects the worktree's own
+  frozen tests → `phase0_wt/tests/test_characterization.py` +
+  `test_imports.py` → 2 collection errors → G06 fails. MY local
+  phase0_wt happens to lack tests/ (masked for months). Proposed fix
+  (needs approval): collect `tests` explicitly in the gate's pytest
+  command.
+- RC-5: the fixture bootstrap left 5 TRACKED JSON fixtures modified
+  (tests/fixtures/*_reliance.json etc.) → G01 dirty. Mechanism: the
+  workflow normalizes the index to LF (autocrlf=input), while
+  tests/create_fixtures.py:137 writes with default text mode → CRLF on
+  a Windows runner. (Frozen legacy file — cannot edit.) ubuntu is
+  likely clean (LF). Proposed fix (needs approval): workflow-side
+  `git checkout -- tests/fixtures/` after the bootstrap, or drop the
+  windows cell.
+- RC-6 (CORRECTED after a manual comparator run): the phase0
+  comparator works with PYTHONPATH=phase0_root/src (manual run: __file__
+  under phase0_wt ✓). The gate fails because phase1_gate.py:47 keeps
+  --phase0 RELATIVE and ci.yml passes `--phase0 phase0_wt` → G04's
+  PYTHONPATH "phase0_wt\src" is resolved against cwd=phase0_wt (dead
+  entry) → the import falls through to the editable install
+  (sim/src/...) → "Phase0 __file__ not under phase0 root". The local
+  gates always passed an ABSOLUTE --phase0, masking it. Proposed fix
+  (needs approval): `.resolve()` the phase0_root at gate.py:47 (G05's
+  backtest step has the same relative-path hazard).
+- G01-dirty from the sim's own artifacts (gate.log, egg-info) — sim
+  artifact, listed for completeness.
+
+The simulation ran on Windows + local Python 3.13 and does NOT prove
+the Ubuntu leg; foreseeable differences: path separators (G04's
+"phase0" substring check), line endings (RC-5 is windows-only), cp/mkdir
+availability (bash step — fine), case sensitivity.
