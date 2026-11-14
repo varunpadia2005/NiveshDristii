@@ -1473,3 +1473,30 @@ worktree). `persist-credentials` stays at its default with
 behavior (submodules, lfs, sparsify) is used. **No NEEDS-APPROVAL item
 emerges from S2**; the e529a4a lineage note needs nothing extra (it is
 a descendant of 82f76d8, inside the full history).
+
+## Phase 11-A6 (2026-11-14): pre-push CI check — coverage job ALREADY has full history
+
+S1a: exactly ONE test shells out to git: tests/test_two_market.py:161
+(`git diff --stat 6948457 -- src/niveshdristi/core src/niveshdristi/engine`);
+no other test shells git (grep over tests/). tools/phase1_gate.py uses
+git heavily but runs ONLY in the matrix job.
+
+S1b: BOTH jobs use `fetch-depth: 0`. Correction of this file's own A5
+prose: the claim that "the COVERAGE job's checkout has NO fetch-depth"
+was WRONG — .github/workflows/ci.yml lines 85-87 show the coverage job
+checkout with `with: fetch-depth: 0` from the original file onward.
+The A4/A5 reports' "coverage job needs no history" statement was
+therefore harmless but its premise misstated.
+
+S1c shallow simulation: `git clone --depth=1 file://…` + run the
+history test — commit 6948457 is absent ("Not a valid object name",
+exit 128) and the test FAILS, proving the test's history dependency.
+BUT the coverage job is not shallow, so the RED condition ("shallow
+run FAILS **and** the coverage job runs those tests") does not apply
+to real CI: the approved `fetch-depth: 0` fix for the coverage job is
+MOOT — it is already there. No workflow change.
+
+Conclusion: nothing blocks the first real CI run from the history
+side. Push executed in this run (evidence below). CI run status: NOT
+VERIFIED from this machine (no gh binary) —
+https://github.com/varunpadia2005/NiveshDristii/actions

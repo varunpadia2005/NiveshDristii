@@ -3,6 +3,14 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A6 — pre-push check + push] 2026-11-14
+
+- Static + shallow-clone check: the one git-shelling test
+  (test_two_market.py:161) is history-dependent, but BOTH CI jobs
+  already use fetch-depth: 0 — no workflow change. (Corrects the A5
+  prose that misstated the coverage job's checkout.) Branch pushed
+  with tags; CI run status NOT VERIFIED locally.
+
 ## [Phase 11-A5 — fresh-venv proof] 2026-11-14
 
 ### Corrected
