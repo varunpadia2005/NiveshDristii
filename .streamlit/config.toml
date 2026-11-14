@@ -1,0 +1,24 @@
+# NEW (P8-S3/D1a/P8-S4): local-only Streamlit configuration.
+# Loopback, headless, usage stats OFF, XSRF on, CORS closed.
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+enableXsrfProtection = true
+# NOTE: Streamlit overrides enableCORS to true while XSRF protection
+# is on (it sends a CSRF cookie). Harmless on loopback - the access
+# control IS the 127.0.0.1 binding. See docs/UI_MANUAL_CHECKLIST.md.
+enableCORS = false
+
+# Light theme default (dark tokens live in ui/theme.py for reference and
+# contrast testing).
+[theme]
+base = "light"
+primaryColor = "#4F46E5"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F172A"

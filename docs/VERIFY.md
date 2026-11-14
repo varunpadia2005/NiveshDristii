@@ -167,3 +167,54 @@ backtest:
 ---
 
 *Last updated: 2026-10-24 — Sections 1–8 remain unverified. Section 9 reflects the live P0 probe of 2026-10-23/24 (see that section for per-source verdicts); items 4 (STT delivery, exchange charges) are marked DOUBTFUL pending Finance Act / NSE circular checks.*
+## 11. LLM Providers (UNVERIFIED — Phase 7)
+
+No live LLM call was made during Phase 7. The only registered provider in
+make_llm is the test double ("fake"). The spec names Anthropic, OpenAI,
+Google and Ollama — their model ids, terms of use, pricing and endpoints
+are UNVERIFIED and none is asserted to exist anywhere in the code. Real
+HTTP exists only in the opt-in operator script tools/probe_llm.py (stdlib
+urllib; key read from NDR_LLM_KEY at call time; redacted summary output).
+Before registering any real provider: accept its terms, verify model ids
+manually (they change), set explicit budgets, and keep pytest/the gate
+offline. Personas (spec C9) are NOT implemented in Phase 7; LlmView is
+evidence text only (binding rule R2).
+
+## 12. US market (P9-S2) — UNVERIFIED, architecture only
+
+A US_NYSE profile exists as a second-market PROOF. UNVERIFIED and
+deliberately unmodeled: every US cost/tax rate is NULL (costs.yaml /
+tax.yaml carry no numbers at all); the US holiday calendar is EMPTY; no US
+benchmark source; the US data provider is a typed shell with NO network
+capability; FX is a refusal-only groundwork type (no rates, no feed).
+Composing US MarketRules requires costs_not_modeled=True, which yields
+zero-fee costs and the COSTS NOT MODELED banner. Since P10-S2 the
+costs_not_modeled limitation code is first-class (core/limitations.py) and
+appears in US limitation sets. NOTHING about US markets
+should be trusted for real use without verifying: broker fee schedules,
+SEC/FINRA fees, US tax rules, an official NYSE holiday list, a benchmark
+source, and an FX feed.
+
+## 13. Final statuses (P10-S5)
+
+| Item | Status |
+|---|---|
+| yfinance (unofficial feed) | accepted for personal/educational use; terms re-check before any heavier use |
+| bhavcopy file parser | offline fixture-verified |
+| Cost rates (IN) | UNVERIFIED — every value a placeholder |
+| Tax rates (IN) | UNVERIFIED — every value a placeholder |
+| Nifty TRI benchmark | UNAVAILABLE — no source |
+| Index constituents | UNAVAILABLE — no source |
+| Announcement-dated fundamentals | UNAVAILABLE — no source |
+| 2026 NSE holidays | BLOCKED — awaiting the official list (strict xfail) |
+| US market (everything) | UNVERIFIED — architecture proof only (see section 12) |
+| LLM providers | UNVERIFIED — no live call made; model ids change |
+| FX rates | GROUNDWORK — refusal-only types, no rates |
+
+## What this is not
+
+This tool is not investment advice, not a broker interface, not a data
+vendor, and not a validated quantitative system. It has no verified data
+source beyond one unofficial feed; no verified rate; no official calendar;
+no benchmark. Its outputs are research artifacts for one person's
+education. See README "What this is — and what it is NOT".

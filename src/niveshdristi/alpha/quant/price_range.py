@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -61,6 +62,7 @@ def compute_price_evidence(df: pl.DataFrame) -> dict[str, float | int | str]:
 
 
 class PriceRangeModel:
+    min_history_sessions = max(LOOKBACK_DAYS, ATR_PERIOD) + 1  # 21 rows
     """Evidence-only AlphaModel: conviction is always exactly 0.0."""
 
     @property
@@ -72,7 +74,9 @@ class PriceRangeModel:
         for symbol in inputs.prices:
             evidence = compute_price_evidence(inputs.prices_for(symbol))
             instrument = Instrument(
-                symbol=symbol, exchange=ctx.market_id, market_id=ctx.market_id, currency="XXX"
+                symbol=symbol, exchange=ctx.market_id,
+                market_id=ctx.market_id,
+                currency=currency_for_market(ctx.market_id),
             )
             signals.append(
                 Signal(

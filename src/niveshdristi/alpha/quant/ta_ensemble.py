@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -43,6 +44,7 @@ REGIME_WEIGHTS: dict[str, dict[str, float]] = {
 
 
 class TaEnsemble:
+    min_history_sessions = 200  # legacy EMA-200 warmup (compute_all_indicators)
     """TA ensemble AlphaModel wrapping the legacy indicator/signal engine."""
 
     def __init__(self, *, regime_aware: bool = False) -> None:
@@ -53,6 +55,11 @@ class TaEnsemble:
     @property
     def model_id(self) -> str:
         return "ta_ensemble"
+
+    def indicator_frame(self, df):
+        """NEW (P8-S7, display only): the legacy indicator frame (RSI, MACD,
+        EMA columns) for UI charts; no signal scoring, no execution."""
+        return compute_all_indicators(df)
 
     def legacy_report(self, symbol: str, df):
         """Direct legacy call (ported maths): indicators + signal report."""
@@ -78,7 +85,9 @@ class TaEnsemble:
                 continue  # no opinion
 
             instrument = Instrument(
-                symbol=symbol, exchange=ctx.market_id, market_id=ctx.market_id, currency="XXX"
+                symbol=symbol, exchange=ctx.market_id,
+                market_id=ctx.market_id,
+                currency=currency_for_market(ctx.market_id),
             )
             signals.append(
                 Signal(

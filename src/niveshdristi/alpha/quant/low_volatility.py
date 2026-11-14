@@ -11,6 +11,7 @@ from __future__ import annotations
 import statistics
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -32,6 +33,7 @@ def realized_vol(closes: list[float]) -> float | None:
 
 
 class LowVolatility:
+    min_history_sessions = VOL_WINDOW + 1  # 61 rows
     """Below-median-volatility tilt (NEW)."""
 
     @property
@@ -59,7 +61,7 @@ class LowVolatility:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=self._stamp(ctx),
                     conviction=round(conviction, 6),

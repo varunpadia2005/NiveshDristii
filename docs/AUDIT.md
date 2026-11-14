@@ -32,6 +32,16 @@
 | Docker Compose | `docker-compose up --build` | Full stack (PG + API + UI) |
 | Tests | `pytest tests/` | Import/smoke tests |
 
+> HISTORICAL PHASE 0 RECORD (note added P11-S3): the entry points above
+> describe the PRE-REBUILD tree as audited at Phase 0 (82f76d8) and are
+> kept verbatim — history is not rewritten. The REBUILD's current entry
+> points are the `nd` CLI (pyproject [project.scripts]:
+> niveshdristi.cli.main:app) and the Streamlit thin client
+> `streamlit run src/niveshdristi/ui/app.py` (README quickstart,
+> docs/UI_MANUAL_CHECKLIST.md). `app/` and `api/` are FROZEN legacy
+> surfaces (gate G03's nine legacy folders) carried unchanged as the
+> characterization baseline.
+
 ### 1.3 Dependencies (from `pyproject.toml`)
 
 **Core:** polars, duckdb, yfinance, fastapi, uvicorn, streamlit, httpx, pydantic, pydantic-settings, pyyaml, jinja2, python-dotenv, asyncpg, lightgbm, optuna, numpy, pandas  

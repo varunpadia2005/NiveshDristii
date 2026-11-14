@@ -70,6 +70,9 @@ IN_NSE_PROFILE = MarketProfile(
     ),
     cost_model=_build_cost_model(),
     tax_model=_build_tax_model(),
+    digit_grouping="indian",  # 3-2-2 grouping for display
+    compact_units=(("crore", 10_000_000), ("lakh", 100_000),
+                   ("thousand", 1_000)),
     shorting_allowed=False,  # Cash segment: no shorting for retail
     intraday_shorting_allowed=True,  # Intraday shorting allowed
     calendar_path=str(IN_NSE_BASE / "holidays_in.yaml"),

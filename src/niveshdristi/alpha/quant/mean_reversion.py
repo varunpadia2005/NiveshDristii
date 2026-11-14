@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -33,6 +34,7 @@ def zscore_last(closes: list[float]) -> float | None:
 
 
 class MeanReversion:
+    min_history_sessions = Z_WINDOW + 1  # 21 rows
     """Contrarian z-score model (NEW)."""
 
     @property
@@ -55,7 +57,7 @@ class MeanReversion:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=self._stamp(ctx),
                     conviction=round(scaled, 6),

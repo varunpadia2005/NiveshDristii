@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -49,6 +50,7 @@ def quality_score(max_score_cap: int, flags: list[dict]) -> tuple[int, bool]:
 
 
 class FundamentalGuardrails:
+    min_history_sessions = 0  # stub: needs PIT fundamentals, not price history
     """Quality score + hard exclusions over PIT fundamentals (PORT of rules maths)."""
 
     @property
@@ -98,7 +100,7 @@ class FundamentalGuardrails:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=stamp,
                     conviction=round(conviction, 6),

@@ -120,7 +120,7 @@ def data_fetch(
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
-    """Fetch price data for tickers."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: fetch {tickers} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -132,7 +132,7 @@ def data_refresh(
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
-    """Refresh all data for a universe."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: refresh {universe} from {provider}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -151,7 +151,7 @@ def signals_generate(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
     as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
 ):
-    """Generate signals for a ticker."""
+    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
     _diagnostic(f"Not implemented yet: generate signal for {ticker}", ctx.obj["json_output"])
     _output({"status": "not_implemented"}, ctx.obj["json_output"])
 
@@ -167,25 +167,117 @@ app.add_typer(backtest_app, name="backtest")
 @backtest_app.command("run")
 def backtest_run(
     ctx: typer.Context,
-    mandate: str = typer.Option("core", "--mandate", "-m", help="Mandate name"),
-    universe: str = typer.Option("nifty50", "--universe", "-u", help="Universe name"),
-    strategy: str = typer.Option("signal_based", "--strategy", "-s", help="Strategy name"),
-    start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    fund_id: str = typer.Argument(..., help="Fund ID whose snapshots to run over"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+    mandate: str = typer.Option("core", "--mandate", "-m",
+                                help="DEPRECATED: accepted, ignored"),
+    universe: str = typer.Option("nifty50", "--universe", "-u",
+                                 help="DEPRECATED: accepted, ignored"),
+    strategy: str = typer.Option("signal_based", "--strategy", "-s",
+                                 help="DEPRECATED: accepted, ignored"),
+    start: str | None = typer.Option(None, "--start", help="DEPRECATED: ignored"),
+    end: str | None = typer.Option(None, "--end", help="DEPRECATED: ignored"),
 ):
-    """Run backtest."""
-    _diagnostic(
-        f"Not implemented yet: backtest {mandate}/{universe}/{strategy}", ctx.obj["json_output"]
+    """Run the engine backtest over a fund's STORED snapshots (offline).
+
+    P10-S3: wraps services.run_backtest_service - no network, no refetch;
+    the verdict wording is fixed ("pipeline demonstration only; not
+    evidence of performance"). Exit 0 ok, 1 unavailable, 2 usage."""
+    from niveshdristi.services.backtest_lab import (
+        content_key,
+        run_backtest_service,
     )
-    _output({"status": "not_implemented"}, ctx.obj["json_output"])
+
+    deprecated_used = (
+        mandate != "core" or universe != "nifty50"
+        or strategy != "signal_based" or start or end
+    )
+    if deprecated_used:
+        _diagnostic(
+            "deprecated options --mandate/--universe/--strategy/--start/--end "
+            "are accepted but ignored (recorded in CHANGELOG)",
+            ctx.obj["json_output"],
+        )
+    try:
+        result = run_backtest_service(
+            fund_id, base=base, _key=content_key(fund_id, base))
+    except Exception as exc:  # noqa: BLE001 - typed degradation report
+        _output({"status": "error", "detail": f"{type(exc).__name__}: {exc}"},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    if not result.get("available"):
+        _output({"status": "unavailable", "reason": result.get("reason", "")},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=1)
+    _output({
+        "status": "ok",
+        "fund_id": fund_id,
+        "as_of": result["as_of"],
+        "verdict": result["verdict"],
+        "promotable": result["promotable"],
+        "drag_bps": result["drag_bps"],
+        "fees_total": result["fees_total"],
+        "slippage_total": result["slippage_total"],
+        "trade_count": result["trade_count"],
+        # P11-S4: the caller-recorded trial count (TrialRecorder at the
+        # services composition point).
+        "trials_recorded": result.get("trials_recorded", 0),
+        # FX-O (fix run 5): the fund's banner (COSTS NOT MODELED for US
+        # funds) is surfaced with the backtest output.
+        "banner": result.get("banner"),
+        "limitation_codes": sorted(result["limitations"]),
+        "calendar_source": result["calendar_source"],
+    }, ctx.obj["json_output"])
 
 
 # ============================================================
 # Paper trading commands
 # ============================================================
 
-paper_app = typer.Typer(help="Paper trading commands")
+paper_app = typer.Typer(
+    help="Paper trading commands",
+    epilog=("Exit codes: 0 = ok or logged no-op; 1 = operational failure "
+            "(halt, verification failure, provider down); 2 = usage error. "
+            "nd paper tick failures that halt carry the recovery hint in "
+            "the payload ('nd paper recover'); stale locks: 'nd paper "
+            "unlock'. data/signals/backtest subcommands are documented "
+            "stubs (status not_implemented)."),
+)
 app.add_typer(paper_app, name="paper")
+
+
+def _market_rules_from_header(fund_id: str, base: str | None) -> Any:
+    """NEW (R9a): reconstruct the fund's MarketRules from the ledger header
+    digest (same as replay does) so recover is composition-faithful."""
+    import json
+
+    from niveshdristi.core.market_rules import MarketRules
+    from niveshdristi.paper.ledger import PaperLedger
+
+    header = PaperLedger(_fund_paths(fund_id, base).ledger).header()
+    return MarketRules.model_validate(json.loads(header["market_rules_digest"]))
+
+def _check_fund(fund_id: str, base: str | None, ctx: typer.Context) -> Any:
+    """FX-D: load the fund ledger or emit the plain JSON error payload
+    (status error, detail naming the fund, next_step) and exit 1."""
+    from niveshdristi.paper.ledger import PaperLedger
+
+    fp = _fund_paths(fund_id, base)
+    if not fp.ledger.exists():
+        _output({
+            "status": "error",
+            "detail": f"fund {fund_id!r} not found (searched {fp.ledger})",
+            "next_step": f"run `nd paper create {fund_id}` or "
+                         "`nd paper list` to see available funds",
+        }, ctx.obj["json_output"])
+        raise typer.Exit(code=1)
+    return PaperLedger(fp.ledger)
+
+
+def _today() -> date:
+    """NEW (F5): the ONE wall-clock read in cli/. Tests patch this helper;
+    persisted artifacts should prefer data-derived dates (see paper_halt)."""
+    return date.today()
 
 
 def _fund_paths(fund_id: str, base: str | None) -> Any:
@@ -194,9 +286,13 @@ def _fund_paths(fund_id: str, base: str | None) -> Any:
     return FundPaths(base).for_fund(fund_id)
 
 
-def _paper_fetch_bars(universe: list[str], start: date) -> dict:
+def _paper_fetch_bars(universe: list[str], start: date, end: date) -> dict:
     """COMPOSITION POINT (cli/ only): fetch EOD bars through the IN_NSE
-    yfinance adapter (amendment E). Never run by pytest or the gate."""
+    yfinance adapter (amendment E). Never run by pytest or the gate.
+    P11-S5: the window is [start, end) — start_window to the candidate.
+    The old code passed `start` as BOTH bounds; yfinance's end is
+    EXCLUSIVE, so the window was empty (proven offline by
+    tests/test_fetch_window.py)."""
     import polars as pl
 
     from niveshdristi.markets.in_nse.providers.yfinance_adapter import YFinanceClient
@@ -205,7 +301,7 @@ def _paper_fetch_bars(universe: list[str], start: date) -> dict:
     out: dict = {}
     for symbol in universe:
         hist = client._fetch(  # noqa: SLF001 - adapter composition in cli/
-            f"{symbol}.NS", start, start, auto_adjust=True
+            f"{symbol}.NS", start, end, auto_adjust=True
         )
         pdf = hist.reset_index()
         pdf.columns = [str(c).lower() for c in pdf.columns]
@@ -326,17 +422,25 @@ def paper_create(
         "approximate_universe", "survivorship_universe", "no_pit_fundamentals",
         "benchmark_not_tri",
     }))
-    from niveshdristi.core.market_rules import MarketRules
+    from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
+    from niveshdristi.markets import IN_NSE_PROFILE
+    from niveshdristi.markets.registry import to_rules
+    from niveshdristi.paper.composition import record_composition
+    from niveshdristi.portfolio.risk_gates import GateLimits
 
-    rules = MarketRules(market_id="TEST_MARKET")  # neutral default
+    rules = to_rules(IN_NSE_PROFILE)
+    composition = record_composition(
+        ModelBundle(_live_models_bundle()), GateLimits(), RebalanceSchedule()
+    )
     universe_list = [s.strip() for s in universe.split(",") if s.strip()]
     try:
         ledger_path = create_fund(
             name, base=base,
-            created=date.fromisoformat(created) if created else date.today(),
+            created=date.fromisoformat(created) if created else _today(),
             config_digest="cli-created", rules=rules,
             limitations=limitations, rates_verified=False,
             initial_cash=capital, universe=universe_list,
+            composition=composition,
         )
     except LedgerError as exc:
         _output({"status": "error", "error": str(exc)}, ctx.obj["json_output"])
@@ -360,7 +464,6 @@ def paper_tick(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Execute one paper trading tick (idempotent; fails non-zero)."""
-    from niveshdristi.core.market_rules import MarketRules
     from niveshdristi.engine.advance import ModelBundle, RebalanceSchedule
     from niveshdristi.paper.events import write_heartbeat
     from niveshdristi.paper.fund import tick as run_tick
@@ -377,22 +480,65 @@ def paper_tick(
     # UNIVERSE from the fund header (stored at create), never hardcoded
     from niveshdristi.paper.fund import load_fund
 
+    _check_fund(fund_id, base, ctx)
     header = load_fund(fund_id, base=base).header()
     universe = header.get("universe", [])
     stub_used = any(
         entry.data_status != "live" for entry in registry.entries()
     )  # noted: limitation codes are fixed on the ledger header
     del stub_used
-    candidate = date.fromisoformat(as_of) if as_of else date.today()
-    start_window = candidate - timedelta(days=30)
+
+    _CALENDAR_DAYS_PER_SESSION = 1.5  # UNVALIDATED DEFAULT: ~1.5 calendar
+    # days per trading session (accounts for weekends and holidays)
+
+    candidate = date.fromisoformat(as_of) if as_of else _today()
+    from niveshdristi.paper.composition import compose_from_recorded
+    from niveshdristi.services.rules import rules_from_header
+
+    recorded_comp = header.get("composition")
+    if recorded_comp:
+        models, limits, rebalance = compose_from_recorded(recorded_comp)
+        # FX-I: derive the fetch window from the recorded composition
+        required_sessions = recorded_comp.get(
+            "required_history_sessions", 30
+        )
+        start_window = candidate - timedelta(
+            days=int(required_sessions * _CALENDAR_DAYS_PER_SESSION)
+        )
+    else:
+        models = ModelBundle(_live_models_bundle())
+        limits = GateLimits()
+        rebalance = RebalanceSchedule()
+        start_window = candidate - timedelta(days=30)
+    rules = rules_from_header(fund_id, base)
+    # FX-I: if the fund has fewer ticked sessions than the required
+    # history, emit an insufficient_history event listing each model and
+    # its shortfall. The provider's actual row count depends on the fetch
+    # window; a simple comparison suffices.
+    _insufficient: list[dict] = []
+    if recorded_comp:
+        required_hist = recorded_comp.get("required_history_sessions", 0)
+        ticked = len(__import__(
+            "niveshdristi.paper.ledger", fromlist=["PaperLedger"]
+        ).PaperLedger(_fund_paths(fund_id, base).ledger).records())
+        if ticked < required_hist:
+            for m in models.models:
+                mhs = getattr(m, "min_history_sessions", 0)
+                if mhs > 0:
+                    _insufficient.append({
+                        "model_id": m.model_id,
+                        "required": mhs,
+                        "ticked": ticked,
+                        "shortfall": mhs - ticked,
+                    })
     try:
         result = run_tick(
             fund_id, base=base,
-            fetch_bars=lambda universe_, day: _paper_fetch_bars(universe_, start_window),
+            fetch_bars=lambda universe_, day: _paper_fetch_bars(
+                universe_, start_window, day),
             clock_now=candidate,
-            models=ModelBundle(_live_models_bundle()),
-            rules=MarketRules(market_id="TEST_MARKET"),
-            limits=GateLimits(), rebalance=RebalanceSchedule(),
+            models=models, rules=rules,
+            limits=limits, rebalance=rebalance,
             universe=universe, tax_enabled=False,
         )
     except Exception as exc:  # noqa: BLE001 - amendment F: halt on any tick exception
@@ -416,6 +562,10 @@ def paper_tick(
         last_tick=result["outcome"],
     )
     _events_log(fund_id, base).append("tick", fund_id=fund_id, **result)
+    if _insufficient:
+        _events_log(fund_id, base).append(
+            "insufficient_history", fund_id=fund_id, models=_insufficient
+        )
     if result["outcome"] == "failure":
         _output({"status": "failure", **result}, ctx.obj["json_output"])
         raise typer.Exit(code=1)
@@ -429,14 +579,23 @@ def paper_status(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Show paper fund status."""
-    from niveshdristi.paper.fund import load_fund
     from niveshdristi.paper.killswitch import is_halted
 
-    ledger = load_fund(fund_id, base=base)
+    ledger = _check_fund(fund_id, base, ctx)
     header = ledger.header()
     halted, halt_reason = is_halted(_fund_paths(fund_id, base), fund_id=fund_id)
     last = ledger.last_session_date()
     records = ledger.records()
+
+    comp = header.get("composition", {})
+    required_hist = comp.get("required_history_sessions")
+    warming = (
+        {"required": required_hist, "ticked": len(records),
+         "status": ("warming up (" + str(len(records)) + " of "
+                    + str(required_hist) + " sessions)")
+                    if len(records) < required_hist else "active"}
+        if required_hist else None
+    )
     _output({
         "fund_id": fund_id,
         "last_session": last.isoformat() if last else None,
@@ -444,6 +603,7 @@ def paper_status(
         "halted": halted,
         "halt_reason": halt_reason or None,
         "limitations": header["limitation_codes"],
+        "warming_up": warming,
         "rates_verified": header["rates_verified"],
         "rates_banner": "" if header["rates_verified"] else "RATES UNVERIFIED",
     }, ctx.obj["json_output"])
@@ -475,9 +635,14 @@ def paper_halt(
     """Halt paper fund (kill switch)."""
     from niveshdristi.paper.killswitch import halt
 
+    # F5: the session stamped into the persisted flag is DATA-DERIVED (the
+    # ledger's last session; the created date when the ledger is empty),
+    # never the wall clock.
+    ledger = _check_fund(fund_id, base, ctx)
+    stamp = ledger.last_session_date() or _today()
     payload = halt(
         _fund_paths(fund_id, base), fund_id=fund_id, reason=reason,
-        session=date.today(), event_id=f"halt-{fund_id}",
+        session=stamp, event_id=f"halt-{fund_id}",
     )
     _events_log(fund_id, base).append("halt", **payload)
     _output({"status": "halted", **payload}, ctx.obj["json_output"])
@@ -493,6 +658,7 @@ def paper_resume(
     """Resume halted paper fund."""
     from niveshdristi.paper.killswitch import KillSwitchResumeError, resume
 
+    _check_fund(fund_id, base, ctx)
     try:
         resume(_fund_paths(fund_id, base), note=note)
     except KillSwitchResumeError as exc:
@@ -509,9 +675,7 @@ def paper_verify(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """Verify the ledger hash chain (loud failure names the line)."""
-    from niveshdristi.paper.ledger import PaperLedger
-
-    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+    ledger = _check_fund(fund_id, base, ctx)
     problems = ledger.verify()
     if problems:
         _output({"status": "failed", "problems": problems}, ctx.obj["json_output"])
@@ -531,13 +695,29 @@ def paper_replay(
     """Replay stored snapshots through advance() and compare with the ledger."""
     from niveshdristi.engine.advance import ModelBundle as MB
     from niveshdristi.engine.advance import RebalanceSchedule as RS
+    from niveshdristi.paper.composition import compose_from_recorded
     from niveshdristi.paper.replay import replay_fund
     from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
 
+    _check_fund(fund_id, base, ctx)
+    header = __import__(
+        "niveshdristi.paper.ledger", fromlist=["PaperLedger"]
+    ).PaperLedger(_fund_paths(fund_id, base).ledger).header()
+    recorded = header.get("composition")
+    if recorded:
+        models, limits, rebalance = compose_from_recorded(recorded)
+        composition_recorded = True
+    else:
+        models = MB(_live_models_bundle())
+        limits = GLimits()
+        rebalance = RS()
+        composition_recorded = False
+        print("WARNING: fund has no recorded composition; replay uses the "
+              "CURRENT composition and may not match.", file=sys.stderr)
     result = replay_fund(
-        fund_id, base=base, models=MB(_live_models_bundle()),
-        limits=GLimits(), rebalance=RS(),
+        fund_id, base=base, models=models, limits=limits, rebalance=rebalance,
     )
+    result["composition_recorded"] = composition_recorded
     _output(result, ctx.obj["json_output"])
     if not result.get("byte_identical", False):
         raise typer.Exit(code=1)
@@ -549,24 +729,51 @@ def paper_recover(
     fund_id: str = typer.Argument(..., help="Fund ID"),
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
-    """OPERATOR: rebuild the broker cache from the ledger (never called by tick)."""
-    from niveshdristi.paper.fund import FundState, _write_cache_atomic
-    from niveshdristi.paper.ledger import PaperLedger
+    """OPERATOR: rebuild the broker cache from the ledger (never called by
+    tick). R9a: re-derives the pending decision by dry-running the last
+    session from its stored snapshot (hash-checked against the ledger)."""
+    from niveshdristi.engine.advance import ModelBundle as MB
+    from niveshdristi.engine.advance import RebalanceSchedule as RS
+    from niveshdristi.paper.fund import recover_fund
 
-    ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
-    records = ledger.records()
-    last_session = (
-        date.fromisoformat(records[-1]["session_date"])
-        if records else date(1970, 1, 1)
+    _check_fund(fund_id, base, ctx)
+    from niveshdristi.portfolio.risk_gates import GateLimits as GLimits
+
+    result = recover_fund(
+        _fund_paths(fund_id, base),
+        models=MB(_live_models_bundle()),
+        rules=_market_rules_from_header(fund_id, base),
+        limits=GLimits(),
+        rebalance=RS(),
     )
-    fund = FundState(cash=float(records[-1]["cash_after"]) if records else 0.0)
-    _write_cache_atomic(
-        _fund_paths(fund_id, base).broker_cache,
-        type("R", (), {"session_date": last_session})(),
-        fund,
-    )
-    _events_log(fund_id, base).append("recover", fund_id=fund_id)
-    _output({"status": "recovered", "records": len(records)}, ctx.obj["json_output"])
+    _events_log(fund_id, base).append("recover", fund_id=fund_id, **result)
+    _output({"status": "recovered", **result}, ctx.obj["json_output"])
+
+
+@paper_app.command("prune-snapshots")
+def paper_prune_snapshots(
+    ctx: typer.Context,
+    fund_id: str = typer.Argument(..., help="Fund ID"),
+    keep_last: int = typer.Option(60, "--keep-last",
+                                  help="Sessions whose snapshots survive"),
+    apply: bool = typer.Option(False, "--apply",
+                               help="REQUIRED to delete (dry-run by default)"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+):
+    """OPERATOR: delete snapshot dirs older than the last --keep-last
+    sessions to bound disk usage. TRADE-OFF: replay of pruned sessions is
+    impossible (reported explicitly as 'snapshots unavailable'). The
+    ledger, header, decision sidecars, cache, halt and heartbeat files are
+    NEVER touched. Dry-run is the default."""
+    from niveshdristi.paper.retention import prune_snapshots
+
+    _check_fund(fund_id, base, ctx)
+    result = prune_snapshots(fund_id, base=base, keep_last=keep_last,
+                             apply=apply)
+    _events_log(fund_id, base).append(
+        "prune-snapshots", fund_id=fund_id, **result)
+    _output({"status": "applied" if result["applied"] else "dry-run",
+             **result}, ctx.obj["json_output"])
 
 
 @paper_app.command("unlock")
@@ -576,11 +783,133 @@ def paper_unlock(
     base: str | None = typer.Option(None, "--base", help="Funds directory"),
 ):
     """OPERATOR: remove a stale tick lock (logged)."""
+    _check_fund(fund_id, base, ctx)
     lock = _fund_paths(fund_id, base).root / "tick.lock"
     if lock.exists():
         lock.unlink()
     _events_log(fund_id, base).append("unlock", fund_id=fund_id)
     _output({"status": "unlocked"}, ctx.obj["json_output"])
+
+
+@paper_app.command("explain")
+def paper_explain(
+    ctx: typer.Context,
+    fund_id: str = typer.Argument(..., help="Fund ID"),
+    session: str = typer.Option(..., "--session", help="Session date (YYYY-MM-DD)"),
+    base: str | None = typer.Option(None, "--base", help="Funds directory"),
+    provider: str = typer.Option("fake", "--provider", help="LLM provider (registered only)"),
+    model: str = typer.Option("fake-model", "--model", help="Model id (unverified; VERIFY note)"),
+    cache_dir: str | None = typer.Option(None, "--cache-dir", help="Response cache directory"),
+):
+    """Educational explanation of a stored session (R2: evidence text only).
+
+    Builds evidence from the stored SessionRecord, calls the LLM through
+    make_llm with the safety pipeline (delimited data blocks, redaction by
+    default) and prints a validated, cited, disclaimed explanation. ANY
+    failure degrades to a clear no-op (R11); the LLM never enters the
+    trading path (R1/R10).
+    """
+    from datetime import date as _date
+
+    from niveshdristi.llm import (
+        Budget,
+        EvidenceItem,
+        RunBudget,
+        data_block,
+        make_llm,
+        run_llm,
+    )
+    from niveshdristi.llm.safety import SYSTEM_RULES, redact
+    from niveshdristi.paper.ledger import LedgerError, PaperLedger
+
+    try:
+        ledger = PaperLedger(_fund_paths(fund_id, base).ledger)
+        record = next(
+            (r for r in ledger.records()
+             if r.get("session_date") == session),
+            None,
+        )
+    except LedgerError as exc:
+        _output({
+            "status": "no-op",
+            "detail": str(exc),
+            "next_step": f"run `nd paper create {fund_id}` or "
+                         "`nd paper list` to see available funds",
+        }, ctx.obj["json_output"])
+        return
+    if record is None:
+        _output(
+            {"status": "no-op", "detail": f"no stored session {session}"},
+            ctx.obj["json_output"],
+        )
+        return
+
+    evidence = (
+        EvidenceItem(id="session_date", text=f"session date {session}"),
+        EvidenceItem(
+            id="cash_after",
+            text="cash after the session (rupees)",
+            numbers=(float(record["cash_after"]),),
+        ),
+        EvidenceItem(
+            id="equity_after",
+            text="equity after the session (rupees)",
+            numbers=(float(record["equity_after"]),),
+        ),
+        EvidenceItem(
+            id="fill_count",
+            text="number of fills this session",
+            numbers=(float(len(record.get("fills", []))),),
+        ),
+    )
+    raw_text = json.dumps(record, sort_keys=True, default=str)
+    # R6 + F13: redact fund id, cash, equity/NAV, EVERY fill/position
+    # quantity and price, and any path (no opt-in flags are exposed in this
+    # command). DOCUMENTED FAIL-SAFE: with everything portfolio-specific
+    # redacted, the explain feature currently yields little numeric value
+    # by design — the model never sees the numbers it must cite.
+    # redact() takes ONE literal per category, so multi-value categories
+    # (quantities, prices) are applied as sequential literal removals and
+    # redact(raw_text, {}) finishes with the unconditional secret scrub.
+    outgoing = redact(raw_text, {
+        "fund_ids": fund_id,
+        "cash": str(record["cash_after"]),
+        "nav": str(record["equity_after"]),
+        "paths": str(_fund_paths(fund_id, base).root),
+    })
+    multi: list[tuple[str, str]] = [("cash", str(record["cash_after"]))]
+    for fill in record.get("fills", []) or []:
+        if fill.get("fill_price") is not None:
+            multi.append(("quantities", str(fill["fill_price"])))
+        if fill.get("filled_quantity") is not None:
+            multi.append(("quantities", str(fill["filled_quantity"])))
+    for pos in record.get("positions_after", []) or []:
+        if pos.get("market_value") is not None:
+            multi.append(("nav", str(pos["market_value"])))
+        if pos.get("shares") is not None:
+            multi.append(("quantities", str(pos["shares"])))
+    for category, literal in multi:
+        if literal and literal in outgoing:
+            outgoing = outgoing.replace(literal, f"[REDACTED:{category}]")
+    outgoing = redact(outgoing, {})  # unconditional secret scrub
+    llm = make_llm(provider, model)
+    outcome = run_llm(
+        llm,
+        data_blocks=(data_block("session_record", outgoing),),
+        evidence=evidence,
+        model_id=model,
+        as_of=_date.fromisoformat(session),  # caller-supplied, from the record
+        budget=Budget(),
+        run=RunBudget(Budget()),
+        cache_dir=cache_dir,
+        extra_system=SYSTEM_RULES,
+    )
+    payload: dict[str, Any] = {"status": outcome.status}
+    if outcome.view is not None:
+        payload["view"] = outcome.view.model_dump(mode="json")
+    if outcome.detail:
+        payload["detail"] = outcome.detail
+    _output(payload, ctx.obj["json_output"])
 
 
 # ============================================================

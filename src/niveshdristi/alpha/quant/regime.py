@@ -21,6 +21,7 @@ from datetime import UTC, date, datetime
 
 import polars as pl
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -53,6 +54,7 @@ def _truncate_aux(frame: pl.DataFrame, as_of: date) -> pl.DataFrame:
 
 
 class RegimeModel:
+    min_history_sessions = TREND_WINDOW + 1  # 61 rows (but needs aux data too)
     """Evidence-only trend/vol regime classifier (NEW)."""
 
     @property
@@ -82,7 +84,7 @@ class RegimeModel:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=stamp,
                     conviction=0.0,  # evidence-only: regime is context, not a view

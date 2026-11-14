@@ -2,6 +2,7 @@
 provider via monkeypatch — never network)."""
 
 import json
+from datetime import date
 
 import polars as pl
 import pytest
@@ -49,7 +50,7 @@ def fake_provider(monkeypatch):
     legacy 200-session warmup is satisfied."""
     frames = _fake_frames(_long_dates())
 
-    def fake_fetch(universe, day):
+    def fake_fetch(universe, start, end):
         return frames
 
     monkeypatch.setattr(
@@ -115,7 +116,7 @@ class TestPaperCLI:
         assert ledger.read_bytes() == before  # byte-for-byte unchanged
 
     def test_tick_provider_failure_exit_1_no_halt(self, tmp_path, monkeypatch):
-        def failing(universe, day):
+        def failing(universe, start, end):
             raise ConnectionError("provider down")
 
         monkeypatch.setattr("niveshdristi.cli.main._paper_fetch_bars", failing)
@@ -215,3 +216,237 @@ class TestPaperCLI:
         data = json.loads(r.output)
         assert data["rates_banner"] == "RATES UNVERIFIED" or data["rates_verified"]
         assert len(data["limitations"]) > 0
+
+
+class TestPaperExplain:
+    """P7-S5: `nd paper explain` — validated, cited, disclaimed, degrading."""
+
+    @staticmethod
+    def _seed(tmp_path, fake_provider):
+        """A ticked fund using the shared fake-provider fixture (no network)."""
+        create = runner.invoke(app, [
+            "--json", "paper", "create", "paper_test", "--created",
+            "2026-10-01", "--universe", "SYN090,SYN091", "--base", str(tmp_path),
+        ])
+        assert create.exit_code == 0, create.output
+        tick = runner.invoke(app, [
+            "--json", "paper", "tick", "paper_test", "--as-of", "2026-10-02",
+            "--base", str(tmp_path),
+        ])
+        assert tick.exit_code == 0, tick.output
+
+    def test_explain_degrades_cleanly_with_default_fake(self, tmp_path, fake_provider):
+        """The factory FakeLLM outputs '{}' — schema-invalid — so the
+        command must print a DEGRADED no-op, exit 0 (R11)."""
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["status"] == "degraded"
+        assert "LlmSchemaError" in data["detail"]
+
+    def test_explain_no_such_session_is_noop(self, tmp_path, fake_provider):
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "1999-01-01",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["status"] == "no-op"
+        assert "1999-01-01" in data["detail"]
+
+    def test_explain_ok_with_scripted_provider(self, tmp_path, fake_provider,
+                                               monkeypatch):
+        """A scripted provider whose output is grounded in the CLI's
+        evidence (no numbers -> always traceable) prints a validated view
+        carrying the official disclaimer and the session as_of."""
+        from niveshdristi.llm.factory import PROVIDER_REGISTRY
+        from niveshdristi.llm.fake import FakeLLM
+
+        class ScriptedFake(FakeLLM):
+            def __init__(self, **kw):
+                super().__init__([(
+                    '{"summary": "session summary", "claims": [{"text": '
+                    '"no fills this session", "evidence_ids": ["fill_count"]}]}'
+                )], **kw)
+
+        monkeypatch.setitem(PROVIDER_REGISTRY, "fake", ScriptedFake)
+        self._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["status"] == "ok", data
+        view = data["view"]
+        assert "NOT investment advice" in view["disclaimer"]
+        assert view["as_of"] == "2026-10-02"  # session date, NOT the clock
+        assert view["claims"][0]["evidence_ids"] == ["fill_count"]
+
+    def test_explain_unknown_fund_is_noop(self, tmp_path, fake_provider):
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "ghost_fund", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0
+        assert json.loads(result.output)["status"] == "no-op"
+
+
+class TestOutgoingDataProof:
+    """R8 1d: the EXACT prompt text the explain flow would send (after
+    redaction) contains none of: holdings, quantities, cash, NAV, fund id,
+    filesystem paths, secret-looking strings. NOTE (documented, not
+    loosened): the evidence numbers live only in the VALIDATOR — the
+    provider never sees them — so a live model cannot cite numbers it never
+    received; redaction wins over usefulness."""
+
+    def test_explain_prompt_after_redaction_is_clean(self, tmp_path,
+                                                      fake_provider,
+                                                      monkeypatch):
+        from niveshdristi.llm.fake import FakeLLM
+
+        class RecordingFake(FakeLLM):
+            pass  # FakeLLM.records already keeps every request
+
+        import niveshdristi.llm as llm_pkg
+
+        created = []
+        real_make = llm_pkg.make_llm
+
+        def capturing(provider, model):
+            inst = real_make(provider, model)
+            created.append(inst)
+            return inst
+
+        monkeypatch.setattr(llm_pkg, "make_llm", capturing)
+        TestPaperExplain._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        assert created, "the flow must have built an LLM"
+        assert created[0].requests, "the flow must have built a request"
+        request = created[0].requests[0]
+        prompt_text = request.system_prompt + "\n" + "\n".join(request.data_blocks)
+        print("EXACT OUTGOING PROMPT (after redaction):")
+        print(prompt_text)
+        for sentinel in (
+            "paper_test",                     # fund id
+            "1000000.0",                      # cash value
+            str(tmp_path),                    # filesystem path
+            "sk-or-v1-",                      # secret-looking
+            "holdings", "quantity",           # category words (defensive)
+        ):
+            assert sentinel not in prompt_text, sentinel
+
+
+class TestClockF5:
+    """F5: every wall-clock read in cli/ goes through main._today(); the
+    halt flag's session is DATA-DERIVED (last ledger session, else the
+    created date), never the wall clock."""
+
+    def test_halt_session_is_ledger_derived_not_wall_clock(self, tmp_path,
+                                                           fake_provider,
+                                                           monkeypatch):
+        import niveshdristi.cli.main as cm
+
+        # the clock helper must not be touched at all during halt
+        def boom():
+            raise AssertionError("wall clock read during halt")
+
+        monkeypatch.setattr(cm, "_today", boom)
+        TestPaperExplain._seed(tmp_path, fake_provider)  # ledger has 2026-10-02
+        result = runner.invoke(app, [
+            "--json", "paper", "halt", "paper_test", "--base", str(tmp_path),
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["session"] == "2026-10-02"  # ledger-derived
+
+    def test_halt_session_falls_back_to_created_when_ledger_empty(self, tmp_path,
+                                                                  fake_provider,
+                                                                  monkeypatch):
+        import niveshdristi.cli.main as cm
+
+        monkeypatch.setattr(cm, "_today", lambda: date(2026, 1, 1))
+        runner.invoke(app, ["--json", "paper", "create", "empty_f",
+                            "--created", "2026-01-01",
+                            "--universe", "SYN090,SYN091", "--base", str(tmp_path)])
+        result = runner.invoke(app, [
+            "--json", "paper", "halt", "empty_f", "--base", str(tmp_path),
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        # empty ledger -> the created date (also 2026-01-01 here); the point
+        # is that it is NOT today's real date
+        assert payload["session"] in ("2026-01-01",)
+
+    def test_all_clock_reads_routed_through_today(self):
+        import re
+        from pathlib import Path
+
+        src = (Path(__file__).resolve().parent.parent / "src" / "niveshdristi"
+               / "cli" / "main.py").read_text(encoding="utf-8")
+        lines = src.splitlines()
+        # the ONLY allowed wall-clock read is inside the _today() helper
+        helper_span = set()
+        for i, line in enumerate(lines):
+            if "def _today" in line:
+                helper_span.update(range(i, i + 4))
+        uses = [
+            (i, line) for i, line in enumerate(lines, 1)
+            if re.search(r"\bdate\.today\(\)|\bdatetime\.now\(", line)
+            and (i - 1) not in helper_span
+        ]
+        assert uses == [], uses
+
+
+class TestExplainSentinelsF13:
+    """F13 (R9c decision): fill and position quantities/prices are redacted
+    from the explain prompt, and the fail-safe is documented — with
+    everything portfolio-specific redacted, the explain feature yields
+    little numeric value BY DESIGN."""
+
+    def test_fill_price_and_quantity_redacted(self, tmp_path, fake_provider,
+                                              monkeypatch):
+        import niveshdristi.llm as llm_pkg
+
+        created = []
+        real = llm_pkg.make_llm
+
+        def cap(p, m):
+            inst = real(p, m)
+            created.append(inst)
+            return inst
+
+        monkeypatch.setattr(llm_pkg, "make_llm", cap)
+        TestPaperExplain._seed(tmp_path, fake_provider)
+        result = runner.invoke(app, [
+            "--json", "paper", "explain", "paper_test", "--base",
+            str(tmp_path), "--session", "2026-10-02",
+        ])
+        assert result.exit_code == 0, result.output
+        assert created
+        assert created[0].requests
+        prompt = created[0].requests[0].system_prompt + "".join(
+            created[0].requests[0].data_blocks)
+        # no raw share quantity / fill price survives: every integer share
+        # count in the ledger record must be behind a [REDACTED:*] tag
+        import json as _json
+        ledger_line = [
+            x for x in (tmp_path / "paper_test" / "ledger.jsonl")
+            .read_text(encoding="utf-8").splitlines() if "session_date" in x
+        ][-1]
+        record = _json.loads(ledger_line)
+        for fill in record.get("fills", []):
+            assert str(fill["filled_quantity"]) not in prompt
+            assert str(fill["fill_price"]) not in prompt
+        for pos in record.get("positions_after", []):
+            assert str(pos["shares"]) not in prompt
+            assert str(pos["market_value"]) not in prompt

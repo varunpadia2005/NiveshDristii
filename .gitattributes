@@ -1,0 +1,10 @@
+# Normalization policy (P10-S1, D1-proven in a throwaway clone):
+# - normalize all text files on commit (text=auto) — no forced eol, so
+#   Windows checkouts keep native CRLF and the legacy tests' rewrites stay
+#   byte-identical to the committed blobs on every platform;
+# - binary artifacts never normalized.
+* text=auto
+*.parquet binary
+*.png binary
+*.jpg binary
+*.ico binary

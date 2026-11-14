@@ -13,7 +13,19 @@ repository registers a scheduled task automatically.
 ## The command the scheduled task runs
 
 ```
-"C:\Path\To\Python313\python.exe" -m niveshdristi.cli paper tick <fund-id> --base "D:\funds"
+"C:\Path\To\Python313\python.exe" -m niveshdristi.cli paper tick <fund-id> --base "D:\funds" --as-of <YYYY-MM-DD>
+```
+
+Notes (F4):
+- The module entry point is `niveshdristi.cli` (a `__main__` shim added in F4);
+  `python -m niveshdristi.cli.main` also works. Both require the working
+  directory ("Start in" in Task Scheduler) to be the REPO ROOT: config.yaml
+  and universes/ are loaded with CWD-RELATIVE paths at import time, so even
+  `--help` fails from any other directory.
+- `--as-of` is optional; when omitted the tick uses the system date
+  (cli/main.py). Pass it explicitly for reproducible runs.
+```
+
 ```
 
 Replace the python path with your interpreter (find it with
@@ -84,3 +96,45 @@ exist in Phase 6: execution is PaperBroker only. The paper fund can never
 be labelled promotable — the DataLimitations banner on every report lists
 the standing limitations (unverified rates, approximate universe,
 derived calendar, adjusted-price basis, unavailable corporate actions).
+
+## Alignment convention for the backtest-vs-paper equality test (R8)
+
+The paper fund defers its first assessment: a fund created on date D
+assesses from D+1. A backtest over the same frames assesses from the first
+data session. For the records to correspond one-to-one, the test fund is
+created the day BEFORE the first data session. Matching is by session_date
+(no session is silently skipped: the test asserts
+backtest_sessions == paper_sessions + (data sessions after the last ticked
+one) + (data sessions on/before the created date)). The paper tick's
+catch-up is capped at 10 sessions, so long histories are ticked once per
+session in a loop.
+
+## Verification (that the task exists and last ran)
+
+```powershell
+schtasks /query /tn "NiveshDristiTick" /v /fo LIST
+```
+
+Also check `<base>/<fund-id>/heartbeat.json` (mtime) and
+`nd paper status` (last_session). Run the task once manually from the
+Task Scheduler UI ("Run") before trusting the schedule.
+
+## Snapshot retention trade-off
+
+`nd paper prune-snapshots --keep-last 60 --apply` (P10-S6) deletes the
+as-of snapshot parquet files of all but the last 60 sessions to bound
+disk usage. TRADE-OFF: `nd paper replay` can only verify sessions whose
+snapshots survive — pruned sessions are reported explicitly as
+"snapshots unavailable" (never a silent pass). The LEDGER is never
+pruned. If you need full-history replay, do not prune (or raise
+--keep-last).
+
+
+## Exit-code contract (FX-D)
+
+`nd paper explain` is display-only: it exits 0 on ANY failure (missing
+fund, no stored session, LLM error) and returns a no-op JSON payload
+(R11: LLM-layer failures degrade to a logged no-op and never raise).
+Every other fund-taking subcommand (status, verify, replay, tick, halt,
+resume, recover, unlock, prune-snapshots) exits 1 on a missing fund with
+a clean JSON error payload suggesting `nd paper create`.

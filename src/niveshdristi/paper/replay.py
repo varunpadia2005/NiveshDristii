@@ -30,6 +30,7 @@ def replay_fund(
     models: ModelBundle,
     limits: Any,
     rebalance: RebalanceSchedule,
+    return_fund: bool = False,
 ) -> dict:
     """Replay the ledger sessions from stored snapshots; compare hashes."""
     paths = FundPaths(base).for_fund(fund_id)
@@ -58,7 +59,8 @@ def replay_fund(
             comparisons.append({
                 "session": session.isoformat(),
                 "match": None,
-                "note": "no stored snapshot (tick predates snapshots)",
+                "note": "snapshots unavailable for this session "
+                           "(pruned or tick predates snapshots)",
             })
             byte_identical = False
             continue
@@ -98,7 +100,13 @@ def replay_fund(
             comparisons[-1]["regenerated_hash"] = regenerated_hash
             comparisons[-1]["stored_hash"] = stored_hash
 
-    return {
+    result = {
         "byte_identical": byte_identical,
         "sessions": comparisons,
     }
+    if return_fund:
+        # R9a: the replay's final FundState carries the pending decision
+        # created at the last session — recover() uses it to rebuild the
+        # cache deterministically.
+        result["final_fund"] = fund
+    return result

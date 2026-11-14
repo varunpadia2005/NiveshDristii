@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from niveshdristi.alpha.currency import currency_for_market
 from niveshdristi.core.alpha import AlphaModel, AsOfContext, ModelInputs, ModelRegistryEntry
 from niveshdristi.core.instrument import Instrument
 from niveshdristi.core.signal import Signal
@@ -22,6 +23,7 @@ HORIZON_DAYS = 60
 
 
 class QualityValue:
+    min_history_sessions = 0  # stub: needs PIT records, not price history
     """Two-leg quality/value score over PIT records (NEW, stub)."""
 
     @property
@@ -49,7 +51,7 @@ class QualityValue:
                         symbol=symbol,
                         exchange=ctx.market_id,
                         market_id=ctx.market_id,
-                        currency="XXX",
+                        currency=currency_for_market(ctx.market_id),
                     ),
                     as_of=stamp,
                     conviction=round(conviction, 6),

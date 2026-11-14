@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -127,17 +128,60 @@ def main() -> int:
         "backtest", "data", "signals", "indicators", "app", "api",
         "fundamentals", "genai", "regime"
     ]
+    # P10-S4 (near-miss follow-up): the COMPLETE frozen list - the nine
+    # legacy folders, the THREE frozen legacy tests, AND tests/fixtures
+    # (the bhavcopy fixture csv is the ONE documented exception: its
+    # committed content is the legacy tests' deterministic rewrite output,
+    # required for G18; recorded in docs/PROGRESS.md).
+    frozen_tests = ["tests/test_characterization.py", "tests/test_imports.py",
+                    "tests/create_fixtures.py"]
     diff_args = ["git", "diff", "--diff-filter=MD", "--name-only", "82f76d8", "HEAD"]
     for folder in legacy_folders:
         diff_args.extend(["--", f"src/niveshdristi/{folder}"])
-    diff_args.extend(["--", "tests/test_characterization.py"])
+    for ft in frozen_tests:
+        diff_args.extend(["--", ft])
+    diff_args.extend(["--", "tests/fixtures"])
 
     result = run(diff_args, cwd=repo_root)
-    if result.stdout.strip():
-        fail("G03", f"Legacy folders have changes:\n{result.stdout}")
+    _documented = ("tests/fixtures/"
+                   "bhavcopy_SYNTHETIC_sec_bhavdata_full.csv")
+    changed = [line for line in result.stdout.strip().splitlines()
+               if line.strip() and line.strip() != _documented]
+    if changed:
+        fail("G03", "Legacy folders have changes:\n" + "\n".join(changed))
         fails += 1
     else:
-        pass_("G03", "Legacy contract intact")
+        pass_("G03", "Legacy contract intact (complete frozen list)")
+
+    # P10-S4: secrets — no TRACKED file may contain key-shaped strings
+    # outside the documented placeholders (docs/VERIFY + tests). Raw-grep
+    # fail-proof: the pattern list itself catches a planted key.
+    import re as _re
+    import subprocess as _sp
+
+    _key_re = "sk-or-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}"
+    tracked = _sp.run(["git", "ls-files"], cwd=repo_root, capture_output=True,
+                      text=True).stdout.splitlines()
+    # test files PLANT fake keys by design (redaction/secret tests, P7/P8);
+    # the scan therefore covers everything EXCEPT tests/
+    hits = []
+    for rel in tracked:
+        if rel.startswith("tests/"):
+            continue
+        fp = repo_root / rel
+        if not fp.is_file() or fp.suffix in {".parquet", ".png", ".ico"}:
+            continue
+        try:
+            content = fp.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _re.search(_key_re, content):
+            hits.append(rel)
+    if hits:
+        fail("G19", f"key-shaped strings in tracked files: {hits}")
+        fails += 1
+    else:
+        pass_("G19", "No key-shaped strings in tracked files")
 
     # Also check for additions (diff without --diff-filter=MD)
     result = run(["git", "diff", "82f76d8", "HEAD", "--"] +
@@ -163,14 +207,40 @@ def main() -> int:
                 phase0_tools_ok = False
                 fails += 1
                 continue
-            h0 = hashlib.md5(p0.read_bytes()).hexdigest()
-            h1 = hashlib.md5(p1.read_bytes()).hexdigest()
+            # F8: compare LF-NORMALIZED content so a clean clone's CRLF
+            # checkout is not a false mismatch; any real content difference
+            # still fails (the fail-proof below verifies both directions).
+            def _norm(b: bytes) -> bytes:
+                return b.replace(b"\r\n", b"\n")
+
+            h0 = hashlib.md5(_norm(p0.read_bytes())).hexdigest()
+            h1 = hashlib.md5(_norm(p1.read_bytes())).hexdigest()
             if h0 != h1:
                 fail("G03b", f"md5 mismatch for tools/{name}: phase0={h0} repo={h1}")
                 phase0_tools_ok = False
                 fails += 1
             else:
                 pass_("G03b", f"tools/{name} md5 match: {h0}")
+
+    # F8 fail-proof: the normalizer must (a) make a CRLF-only difference
+    # compare EQUAL and (b) still catch a real content difference.
+    if phase0_root:
+        _same_lf = b"a = 1\nb = 2\n"
+        _same_crlf = b"a = 1\r\nb = 2\r\n"
+        _different = b"a = 1\nb = 3\n"
+        _n = lambda b: b.replace(b"\r\n", b"\n")  # noqa: E731 - gate-local
+        crlf_only_ok = hashlib.md5(_n(_same_lf)).hexdigest() == hashlib.md5(
+            _n(_same_crlf)
+        ).hexdigest()
+        real_diff_caught = hashlib.md5(_n(_same_lf)).hexdigest() != hashlib.md5(
+            _n(_different)
+        ).hexdigest()
+        if crlf_only_ok and real_diff_caught:
+            pass_("G03b", "F8 fail-proof: CRLF-only passes, real diff caught")
+        else:
+            fail("G03b", f"F8 fail-proof broken: crlf_only_ok={crlf_only_ok}, "
+                         f"real_diff_caught={real_diff_caught}")
+            fails += 1
 
     # G04: Config equality - MD5 match
     print("\n=== G04: Config equality ===")
@@ -272,7 +342,6 @@ def main() -> int:
     # G06: pytest results (derived from the single shared run)
     print("\n=== G06: Pytest results ===")
     assert shared_pytest is not None
-    import re
     collected_m = re.search(r"collected (\d+) items?", shared_pytest.stdout)
     collected = int(collected_m.group(1)) if collected_m else 0
 
@@ -297,6 +366,7 @@ def main() -> int:
                 skipped = int(skipped_m.group(1))
             break
 
+    # P10-S2: back to ONE strict xfail (consistent with G15).
     if failed == 0 and errors == 0 and skipped == 0 and xfailed == 1 and passed >= 110 and collected >= 111:
         pass_("G06", f"collected={collected} passed={passed} failed={failed} errors={errors} xfailed={xfailed} skipped={skipped}")
     else:
@@ -341,6 +411,8 @@ def main() -> int:
         "src/niveshdristi/cli", "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
         "src/niveshdristi/markets/in_nse/models", "src/niveshdristi/portfolio",
         "src/niveshdristi/execution", "src/niveshdristi/paper",
+        "src/niveshdristi/llm", "src/niveshdristi/services",
+        "src/niveshdristi/ui",
     ):
         g08_files.extend((repo_root / d).glob("*.py"))
     g08_files.append(repo_root / "src/niveshdristi/config_loader.py")
@@ -403,6 +475,8 @@ def main() -> int:
             "src/niveshdristi/portfolio",
             "src/niveshdristi/execution",
             "src/niveshdristi/paper",
+            "src/niveshdristi/llm", "src/niveshdristi/services",
+            "src/niveshdristi/ui",
         ],
     )
     core_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/core/")]
@@ -413,14 +487,19 @@ def main() -> int:
     pf_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/portfolio/")]
     ex_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/execution/")]
     pp_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/paper/")]
+    llm_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/llm/")]
+    svc_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/services/")]
+    ui_issues = [i for i in issues if _rel_posix(i["file"]).startswith("src/niveshdristi/ui/")]
     if (
         core_issues or engine_issues or md_issues or alpha_issues or in_models
-        or pf_issues or ex_issues or pp_issues
+        or pf_issues or ex_issues or pp_issues or llm_issues or svc_issues
+        or ui_issues
     ):
-        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)} execution={len(ex_issues)} paper={len(pp_issues)}")
+        fail("G10", f"Neutral zones have findings: core={len(core_issues)} engine={len(engine_issues)} marketdata={len(md_issues)} alpha={len(alpha_issues)} in_nse_models={len(in_models)} portfolio={len(pf_issues)} execution={len(ex_issues)} paper={len(pp_issues)} llm={len(llm_issues)} services={len(svc_issues)} ui={len(ui_issues)}")
         for i in (
             core_issues + engine_issues + md_issues + alpha_issues + in_models
-            + pf_issues + ex_issues + pp_issues
+            + pf_issues + ex_issues + pp_issues + llm_issues + svc_issues
+            + ui_issues
         )[:10]:
             info("G10", f"  {i['file']}:{i['line']} matched {i['pattern']}")
         fails += 1
@@ -436,28 +515,37 @@ def main() -> int:
         "src/niveshdristi/markets/in_nse/providers/yfinance_adapter.py",
         "src/niveshdristi/markets/in_nse/providers/bhavcopy_file.py",
     }
-    providers_dir = repo_root / "src/niveshdristi/markets/in_nse/providers"
-    if providers_dir.exists():
-        adapter_issues = scan_market_literals(repo_root, scan_dirs=["src/niveshdristi/markets/in_nse/providers"])
-        rogue = sorted(
-            {_rel_posix(i["file"]) for i in adapter_issues} - ADAPTER_ALLOWLIST
-        )
-        if rogue:
-            fail("G10", f"Market literals outside the adapter allowlist: {rogue}")
-            fails += 1
-        else:
-            present = sorted(
-                p.relative_to(repo_root).as_posix()
-                for p in providers_dir.glob("*.py")
-                if p.relative_to(repo_root).as_posix() in ADAPTER_ALLOWLIST
+    US_ADAPTER_ALLOWLIST = {
+        "src/niveshdristi/markets/in_us/providers/us_adapter.py",
+    }
+    for providers_rel, allowlist in (
+        ("src/niveshdristi/markets/in_nse/providers", ADAPTER_ALLOWLIST),
+        ("src/niveshdristi/markets/in_us/providers",
+         US_ADAPTER_ALLOWLIST),
+    ):
+        providers_dir = repo_root / providers_rel
+        if providers_dir.exists():
+            adapter_issues = scan_market_literals(repo_root, scan_dirs=[providers_rel])
+            rogue = sorted(
+                {_rel_posix(i["file"]) for i in adapter_issues} - allowlist
             )
-            pass_("G10", f"Adapter allowlist enforced (present: {present})")
+            if rogue:
+                fail("G10", f"Market literals outside the adapter allowlist ({providers_rel}): {rogue}")
+                fails += 1
+            else:
+                present = sorted(
+                    p.relative_to(repo_root).as_posix()
+                    for p in providers_dir.glob("*.py")
+                    if p.relative_to(repo_root).as_posix() in allowlist
+                )
+                pass_("G10", f"Adapter allowlist enforced ({providers_rel}: {present})")
 
     # Non-vacuity: each scan target must contain scannable files
     for target in (
         "src/niveshdristi/core", "src/niveshdristi/engine", "src/niveshdristi/marketdata",
         "src/niveshdristi/alpha", "src/niveshdristi/markets/in_nse/models",
-        "src/niveshdristi/portfolio",
+        "src/niveshdristi/portfolio", "src/niveshdristi/llm",
+        "src/niveshdristi/services", "src/niveshdristi/ui",
     ):
         scannable = [p for p in (repo_root / target).rglob("*") if p.suffix in SCAN_EXTS]
         if scannable:
@@ -576,7 +664,8 @@ def main() -> int:
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
                   "src/niveshdristi/portfolio", "src/niveshdristi/execution",
-                  "src/niveshdristi/paper",
+                  "src/niveshdristi/paper", "src/niveshdristi/llm",
+                  "src/niveshdristi/services", "src/niveshdristi/ui",
                   "src/niveshdristi/config_loader.py",
                   *test_files], cwd=repo_root)
     if result.returncode == 0:
@@ -592,21 +681,34 @@ def main() -> int:
                   "src/niveshdristi/cli", "src/niveshdristi/engine",
                   "src/niveshdristi/marketdata", "src/niveshdristi/alpha",
                   "src/niveshdristi/portfolio", "src/niveshdristi/execution",
-                  "src/niveshdristi/paper",
+                  "src/niveshdristi/paper", "src/niveshdristi/llm",
+                  "src/niveshdristi/services", "src/niveshdristi/ui",
                   "src/niveshdristi/config_loader.py", *test_files,
                   "--ignore-missing-imports",
                   "--cache-dir", mypy_cache_dir], cwd=repo_root)
     if result.returncode == 0:
-        # Count type: ignore comments
+        # Count type: ignore comments — src/ ONLY. (Before R8 this rglobbed
+        # the whole repo and swept in venv files whose path contains "cli",
+        # e.g. .venv-test/.../pip/_internal/cli/main_parser.py, which is why
+        # the count printed 2 with only 1 real occurrence.)
         ignore_count = 0
-        for f in repo_root.rglob("*.py"):
+        ignore_files: list[str] = []
+        for f in (repo_root / "src").rglob("*.py"):
             if any(p in f.parts for p in ["core", "markets", "cli", "engine", "config_loader.py"]):
                 content = f.read_text(encoding="utf-8")
-                ignore_count += content.count("# type: ignore")
+                n = content.count("# type: ignore")
+                if n:
+                    ignore_count += n
+                    for i, line in enumerate(content.splitlines(), 1):
+                        if "# type: ignore" in line:
+                            ignore_files.append(
+                                f"{f.relative_to(repo_root).as_posix()}:{i}"
+                            )
+        named = ", ".join(ignore_files) if ignore_files else "none"
         if ignore_count <= 10:
-            pass_("G14", f"Mypy clean, type:ignore count={ignore_count}")
+            pass_("G14", f"Mypy clean, type:ignore count={ignore_count} at: {named}")
         else:
-            fail("G14", f"type:ignore count={ignore_count} > 10")
+            fail("G14", f"type:ignore count={ignore_count} > 10 at: {named}")
             fails += 1
     else:
         fail("G14", f"Mypy errors: {result.stdout}")
@@ -623,10 +725,14 @@ def main() -> int:
                 xfail_count += 1
                 if "strict=True" in line:
                     strict_xfail = True
-    if xfail_count == 1 and strict_xfail:
+    # P10-S2: back to exactly ONE approved strict xfail (the 2026-holidays
+    # test); the deferred costs_not_modeled xfail was resolved.
+    approved = 1
+    if xfail_count == approved and strict_xfail:
         pass_("G15", "Exactly one xfail marker, strict=True")
     else:
-        fail("G15", f"xfail_count={xfail_count}, strict={strict_xfail}")
+        fail("G15", f"xfail_count={xfail_count} (expected {approved}), "
+                    f"strict={strict_xfail}")
         fails += 1
 
     # G16: Docs exist, .gitignore contains .venv

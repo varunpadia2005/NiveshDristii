@@ -119,6 +119,16 @@ class MarketProfile:
     tax_model: TaxModel | None = None
 
     # Shorting rules
+    # P8-S4 (NEW, additions only): display formatting owned by the profile.
+    # digit_grouping: "indian" (3-2-2: 1234567.89 -> 12,34,567.89) or
+    # "western" (3-3-3). compact_units: (suffix, divisor) pairs, largest
+    # first; used by services formatting, never hard-coded in ui/.
+    digit_grouping: str = "western"
+    compact_units: tuple = (
+        ("billion", 1_000_000_000),
+        ("million", 1_000_000),
+        ("thousand", 1_000),
+    )
     shorting_allowed: bool = False  # Cash segment shorting
     intraday_shorting_allowed: bool = True  # Intraday only
 

@@ -1103,3 +1103,80 @@ class TestPaperLedger:
         assert "rates_unverified" in header["limitation_codes"]
         assert "python" in header["library_versions"]
         assert "polars" in header["library_versions"]
+
+
+class TestEngineLongOnlyPropertyF1:
+    """F1 (review M6), engine level: over seeded-random signals on synthetic
+    sessions, no position quantity ever goes below zero and no SELL order
+    exceeds holdings."""
+
+    def test_no_negative_positions_random_signals(self):
+        import random
+
+        from niveshdristi.core.alpha import AsOfContext, ModelInputs, ModelRegistryEntry
+        from niveshdristi.core.instrument import Instrument
+        from niveshdristi.core.signal import Signal
+        from niveshdristi.engine.advance import ModelBundle
+        from niveshdristi.engine.backtest import run_backtest
+        from tests.test_alpha import TestRiskGates
+        from tests.test_paper import _momentum_frames
+
+        class RandomConvictionModel:
+            model_id = "random_f1"
+            _rng: random.Random  # typed so mypy accepts the later assignment
+
+            def predict(self, ctx: AsOfContext, inputs: ModelInputs):
+                out = []
+                for symbol in sorted(inputs.prices):
+                    c = self._rng.uniform(-1.0, 1.0)
+                    if abs(c) < 0.05:
+                        continue
+                    out.append(Signal(
+                        instrument=Instrument(
+                            symbol=symbol, exchange=ctx.market_id,
+                            market_id=ctx.market_id, currency="XXX",
+                        ),
+                        as_of=ctx.as_of, conviction=round(c, 6),
+                        horizon_days=5,
+                        thesis="Hypothesis: seeded random synthetic signal.",
+                        evidence={"conviction": round(c, 6)},
+                        model_id=self.model_id,
+                    ))
+                return out
+
+            def registry_entry(self):
+                return ModelRegistryEntry(
+                    model_id=self.model_id, horizon_days=5,
+                    required_data=("prices",), pit_safe=True,
+                    data_status="live",
+                    description="NEW: F1 seeded-random property-test model.",
+                )
+
+        model = RandomConvictionModel()
+        model._rng = random.Random(20261102)  # noqa: SLF001 - test-local
+        frames = _momentum_frames(40)
+        bt = run_backtest(
+            frames, models=ModelBundle([model]), rules=TestRiskGates._rules(),
+            limits=__import__(
+                "niveshdristi.portfolio.risk_gates", fromlist=["GateLimits"]
+            ).GateLimits(max_position_pct=0.6, min_cash_pct=0.0, turnover_max=1.0),
+            rebalance=__import__(
+                "niveshdristi.engine.advance", fromlist=["RebalanceSchedule"]
+            ).RebalanceSchedule(),
+            initial_cash=1_000_000.0, tax_enabled=True,
+        )
+        holdings: dict[str, int] = {}
+        for record in bt.records:
+            for fill in record.fills:
+                sym = fill.order.instrument.symbol
+                qty = fill.filled_quantity
+                if fill.order.side.value.lower() == "sell":
+                    assert holdings.get(sym, 0) >= qty, (
+                        record.session_date, sym, qty, holdings
+                    )
+                    holdings[sym] = holdings.get(sym, 0) - qty
+                else:
+                    holdings[sym] = holdings.get(sym, 0) + qty
+            for pos in record.positions_after:
+                assert pos.shares >= 0, (record.session_date, pos.symbol, pos.shares)
+        assert bt.trade_count > 0  # the property was exercised, not vacuous

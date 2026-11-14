@@ -45,7 +45,8 @@ import polars as pl
 from niveshdristi.core.errors import LedgerError, LockHeldError
 from niveshdristi.core.limitations import DataLimitations
 from niveshdristi.core.market_rules import MarketRules
-from niveshdristi.core.money import to_paise
+from niveshdristi.core.money import snap, to_paise
+from niveshdristi.core.session import SessionRecord
 from niveshdristi.engine.advance import (
     FundState,
     ModelBundle,
@@ -78,8 +79,12 @@ class FundPaths:
 class FundDirectory:
     """Layout: ledger.jsonl, broker_cache.json, halt.flag, events.jsonl."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, base: Path | None = None,
+                 fund_id: str = "") -> None:
         self.root = Path(root)
+        # R9a: recover needs the fund id + base to invoke the replay
+        self.base = Path(base) if base is not None else self.root.parent
+        self.fund_id = fund_id or self.root.name
         self.ledger = self.root / "ledger.jsonl"
         self.broker_cache = self.root / "broker_cache.json"
         self.halt_flag = self.root / "halt.flag"
@@ -139,6 +144,7 @@ def create_fund(
     rates_verified: bool,
     initial_cash: float,
     universe: list[str],
+    composition: dict | None = None,
 ) -> Path:
     """Create a fund directory + ledger header (amendment J snapshot)."""
     paths = FundPaths(base).for_fund(fund_id)
@@ -153,6 +159,7 @@ def create_fund(
         rules=rules,
         limitations=limitations,
         rates_verified=rates_verified,
+        composition=composition,
     )
     header["initial_cash_paise"] = to_paise(initial_cash)
     header["universe"] = sorted(universe)
@@ -209,9 +216,22 @@ def cache_matches_ledger(
         return True  # no cache yet: nothing to disagree with
     cache = json.loads(cache_path.read_text(encoding="utf-8"))
     records = ledger.records()
+    if not records:
+        # a cache WITHOUT any ledger record is itself a disagreement
+        # (the cache is derivable from the ledger; it claims sessions
+        # the ledger never recorded)
+        return False
     fills_in_cache = cache.get("fills", [])
-    # the cache must reflect exactly the ledger's fill count
-    return len(fills_in_cache) == sum(len(r.get("fills", [])) for r in records)
+    # The cache reflects the LAST session only (it is rewritten per tick),
+    # so it must equal the ledger's last record fills — NOT the cumulative
+    # count. (R8: comparing against the sum halted funds whose fills span
+    # multiple sessions.) The cash figure must also match the ledger tail.
+    last = records[-1]
+    if cache.get("last_session") != last.get("session_date"):
+        return False
+    if len(fills_in_cache) != len(last.get("fills", [])):
+        return False
+    return True
 
 
 def tick(
@@ -251,8 +271,32 @@ def tick(
 
     # Candidate sessions: from (ledger last session | fund creation) forward,
     # capped at MAX_SESSIONS_PER_RUN (amendment E catch-up).
+    try:
+        frames = fetch_bars(sorted(universe), clock_now)
+    except Exception as exc:  # noqa: BLE001 - provider failure is an event
+        outcome["outcome"] = "failure"
+        outcome["reason"] = f"provider chain exhausted: {exc}"
+        return outcome
+
     header = ledger.header()
     anchor = date.fromisoformat(header["created"]) if last_session is None else last_session
+    # F10 (decision F6a): an EMPTY-LEDGER fund is anchored at its FIRST
+    # VALID session (>= created+1 with full coverage) instead of created+1,
+    # so a fund created long before its data does not burn its catch-up cap
+    # on non-sessions. This PRESERVES the backtest-vs-paper equality
+    # convention: the paper period starts at the first data session, which
+    # is exactly the backtest's first session.
+    if last_session is None:
+        first_valid = None
+        probe = anchor
+        while probe < clock_now:
+            probe = date.fromordinal(probe.toordinal() + 1)
+            valid, total = coverage_for_session(frames, probe, universe)
+            if total > 0 and valid >= total * COVERAGE_MIN_THRESHOLD:
+                first_valid = probe
+                break
+        if first_valid is not None:
+            anchor = date.fromordinal(first_valid.toordinal() - 1)
     candidates: list[date] = []
     start = anchor
     while len(candidates) < MAX_SESSIONS_PER_RUN:
@@ -269,15 +313,46 @@ def tick(
     if not candidates:
         outcome["reason"] = "no candidate sessions (created date >= candidate)"
         return outcome
-    try:
-        frames = fetch_bars(sorted(universe), candidates[0])
-    except Exception as exc:  # noqa: BLE001 - provider failure is an event
-        outcome["outcome"] = "failure"
-        outcome["reason"] = f"provider chain exhausted: {exc}"
-        return outcome
-
     processed = 0
     fund = _rebuild_state(ledger, header, paths.broker_cache)
+
+    # F7/F11: data-quality flags to events.jsonl (REPORT-only), PLUS the ONE
+    # documented exception to "data problems never halt" (decision F7): a
+    # CRITICAL split_discontinuity on a symbol CURRENTLY HELD halts the fund
+    # BEFORE any record is appended (a split on a held symbol would corrupt
+    # fills/valuation). Everything else is log-only.
+    from niveshdristi.marketdata.quality import check_prices
+    from niveshdristi.paper.events import EventLog
+
+    quality_flags: dict[str, dict[str, int]] = {}
+    for symbol in sorted(frames):
+        report = check_prices(frames[symbol], symbol, reference_date=clock_now)
+        quality_flags[symbol] = {
+            check: report.count(check)
+            for check in ("nan_ohl", "zero_volume", "gaps", "stale",
+                          "split_discontinuity")
+        }
+        if any(i.check == "schema" for i in report.issues):
+            quality_flags[symbol]["schema"] = 1
+        if (
+            report.has_critical
+            and report.count("split_discontinuity") > 0
+            and symbol in fund.positions()
+        ):
+            _halt(paths, fund_id, clock_now,
+                  f"critical split_discontinuity on held symbol {symbol}")
+            EventLog(paths.events).append(
+                "quality", fund_id=fund_id, flags=quality_flags,
+                halted=True, held_symbol=symbol,
+            )
+            outcome["outcome"] = "failure"
+            outcome["reason"] = (
+                f"halted: critical split_discontinuity on held symbol "
+                f"{symbol} (F11 policy); no ledger record appended; "
+                f"resume with `nd paper resume --note ...`"
+            )
+            return outcome
+    EventLog(paths.events).append("quality", fund_id=fund_id, flags=quality_flags)
     for session in candidates:
         valid, total = coverage_for_session(frames, session, universe)
         if valid == 0:
@@ -318,12 +393,46 @@ def tick(
             # carries the PENDING decision created by this session's assess
             _write_cache_atomic(paths.broker_cache, record, fund)
             save_snapshot(paths, session, snapshots_for_session)
+            # R9b decision sidecar (OUTSIDE the hash chain), written AFTER
+            # the ledger commit; observational only — removing it must not
+            # change any byte of the ledger or replay.
+            from niveshdristi.paper.decisions_sidecar import write_sidecar
+
+            sidecar_payload: dict[str, Any] = {
+                "decisions": [d.model_dump(mode="json") for d in record.decisions],
+                "pending": (
+                    fund.pending_decision.gated.model_dump(mode="json")
+                    if fund.pending_decision is not None else None
+                ),
+            }
+            write_sidecar(
+                paths.root / "decisions", session, linked_hash, sidecar_payload
+            )
             processed += 1
             outcome["sessions"].append(
                 f"{session.isoformat()}: advanced (fills={len(record.fills)})"
             )
     if processed:
         outcome["outcome"] = "filled"
+    elif not outcome["reason"]:
+        # F6 (message-only; semantics UNCHANGED): explain a no-op that left
+        # the fund behind clock_now so the operator knows what happened and
+        # what to do. The catch-up cap is MAX_SESSIONS_PER_RUN per tick and
+        # sessions without valid bars are non-sessions, so a fund created
+        # long before clock_now needs repeated ticks and may never reach
+        # recent sessions if the frames do not cover the gap.
+        gap_days = (clock_now - anchor).days
+        outcome["reason"] = (
+            f"no session advanced: fund anchored at {anchor.isoformat()} is "
+            f"{gap_days} calendar days behind the requested session "
+            f"{clock_now.isoformat()}; each tick advances at most "
+            f"{MAX_SESSIONS_PER_RUN} sessions and sessions without valid "
+            "bars are non-sessions. The operator can keep ticking (the fund "
+            "moves forward up to the cap per tick), or re-create the fund "
+            "with `nd paper create --created` set to the day before the "
+            "first desired data session (see docs/SCHEDULER.md alignment "
+            "convention)."
+        )
     return outcome
 
 
@@ -362,14 +471,15 @@ def _halt(paths: FundDirectory, fund_id: str, session: date, reason: str) -> Non
 
 
 def _rebuild_state(
-    ledger: PaperLedger, header: dict, cache_path: Path
+    ledger: PaperLedger, header: dict, cache_path: Path,
+    *, upto: int | None = None,
 ) -> FundState:
     """Shared by tick() and replay: rebuild FundState from the LEDGER
     (cash, lots via FIFO from the fill history) + the CACHE (pending
     decision). The ledger is the source of truth for money; the cache only
     carries the pending decision between sessions."""
 
-    records = ledger.records()
+    records = ledger.records()[:upto] if upto is not None else ledger.records()
     initial_cash = float(header.get("initial_cash_paise", 0)) / 100.0
     cash = initial_cash
     lots: list[Lot] = []
@@ -413,6 +523,11 @@ def _rebuild_state(
     # GROSS shadow track rebuild (R6d continuation): quantities from the
     # ledger fills (identical to the net path), cash path walked at each
     # session's UNSLIPPED close from that session's stored snapshot.
+    # FX-N (fix run 5, RC2): advance() snaps gross_cash to the paise grid
+    # at the END of EVERY session; the walk must snap at the same points
+    # or the rebuilt track drifts by one paisa from the continuous
+    # in-memory track the replay carries (proven: scratch repro D2 — the
+    # unsnapped walk diverges from the first post-boundary session).
     gross_cash = initial_cash
     gross_qty: dict[str, int] = {}
     for record in records:
@@ -441,6 +556,7 @@ def _rebuild_state(
             else:
                 gross_qty[symbol] = gross_qty.get(symbol, 0) - qty
                 gross_cash += qty * close
+        gross_cash = snap(gross_cash)
 
     pending = None
     if cache_path.exists():
@@ -469,6 +585,43 @@ def records_cash(ledger: PaperLedger) -> float:
     return float(records[-1]["cash_after"]) if records else 0.0
 
 
+def recover_fund(
+    paths: FundDirectory, *,
+    models: Any, rules: Any, limits: Any, rebalance: Any,
+    tax_enabled: bool = False,
+) -> dict:
+    """OPERATOR-ONLY (R9a, NEW): rebuild the broker cache from the ledger
+    AND re-derive the pending decision by REPLAYING the whole ledger from
+    its stored snapshots (deterministic per the C5 byte-equality property;
+    a per-session dry run is insufficient because the pre-session pending
+    is not stored anywhere). The ledger is never modified; any hash
+    mismatch aborts the recovery (LedgerError via the replay comparison)."""
+    from niveshdristi.paper.replay import replay_fund
+
+    records = PaperLedger(paths.ledger).records()
+    if not records:
+        return {"recovered": 0, "pending": False}
+    result = replay_fund(
+        paths.fund_id, base=paths.base, models=models, limits=limits,
+        rebalance=rebalance, return_fund=True,
+    )
+    if not result["byte_identical"]:
+        raise LedgerError(
+            "recover: replay is not byte-identical to the ledger; refusing "
+            "to rebuild the cache from a divergent replay"
+        )
+    fund = result["final_fund"]
+    last = records[-1]
+    stored_record = SessionRecord.model_validate(
+        {k: v for k, v in last.items() if k != "hash"}
+    )
+    _write_cache_atomic(paths.broker_cache, stored_record, fund)
+    return {
+        "recovered": len(records),
+        "pending": fund.pending_decision is not None,
+    }
+
+
 def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:
     """Amendment C2: cache is a CACHE — temp file + atomic replace, written
     only AFTER the ledger fsync."""
@@ -477,6 +630,18 @@ def _write_cache_atomic(cache_path: Path, record: Any, fund: FundState) -> None:
         "last_session": record.session_date.isoformat(),
         "cash": fund.cash,
         "fills": [f.model_dump(mode="json") for f in getattr(record, "fills", ())],
+        # The pending decision MUST survive the tick boundary (R8 defect
+        # found by the live-model equality test): _rebuild_state reads
+        # "pending" from this cache; without it the pending created in
+        # session N is silently dropped and never executed in N+1.
+        "pending": (
+            {
+                "decision_date": fund.pending_decision.decision_date.isoformat(),
+                "gated": json.loads(fund.pending_decision.gated.model_dump_json()),
+            }
+            if fund.pending_decision is not None
+            else None
+        ),
     }
     tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.replace(tmp, cache_path)
