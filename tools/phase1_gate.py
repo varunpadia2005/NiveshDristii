@@ -44,7 +44,7 @@ def _print_safe(msg: str) -> None:
 
 def main() -> int:
     repo_root = Path(__file__).parent.parent
-    phase0_root = Path(sys.argv[sys.argv.index("--phase0") + 1]) if "--phase0" in sys.argv else None
+    phase0_root = Path(sys.argv[sys.argv.index("--phase0") + 1]).resolve() if "--phase0" in sys.argv else None  # P11-A8-S1: absolute, or PYTHONPATH/cwd material breaks in clones (RC-6)
 
     # Zero-write policy: child processes must not write bytecode inside either tree
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"

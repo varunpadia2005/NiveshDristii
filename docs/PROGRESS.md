@@ -1623,3 +1623,18 @@ three findings the offline simulation predicted (raw API/log evidence):
 All three need user approval (gate/tools/workflow edits outside this
 run's scopes). NOTHING in CI contradicts the offline simulation — the
 simulation is proven predictive.
+
+## Phase 11-A8 S1 (RC-6): --phase0 resolved to an absolute path
+
+RED in a full clone with CI's RELATIVE `--phase0 phase0_wt`: GATE FAIL
+(7) with G05 "Phase0 __file__ not under phase0 root:
+D:\Nivesh Dristi\NiveshDristii\src\..." (the editable tree) and an
+MD5-mismatch symptom (the phase0 comparator imported the WRONG tree,
+so it compared the wrong config). GREEN after the approved one-line
+fix (`.resolve()` at tools/phase1_gate.py:47): PASS G04 MD5 match +
+Phase0/Current __file__ checks + G05, with the SAME relative command.
+Guard: tests/test_gate_phase0_path.py parses the code path (the module
+executes the gate at import time, so importing is not possible);
+mutation (remove .resolve()) → FAIL, re-verified twice. The clone's
+remaining failures after the fix are exactly RC-4 (G06) and RC-5
+(G01) — fixed in S2/S3 of this run.
