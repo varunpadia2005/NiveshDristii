@@ -1638,3 +1638,31 @@ executes the gate at import time, so importing is not possible);
 mutation (remove .resolve()) → FAIL, re-verified twice. The clone's
 remaining failures after the fix are exactly RC-4 (G06) and RC-5
 (G01) — fixed in S2/S3 of this run.
+
+## Phase 11-A8 S2 (RC-5): fixture-bootstrap dirt — mechanism per OS + fallback
+
+Diagnosis (clone + CI logs): the CI policy step (autocrlf=input +
+rm --cached + reset) LF-normalizes the checkout; create_fixtures.py:137
+writes with default text mode → CRLF on a WINDOWS runner → the 5
+tracked JSON fixtures show modified → G01 dirty (reproduced in the
+clone: policy+bootstrap → " M tests/fixtures/*.json" ×5). On UBUNTU
+the write is LF → clean — CI run 43620550944's ubuntu G01 dirty list
+contains ONLY "?? phase0_wt/" (no fixture JSONs), re-verified from the
+authenticated job log. git diff --ignore-cr-at-eol over the 5 files is
+EMPTY → content is byte-identical after EOL normalization → the
+approved FALLBACK precondition holds.
+
+The PREFERRED fix (newline="\n" in the writer) is IMPOSSIBLE:
+tests/create_fixtures.py is one of G03's three FROZEN legacy files
+(phase1_gate.py:136) — any edit fails G03. STOP-level conflict
+reported; the approved fallback was applied instead: BOTH bootstrap
+steps in ci.yml now end with `git checkout -- tests/fixtures/`.
+Guard: tests/test_fixture_bootstrap_clean.py — (1) determinism: the
+working-tree bytes of every tracked JSON equal the HEAD blob bytes
+modulo line endings (≥5 compared, index via git cat-file);
+(2) ci.yml contains the fallback in the bootstrap step. Mutation
+(remove the fallback) → FAIL. Process note: my first guard version
+double-prefixed the blob path (f"tests/fixtures/{name}" over an
+already-prefixed name) and an earlier `git checkout --` discarded the
+uncommitted RC-6-adjacent ci.yml edit — both caught and fixed before
+the gate.
