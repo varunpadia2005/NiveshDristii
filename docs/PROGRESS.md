@@ -1707,3 +1707,27 @@ phase0_wt lives outside and G01/G18 are clean); or (b) ignore the
 worktree dir in .gitignore (G18's manifest would still need the
 exclusion). Recommended: (a) — it also removes the G18 parquet flags
 if the fixtures move with it.
+
+## Phase 11-A9 S1 (W-1/W-2): the Phase-0 worktree relocated OUTSIDE the repo tree
+
+ci.yml (matrix job): the worktree is now created at
+`WT="$(cd "$RUNNER_TEMP" && pwd)/phase0_wt"` — cd+pwd NORMALIZES the
+Windows backslash path to forward slashes (pwd always emits /-paths;
+verified: cd 'D:\a\_temp' && pwd → /d/a/_temp); exported to the gate
+step via $GITHUB_ENV as PHASE0_WT; every reference (mkdir, both cps,
+the gate's --phase0) uses "$WT"/"$PHASE0_WT" — NO bare phase0_wt path
+remains in any gate step. cygpath was NOT used (absent on ubuntu).
+
+W-2: tests/test_ci_worktree_step.py's assertions updated to the new
+path strings ONLY (worktree add still targets 82f76d8, mkdir-before-cp
+still asserted). NEW guard tests/test_ci_worktree_outside_tree.py:
+worktree-add target is not in-tree; NO bare phase0_wt reference in any
+gate step (a bare reference = no $WT/$RUNNER_TEMP/$PHASE0_WT on the
+line); the gate consumes $PHASE0_WT; non-vacuity >= 3 references.
+Mutation (restore the in-tree target in the add line) → 2 guards FAIL;
+restored → 4 passed.
+
+Simulation note: a first outside-tree sim run failed on the CLONE's
+stale guard (the clone predated the W-2 update) meeting the new
+ci.yml — a sim-consistency artifact; the fix is to simulate from the
+COMMITTED HEAD (done after this commit).

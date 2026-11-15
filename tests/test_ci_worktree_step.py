@@ -2,8 +2,8 @@
 its own `cp`.
 
 Defect this pins (CI run 43574549786, both 3.13 matrix jobs): the step
-ran `git worktree add phase0_wt 82f76d8` then
-`cp tools/… phase0_wt/tools/` — but the Phase 0 tree (82f76d8) has NO
+ran `git worktree add "$WT" 82f76d8` then
+`cp tools/… "$WT/tools/"` — but the Phase 0 tree (82f76d8) has NO
 tools/ directory, so the cp failed ("target 'phase0_wt/tools/': No
 such file or directory"), the gate was skipped, and the
 G04/G05-must-RUN step correctly failed the job. The fix is one
@@ -29,7 +29,7 @@ def _worktree_step_lines() -> list[str]:
     steps = data["jobs"]["gate"]["steps"]
     for step in steps:
         run = step.get("run") or ""
-        if "git worktree add phase0_wt" in run:
+        if "git worktree add" in run:
             return run.splitlines()
     raise AssertionError(
         "non-vacuity: no worktree step found in the gate job — "
@@ -46,7 +46,7 @@ class TestCiWorktreeStep:
             if ln.strip().startswith("cp tools/")
         )
         assert any(
-            "mkdir -p phase0_wt/tools" in ln
+            "mkdir -p \"$WT/tools\"" in ln
             for ln in lines[:cp_i]
         ), (
             "the worktree step copies into phase0_wt/tools/ without "

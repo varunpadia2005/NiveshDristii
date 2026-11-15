@@ -78,16 +78,23 @@ jobs:
       - name: Phase0 worktree for the legacy comparison
         shell: bash
         run: |
-          git worktree add phase0_wt 82f76d8
-          mkdir -p phase0_wt/tools
-          cp tools/dump_config.py tools/compare_backtest.py phase0_wt/tools/
-          mkdir -p phase0_wt/tests/fixtures
-          cp tests/fixtures/prices_reliance_30d.parquet phase0_wt/tests/fixtures/
+          # P11-A9 W-1: the worktree lives OUTSIDE the repo tree
+          # ($RUNNER_TEMP) so G01 sees no untracked phase0_wt/ directory.
+          # RUNNER_TEMP may contain backslashes on Windows; bash replaces
+          # them with forward slashes so mkdir/cp/git get MSYS-safe paths
+          # (cygpath is NOT available on ubuntu, hence the bash idiom).
+          WT="$(cd "$RUNNER_TEMP" && pwd)/phase0_wt" || exit 1
+          echo "PHASE0_WT=$WT" >> "$GITHUB_ENV"
+          git worktree add "$WT" 82f76d8
+          mkdir -p "$WT/tools"
+          cp tools/dump_config.py tools/compare_backtest.py "$WT/tools/"
+          mkdir -p "$WT/tests/fixtures"
+          cp tests/fixtures/prices_reliance_30d.parquet "$WT/tests/fixtures/"
 
       - name: FULL gate (ruff + mypy + pytest + literal guard + legacy equality)
         shell: bash
         run: |
-          python tools/phase1_gate.py --phase0 phase0_wt | tee gate.log
+          python tools/phase1_gate.py --phase0 "$PHASE0_WT" | tee gate.log
           exit "${PIPESTATUS[0]}"
 
       - name: G04/G05 must have RUN (never skipped)

@@ -3,6 +3,13 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A9 — worktree relocation] 2026-11-16
+
+- W-1: the Phase-0 worktree moved OUTSIDE the repo tree
+  ($RUNNER_TEMP, normalized via cd+pwd; threaded through $GITHUB_ENV
+  as PHASE0_WT) — G01's untracked `?? phase0_wt/` noise disappears on
+  both OSes.
+
 ## [Phase 11-A8 — gate/CI fixes verified in simulation] 2026-11-16
 
 - RC-6: --phase0 is .resolve()d (the relative path killed the G04/G05
@@ -25,6 +32,13 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A9 — worktree relocation] 2026-11-16
+
+- W-1: the Phase-0 worktree moved OUTSIDE the repo tree
+  ($RUNNER_TEMP, normalized via cd+pwd; threaded through $GITHUB_ENV
+  as PHASE0_WT) — G01's untracked `?? phase0_wt/` noise disappears on
+  both OSes.
 
 ## [Phase 11-A8 — gate/CI fixes verified in simulation] 2026-11-16
 
