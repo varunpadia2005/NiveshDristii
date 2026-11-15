@@ -1731,3 +1731,40 @@ Simulation note: a first outside-tree sim run failed on the CLONE's
 stale guard (the clone predated the W-2 update) meeting the new
 ci.yml — a sim-consistency artifact; the fix is to simulate from the
 COMMITTED HEAD (done after this commit).
+
+## Phase 11-A9 S1 simulation: GATE: PASS (41/41) with the warm-up; one approval left
+
+Definitive simulation (fresh clone at 760c864, fresh venv, CI-exact
+install, every matrix step verbatim, worktree OUTSIDE via
+WT="$(cd "$RUNNER_TEMP" && pwd)/phase0_wt"):
+- status EMPTY after bootstrap+fallback AND after the worktree step
+  (G01's phase0_wt noise ELIMINATED — W-1 verified).
+- Gate WITHOUT the warm-up: FAIL (1) — ONLY G18's 3 parquets "(new
+  during gate)" (the documented first-run artifact class; the 3
+  parquets are written BY test_characterization.py:64/228/230 —
+  create_fixtures.py creates only prices_reliance_30d.parquet; every
+  CI run is a fresh clone, so this fires on EVERY CI run).
+- Warm-up emulation (one `pytest tests/test_characterization.py -q`
+  before the gate — 10 passed in 2.8s): **GATE: PASS — 41/41
+  G-checks**, G01 clean, G18 "3 byte-identical legacy rewrite(s)
+  allowed", 669 passed/1 xfailed.
+
+STOP per spec (do not push): the warm-up step needs approval.
+Options: (a) RECOMMENDED — a pre-gate step
+`python -m pytest tests/test_characterization.py -q
+-p no:cacheprovider` in ci.yml (proven 41/41 above); (b) a G18
+allowlist edit — rejected: gate.py:778 documents "No allowlist is
+added for this". Residual risk for (a): CI's ubuntu G18 flagged 2
+tests/__pycache__ pyc files (writer not fully identified — the gate
+sets PYTHONDONTWRITEBYTECODE=1 for subprocesses; the sims never
+reproduce the pyc flags); if the pyc reappear on CI, the diagnosis
+and options follow in the next run.
+
+S2 Ubuntu static review: RUNNER_TEMP on ubuntu is /home/runner/work/_temp
+(no backslashes — the cd+pwd idiom is a no-op there ✓); case
+sensitivity: tools/dump_config.py + tools/compare_backtest.py tracked
+lowercase and referenced lowercase ✓; cp/mkdir flags POSIX-safe ✓;
+cygpath NOT used ✓; tool script line endings: tracked via
+text=auto (LF in repo) ✓; python_version/target-version 3.11 config
+references in pyproject are lint-only, not interpreter requirements ✓
+(the requires-python risk stays recorded from A7).
