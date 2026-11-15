@@ -37,7 +37,7 @@ def _gate_steps() -> list[dict[str, Any]]:
 def _run_of(steps: list[dict], name_prefix: str) -> str:
     for step in steps:
         if step.get("name", "").startswith(name_prefix):
-            return step.get("run", "")
+            return cast(str, step.get("run", ""))
     raise AssertionError(f"non-vacuity: step {name_prefix!r} not found")
 
 
