@@ -94,8 +94,14 @@ def main() -> int:
     # -p no:cacheprovider keeps .pytest_cache unwritten.
     print("\n=== Shared pytest run ===")
     info("PYTEST", "pytest runs: 1")
+    # P11-A8-S3 (RC-4, approved): collect ONLY tests/ — a bare pytest
+    # also collects the phase0 worktree's own frozen tests
+    # (phase0_wt/tests/*), which error at collection and kill G06
+    # (CI run 43620550944). G06's own contract ("all node IDs under
+    # tests/") is unchanged and stays strict.
     shared_pytest = run(
-        [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider"], cwd=repo_root, capture=True
+        [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider", "tests"],
+        cwd=repo_root, capture=True
     )
     tail = [l for l in shared_pytest.stdout.splitlines() if l.strip()][-1:]
     info("PYTEST", tail[0] if tail else f"exit={shared_pytest.returncode}")

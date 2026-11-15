@@ -1666,3 +1666,17 @@ double-prefixed the blob path (f"tests/fixtures/{name}" over an
 already-prefixed name) and an earlier `git checkout --` discarded the
 uncommitted RC-6-adjacent ci.yml edit — both caught and fixed before
 the gate.
+
+## Phase 11-A8 S3 (RC-4): the gate's pytest scoped to tests/
+
+RED in the full clone (whose phase0_wt is complete, as CI's is): bare
+pytest collects phase0_wt/tests/* → `ERROR phase0_wt/tests/
+test_imports.py` + `test_characterization.py` → the gate's G06 fails
+("collected=663 passed=0", 2 collection errors). GREEN with the
+approved one-line change (phase1_gate.py:99: the pytest command ends
+with `tests`): the same clone's G06 PASSES — collected=663,
+passed=662, xfailed=1, all node IDs under tests/. Guard:
+tests/test_gate_pytest_scope.py asserts the command scopes collection
+to tests/; mutation (remove it) → FAIL. G06's node-ID contract is
+unchanged and strict. The clone's only remaining failure after this
+fix is G01 (RC-5's fallback is committed but the clone predates it).
