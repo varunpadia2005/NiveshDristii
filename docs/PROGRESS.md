@@ -1680,3 +1680,30 @@ tests/test_gate_pytest_scope.py asserts the command scopes collection
 to tests/; mutation (remove it) → FAIL. G06's node-ID contract is
 unchanged and strict. The clone's only remaining failure after this
 fix is G01 (RC-5's fallback is committed but the clone predates it).
+
+## Phase 11-A8 S4: post-fix simulation — three fixes VERIFIED, one remaining blocker
+
+Simulation (fresh clone at f5f7d76, fresh venv, CI-exact install, every
+matrix-job step verbatim with the RELATIVE --phase0):
+- Line-ending policy 0; fixture bootstrap 0 + fallback 0 → **status
+  CLEAN after bootstrap (RC-5 verified in production form)**.
+- Worktree add/mkdir/cp all 0 (**RC-1 verified**).
+- Gate: **G04 ALL PASS (MD5 + both __file__ checks — RC-6 verified)**;
+  **G05 ALL PASS**; **G06 PASS collected=667 passed=666 xfailed=1, all
+  node IDs under tests/ (RC-4 verified)**.
+- REMAINING: G01 FAIL `?? phase0_wt/` (the worktree directory inside
+  the repo tree is untracked noise — CI's ubuntu log showed exactly
+  this) and G18 FAIL "3 zero-write violation(s)": the 3 legacy parquet
+  fixtures flagged "(new during gate)" (bootstrap-then-gate lifecycle
+  inside the tree; the local environment never shows this because the
+  local phase0_wt and fixture state predate the gates).
+
+ROOT: the phase0 worktree and its fixture copies live INSIDE the repo
+tree. One-line class of fixes (NONE within A8's approvals → STOP, do
+not push): (a) move the worktree outside the tree —
+`git worktree add "$RUNNER_TEMP/phase0_wt" 82f76d8` and pass that
+absolute path to --phase0 (matches the local convention, where
+phase0_wt lives outside and G01/G18 are clean); or (b) ignore the
+worktree dir in .gitignore (G18's manifest would still need the
+exclusion). Recommended: (a) — it also removes the G18 parquet flags
+if the fixtures move with it.

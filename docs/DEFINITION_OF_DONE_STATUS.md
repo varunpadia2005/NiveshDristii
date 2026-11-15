@@ -31,6 +31,18 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A8 update (2026-11-16)
+
+The three A7-approved fixes are applied and VERIFIED in a production-
+form offline simulation: G04/G05/G06 (the checks that failed in CI)
+now ALL PASS with the relative --phase0, scoped collection, and the
+worktree mkdir; the fixture-JSON dirt is gone (fallback). ONE blocker
+remains before a green CI run: the phase0 worktree lives INSIDE the
+repo tree (untracked-dir noise in G01 + G18 parquet flags). Fix
+proposed (needs approval): move the worktree outside the tree
+($RUNNER_TEMP) in ci.yml. CI run status: NOT VERIFIED (push deferred
+pending that approval).
+
 ## P11-A7 update (2026-11-14)
 
 CI run 43620550944 (head bc34ab3): coverage job **SUCCESS** (first

@@ -3,6 +3,20 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A8 — gate/CI fixes verified in simulation] 2026-11-16
+
+- RC-6: --phase0 is .resolve()d (the relative path killed the G04/G05
+  PYTHONPATH in any clone; 5664e0d).
+- RC-5: the fixture-JSON dirt is Windows-CRLF-only (ubuntu clean);
+  ci.yml restores the tracked fixture bytes after the bootstrap
+  (fallback; the preferred writer fix is G03-frozen) (d5d442f).
+- RC-4: the gate's pytest collects tests/ only (the worktree's frozen
+  tests broke G06) (f5f7d76).
+- Simulation: G04/G05/G06 ALL PASS in a production-form run. ONE
+  remaining blocker: the phase0 worktree lives inside the repo tree
+  (G01 untracked noise + G18 flags) — worktree-relocation approval
+  requested; push deferred.
+
 ## [Phase 11-A7 — the three CI fixes] 2026-11-14
 
 - RC-3: the two-market core/engine guard diffed against 6948457, an
@@ -11,6 +25,20 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A8 — gate/CI fixes verified in simulation] 2026-11-16
+
+- RC-6: --phase0 is .resolve()d (the relative path killed the G04/G05
+  PYTHONPATH in any clone; 5664e0d).
+- RC-5: the fixture-JSON dirt is Windows-CRLF-only (ubuntu clean);
+  ci.yml restores the tracked fixture bytes after the bootstrap
+  (fallback; the preferred writer fix is G03-frozen) (d5d442f).
+- RC-4: the gate's pytest collects tests/ only (the worktree's frozen
+  tests broke G06) (f5f7d76).
+- Simulation: G04/G05/G06 ALL PASS in a production-form run. ONE
+  remaining blocker: the phase0 worktree lives inside the repo tree
+  (G01 untracked noise + G18 flags) — worktree-relocation approval
+  requested; push deferred.
 
 ## [Phase 11-A7 — the three CI fixes] 2026-11-14
 
