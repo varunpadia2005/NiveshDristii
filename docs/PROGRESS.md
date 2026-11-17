@@ -1768,3 +1768,29 @@ cygpath NOT used ✓; tool script line endings: tracked via
 text=auto (LF in repo) ✓; python_version/target-version 3.11 config
 references in pyproject are lint-only, not interpreter requirements ✓
 (the requires-python risk stays recorded from A7).
+
+## Phase 11-A10: the CI warm-up step — first fully green CI expected
+
+APPROVED one-step addition to the matrix job (between the fixture
+bootstrap/fallback and the FULL gate):
+  name: Warm up legacy characterization fixtures
+  shell: bash
+  env: PYTHONDONTWRITEBYTECODE: "1"
+  run: python -m pytest tests/test_characterization.py -q -p no:cacheprovider
+Disclosure: this is a CI-ORDERING choice — the legacy characterization
+tests WRITE their three fixture parquets on the first run in a fresh
+tree (gate.py:773-778 documents the class: "No allowlist is added for
+this"), so G18 would flag them "(new during gate)" on EVERY CI run
+(each run is a fresh clone); the warm-up pre-seeds them before the
+gate. G18 itself is UNCHANGED. The 2 tests/__pycache__ pyc flags from
+CI run 43620550944 remain UNRESOLVED until CI shows otherwise (they
+did not reproduce in any local simulation).
+
+Evidence: existing suite after the edit = 669 passed, 1 xfailed (no
+guard broke); FULL OFFLINE SIMULATION (fresh clone of the edited tree
+via patch, fresh venv, CI-exact install, every matrix step verbatim,
+worktree outside the clone via the cd+pwd/$RUNNER_TEMP idiom):
+line-ending 0, install 0, bootstrap 0 + fallback 0, warm-up 0 (10
+passed), worktree step 0, gate exit 0 → **GATE: PASS, 41/41
+G-checks**, G04/G05 must-RUN step 0, and `git status --porcelain`
+empty after each status-sensitive step.

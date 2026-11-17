@@ -3,6 +3,14 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A10 — CI warm-up] 2026-11-17
+
+- One matrix-job step ("Warm up legacy characterization fixtures")
+  pre-seeds the three characterization-written fixture parquets before
+  the gate — G18's documented first-run failure class (gate.py:773-778)
+  cannot fire on fresh-clone CI runs. G18 itself unchanged. Verified by
+  a full offline simulation: GATE: PASS, 41/41 G-checks.
+
 ## [Phase 11-A9 — worktree relocation] 2026-11-16
 
 - W-1: the Phase-0 worktree moved OUTSIDE the repo tree
@@ -32,6 +40,14 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A10 — CI warm-up] 2026-11-17
+
+- One matrix-job step ("Warm up legacy characterization fixtures")
+  pre-seeds the three characterization-written fixture parquets before
+  the gate — G18's documented first-run failure class (gate.py:773-778)
+  cannot fire on fresh-clone CI runs. G18 itself unchanged. Verified by
+  a full offline simulation: GATE: PASS, 41/41 G-checks.
 
 ## [Phase 11-A9 — worktree relocation] 2026-11-16
 
