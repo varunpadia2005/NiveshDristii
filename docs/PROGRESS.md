@@ -1814,3 +1814,34 @@ necessary but NOT sufficient (local runs never reproduced the CI pyc
 writes, so CI is the final judge). Option (b) (a G18
 allowlist/tolerance) was REJECTED per the approval: gate.py:778
 documents "No allowlist is added for this" as a deliberate decision.
+
+## Phase 11-A11 S5: the run FAILED at startup — the approved placement is invalid on GitHub
+
+CI run 44558740064 (head cb9dfe4, push): created and updated at the
+same second (2026-11-19T15:47:19Z), conclusion failure, jobs listing
+EMPTY (total_count 0 via /runs/{id}/jobs, /attempts/1/jobs and
+check-runs for the commit) → the workflow NEVER instantiated its jobs:
+an instant startup-level failure. Root cause (GitHub docs, contexts
+reference): `jobs.<job_id>.env` supports only github, needs, strategy,
+matrix, vars, secrets, inputs — **the runner context is NOT
+available at job-level env** (it exists only once a runner is
+assigned). The approved placement
+`env: PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache` at JOB level
+therefore cannot evaluate → the workflow rejects → no gate ran at all
+(G18 was never reached).
+
+The offline proof stands and is unaffected: with PYTHONPYCACHEPREFIX
+exported, the simulation showed 0 pyc inside the clone and 1397 in the
+prefix after a full gate; GATE: PASS 41/41. Options (need approval —
+the A11 scope covered ONLY the job-level placement):
+(a) MOVE the env into the FULL gate STEP: step-level env supports the
+    runner context (`env: PYTHONPYCACHEPREFIX: ${{ runner.temp }}/
+    pcache` inside the FULL-gate step). The warm-up's own pyc land
+    before the gate (in the snapshot → harmless; the warm-up already
+    sets PYTHONDONTWRITEBYTECODE at step level so it writes none).
+(b) The GITHUB_ENV pattern (same as PHASE0_WT): the worktree step adds
+    `echo "PYTHONPYCACHEPREFIX=$RUNNER_TEMP/pycache" >> "$GITHUB_ENV"`
+    — subsequent steps inherit it; no context restriction. Slightly
+    cleaner (one definition point next to the worktree path).
+Both are one-block ci.yml edits. (b) recommended for consistency with
+W-1. NOT applied: outside the A11 approval.
