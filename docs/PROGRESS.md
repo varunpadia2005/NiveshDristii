@@ -1880,3 +1880,17 @@ still write 29 pre-gate pyc in-tree; the G18-relevant criterion — no
 pyc created DURING the gate — IS met (delta 0), which is what prevents
 the CI failure. Necessary but NOT sufficient (CI pyc writes were never
 reproduced locally; CI is the final judge).
+
+## Phase 11-A12 S5: PUSHED — **CI run 44567084480 IS FULLY GREEN**
+
+Per-job raw conclusions from the API (jobs total_count 3, non-empty —
+the startup-failure mode is gone):
+- coverage: success
+- gate (windows-latest, 3.13): success
+- gate (ubuntu-latest, 3.13): success
+URL: https://github.com/varunpadia2005/NiveshDristii/actions/runs/44567084480
+The workflow ran to completion (no startup failure): the A12 fix —
+removing the invalid job-level runner-context env, adding the
+step-level PYTHONPYCACHEPREFIX to the FULL-gate step — is verified in
+production. Bytecode caches went to ${{ runner.temp }}/pycache outside
+the tree; G18 had no pyc violations to flag.

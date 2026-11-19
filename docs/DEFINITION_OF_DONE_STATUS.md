@@ -31,6 +31,16 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A12 update (2026-11-19)
+
+Item 7 (CI green): **ACHIEVED** — CI run 44567084480 (head 6c60c30)
+completed with ALL THREE jobs success (gate ubuntu 3.13, gate windows
+3.13, coverage). The chain of fixes: pins resolved (A4), 3.11 cells
+dropped (A7), worktree outside the tree (A9), the two-market guard
+base repaired (A7), the fixture-JSON fallback (A8), the warm-up step
+(A10), and PYTHONPYCACHEPREFIX at the gate step (A12). Item 7's proof
+is the API's raw per-job conclusions, quoted in PROGRESS Phase 11-A12.
+
 ## P11-A8 update (2026-11-16)
 
 The three A7-approved fixes are applied and VERIFIED in a production-
