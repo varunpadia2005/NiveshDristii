@@ -1894,3 +1894,29 @@ removing the invalid job-level runner-context env, adding the
 step-level PYTHONPYCACHEPREFIX to the FULL-gate step — is verified in
 production. Bytecode caches went to ${{ runner.temp }}/pycache outside
 the tree; G18 had no pyc violations to flag.
+
+## Phase 11-A13: the support floor raised to >=3.13 (approved)
+
+pyproject.toml: `requires-python` ">=3.11" → ">=3.13" (3.11 was NEVER
+tested anywhere: no 3.11 interpreter exists on this machine, and the
+3.11 CI cells were removed in A7 after CI run 43574549786 proved the
+constraints freeze cannot install on 3.11). Classifiers: none present
+in pyproject.toml — nothing to remove. Tool configs changed per
+approval: [tool.ruff] target-version "py311" → "py313" (pyproject
+:47) and [tool.mypy] python_version "3.11" → "3.13" (:60) — gate-scope
+ruff and mypy results are BYTE-IDENTICAL before/after (baseline and
+after outputs diffed: ruff exit 0 both, mypy "Success: no issues found
+in 158 source files" both — no STOP condition). ci.yml: the doubled
+`# v5.1.0# v5.1.0` checkout comment (committed in 55bad6f during the
+A8 mutation cycle) fixed to a single `# v5.1.0`. docs/RESTORE.md:3's
+floor reference updated. Historical 3.11 mentions in PROGRESS/CHANGELOG
+left untouched (history entries). The pins-guard blind spot on the
+doubled comment is now fixed IN THE FILE but remains unguarded (the
+pins regex still cannot parse a doubled-comment line) — recorded as
+known.
+
+Simulation: fresh clone at d141008 + patch, fresh venv 3.13.7, CI-exact
+install — **pip accepted requires-python ">=3.13"** (no version
+conflict) — every matrix step verbatim (policy 0, bootstrap+fallback 0,
+warm-up 10 passed 0, worktree 0, GATE: **PASS 41/41**, 669 passed/1
+xfailed, G04/G05 step 0).

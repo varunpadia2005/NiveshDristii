@@ -1,6 +1,6 @@
 # RESTORE.md (NEW, F8) — rebuilding everything on a NEW machine
 
-Prerequisites: git, Python 3.13 (3.11+ per pyproject), pip, internet ONCE
+Prerequisites: git, Python 3.13 (>=3.13 per pyproject), pip, internet ONCE
 for pip only. No other network use. Never touch the default fund directory
 (`~/niveshdristi/funds`) during tests.
 

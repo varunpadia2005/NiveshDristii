@@ -3,6 +3,15 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A13 — support floor >=3.13] 2026-11-19
+
+- pyproject: requires-python ">=3.13" (was ">=3.11" — 3.11 was never
+  tested anywhere: no local interpreter, and the 3.11 CI cells were
+  removed in A7 after the freeze proved uninstallable on 3.11). ruff
+  target-version py313; mypy python_version 3.13 (results identical
+  before/after). Classifiers: none existed. The doubled checkout
+  comment fixed. RESTORE.md floor reference updated.
+
 ## [Phase 11-A12 — PYTHONPYCACHEPREFIX moved to the gate step] 2026-11-19
 
 - The A11 job-level env block (invalid: the runner context is not
@@ -58,6 +67,15 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A13 — support floor >=3.13] 2026-11-19
+
+- pyproject: requires-python ">=3.13" (was ">=3.11" — 3.11 was never
+  tested anywhere: no local interpreter, and the 3.11 CI cells were
+  removed in A7 after the freeze proved uninstallable on 3.11). ruff
+  target-version py313; mypy python_version 3.13 (results identical
+  before/after). Classifiers: none existed. The doubled checkout
+  comment fixed. RESTORE.md floor reference updated.
 
 ## [Phase 11-A12 — PYTHONPYCACHEPREFIX moved to the gate step] 2026-11-19
 
