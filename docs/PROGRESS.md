@@ -1920,3 +1920,16 @@ install — **pip accepted requires-python ">=3.13"** (no version
 conflict) — every matrix step verbatim (policy 0, bootstrap+fallback 0,
 warm-up 10 passed 0, worktree 0, GATE: **PASS 41/41**, 669 passed/1
 xfailed, G04/G05 step 0).
+
+## Phase 11-A13 S5: PUSHED — **CI run 44576161117 IS FULLY GREEN again, now on the >=3.13 floor**
+
+Per-job raw conclusions from the API (jobs total_count 3):
+- gate (ubuntu-latest, 3.13): success
+- gate (windows-latest, 3.13): success
+- coverage: success
+URL: https://github.com/varunpadia2005/NiveshDristii/actions/runs/44576161117
+Two consecutive fully green runs (44567084480 on the A12 tree, then
+44576161117 with the raised floor). requires-python ">=3.13" verified
+accepted by pip in the CI-exact simulation. The claimed-but-untested
+risk from A7/A12 is CLOSED for the floor itself (the claim now matches
+what is tested).

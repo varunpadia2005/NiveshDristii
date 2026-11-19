@@ -31,6 +31,15 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P11-A13 update (2026-11-19)
+
+Item 7 stays ACHIEVED — the second consecutive fully green CI run
+(44576161117) now runs on the raised floor: requires-python ">=3.13"
+(3.11 removed; the claimed-but-untested 3.11 risk is CLOSED by
+removing the claim). The tool configs (ruff py313, mypy 3.13) produce
+byte-identical results. Two consecutive fully green CI runs quoted in
+PROGRESS Phase 11-A12/A13.
+
 ## P11-A12 update (2026-11-19)
 
 Item 7 (CI green): **ACHIEVED** — CI run 44567084480 (head 6c60c30)
