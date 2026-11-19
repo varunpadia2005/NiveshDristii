@@ -1845,3 +1845,38 @@ the A11 scope covered ONLY the job-level placement):
     cleaner (one definition point next to the worktree path).
 Both are one-block ci.yml edits. (b) recommended for consistency with
 W-1. NOT applied: outside the A11 approval.
+
+## Phase 11-A12: the invalid job-level env fixed (step-level, approved)
+
+S1 context audit: ci.yml contains exactly six ${{ }} expressions — five
+valid (runs-on matrix ✓, setup-python with ✓, cache key ✓, coverage
+step env/run ✓) and ONE invalid: line 34, the A11 job-level
+`PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache` (jobs.<job_id>.env
+does NOT support the runner context — docs; CI run 44558740064 failed
+instantly, 0 jobs). actionlint NOT RUN (not installed offline).
+Also found: a pre-existing cosmetic defect from the A8 mutation cycle —
+the checkout line carries a doubled `# v5.1.0# v5.1.0` comment
+(committed in 55bad6f); harmless to YAML/parsing, reported here, NOT
+fixed (outside the A12 approval; one-line fix proposed for the next
+approval).
+
+The fix (approved): the job-level env block REMOVED;
+`env: PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache` added to the
+FULL-gate STEP only (step-level env supports the runner context; no
+duplicate keys; the warm-up/bootstrap steps are intentionally NOT
+covered — their pyc are pre-gate and land in the G18 start snapshot,
+which is harmless). Suite after the edit: 669 passed, 1 xfailed.
+
+SIMULATION (fresh clone at c441c9a + patch, fresh venv, CI-exact
+install, every matrix step verbatim, PYTHONDONTWRITEBYTECODE unset at
+job level to match CI): bootstrap+fallback 0; warm-up 0; worktree 0;
+status empty; gate exit 0 → **GATE: PASS, 41/41 G-checks** (669
+passed, 1 xfailed, 0 skipped); **in-tree pyc delta during the gate:
+0** (29 pre-gate pyc exist from the un-prefixed warm-up/bootstrap —
+inside the G18 start snapshot, identical → allowed); prefix pyc: 196.
+NOTE on the prompt's "0 pyc inside the clone" criterion: the approved
+scope covers the GATE step only, so the un-prefixed warm-up/bootstrap
+still write 29 pre-gate pyc in-tree; the G18-relevant criterion — no
+pyc created DURING the gate — IS met (delta 0), which is what prevents
+the CI failure. Necessary but NOT sufficient (CI pyc writes were never
+reproduced locally; CI is the final judge).

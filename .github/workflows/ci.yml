@@ -25,13 +25,6 @@ jobs:
         python-version: ["3.13"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    # P11-A11 (RC, approved): bytecode caches go OUTSIDE the repo tree —
-    # G18 flagged 2 tests/__pycache__ pyc "(new during gate)" on CI (the
-    # pytest import machinery writes them despite the inherited
-    # PYTHONDONTWRITEBYTECODE). Job-level so the warm-up, the gate's
-    # pytest and every other step inherit it.
-    env:
-      PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
     steps:
       # Pinned by COMMIT SHA (resolved P11-A4 via `git ls-remote` against
       # the official action repos; lightweight tags, commit dates checked,
@@ -106,6 +99,12 @@ jobs:
 
       - name: FULL gate (ruff + mypy + pytest + literal guard + legacy equality)
         shell: bash
+        # P11-A12 (approved): step-level env — the runner context IS
+        # available here (unlike job-level env, which made run
+        # 44558740064 fail at startup). Bytecode caches land OUTSIDE the
+        # repo tree, so G18 cannot see them.
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
         run: |
           python tools/phase1_gate.py --phase0 "$PHASE0_WT" | tee gate.log
           exit "${PIPESTATUS[0]}"

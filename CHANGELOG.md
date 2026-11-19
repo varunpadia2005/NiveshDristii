@@ -3,6 +3,15 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A12 — PYTHONPYCACHEPREFIX moved to the gate step] 2026-11-19
+
+- The A11 job-level env block (invalid: the runner context is not
+  available in jobs.<job_id>.env — run 44558740064 failed at startup,
+  0 jobs) is replaced by a STEP-level env on the FULL-gate step.
+  Simulation: GATE: PASS 41/41; no pyc created during the gate
+  (in-tree delta 0); the un-prefixed warm-up/bootstrap write 29
+  pre-gate pyc which sit inside the G18 start snapshot (allowed).
+
 ## [Phase 11-A11 — bytecode caches outside the repo tree] 2026-11-19
 
 - Job-level PYTHONPYCACHEPREFIX in the gate job: pytest's import
@@ -49,6 +58,15 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A12 — PYTHONPYCACHEPREFIX moved to the gate step] 2026-11-19
+
+- The A11 job-level env block (invalid: the runner context is not
+  available in jobs.<job_id>.env — run 44558740064 failed at startup,
+  0 jobs) is replaced by a STEP-level env on the FULL-gate step.
+  Simulation: GATE: PASS 41/41; no pyc created during the gate
+  (in-tree delta 0); the un-prefixed warm-up/bootstrap write 29
+  pre-gate pyc which sit inside the G18 start snapshot (allowed).
 
 ## [Phase 11-A11 — bytecode caches outside the repo tree] 2026-11-19
 
