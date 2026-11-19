@@ -1794,3 +1794,23 @@ line-ending 0, install 0, bootstrap 0 + fallback 0, warm-up 0 (10
 passed), worktree step 0, gate exit 0 → **GATE: PASS, 41/41
 G-checks**, G04/G05 must-RUN step 0, and `git status --porcelain`
 empty after each status-sensitive step.
+
+## Phase 11-A11: bytecode caches moved OUT of the repo tree in CI
+
+APPROVED one-block addition to the gate job: job-level
+`env: PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache` (the coverage
+job and all step-level env untouched). Diagnosis (run 44135780842,
+both OSes): G18 flagged 2 `tests/__pycache__` pyc "(new during gate)";
+(a) G18 detects a file absent at gate start with a post-marker mtime;
+(b) PYTHONDONTWRITEBYTECODE IS inherited by the gate's pytest
+subprocess (run() passes env=None → full inheritance; the gate sets it
+at module level) — yet the pyc appeared, i.e. the writer (pytest's
+import machinery for tests/__init__ + market_literals) ignores
+sys.dont_write_bytecode; (c) run()'s env=None inherits the FULL parent
+environment — PYTHONPYCACHEPREFIX reaches every subprocess. Evidence:
+the offline simulation with the prefix exported shows **0 pyc inside
+the clone** and **1397 pyc inside the prefix** after the full gate —
+necessary but NOT sufficient (local runs never reproduced the CI pyc
+writes, so CI is the final judge). Option (b) (a G18
+allowlist/tolerance) was REJECTED per the approval: gate.py:778
+documents "No allowlist is added for this" as a deliberate decision.

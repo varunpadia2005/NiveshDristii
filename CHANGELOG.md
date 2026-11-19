@@ -3,6 +3,15 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 11-A11 — bytecode caches outside the repo tree] 2026-11-19
+
+- Job-level PYTHONPYCACHEPREFIX in the gate job: pytest's import
+  machinery (which ignores sys.dont_write_bytecode) now writes its
+  pyc to ${{ runner.temp }}/pycache instead of tests/__pycache__ —
+  G18's 2 "(new during gate)" pyc violations (run 44135780842) cannot
+  recur. G18 unchanged. Simulation: 0 pyc inside the clone, 1397 in
+  the prefix after a full gate; GATE: PASS 41/41.
+
 ## [Phase 11-A10 — CI warm-up] 2026-11-17
 
 - One matrix-job step ("Warm up legacy characterization fixtures")
@@ -40,6 +49,15 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 11-A11 — bytecode caches outside the repo tree] 2026-11-19
+
+- Job-level PYTHONPYCACHEPREFIX in the gate job: pytest's import
+  machinery (which ignores sys.dont_write_bytecode) now writes its
+  pyc to ${{ runner.temp }}/pycache instead of tests/__pycache__ —
+  G18's 2 "(new during gate)" pyc violations (run 44135780842) cannot
+  recur. G18 unchanged. Simulation: 0 pyc inside the clone, 1397 in
+  the prefix after a full gate; GATE: PASS 41/41.
 
 ## [Phase 11-A10 — CI warm-up] 2026-11-17
 

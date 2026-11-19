@@ -25,6 +25,13 @@ jobs:
         python-version: ["3.13"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # P11-A11 (RC, approved): bytecode caches go OUTSIDE the repo tree —
+    # G18 flagged 2 tests/__pycache__ pyc "(new during gate)" on CI (the
+    # pytest import machinery writes them despite the inherited
+    # PYTHONDONTWRITEBYTECODE). Job-level so the warm-up, the gate's
+    # pytest and every other step inherit it.
+    env:
+      PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
     steps:
       # Pinned by COMMIT SHA (resolved P11-A4 via `git ls-remote` against
       # the official action repos; lightweight tags, commit dates checked,
