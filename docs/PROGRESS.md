@@ -1946,3 +1946,12 @@ one with 681 tests — the 12 new data/signals command tests included).
 The PROGRESS note at :953-965 (stubs kept for interface stability) is
 now superseded: all three non-backtest commands are implemented; the
 history entry is left as-is per the no-history-rewrite rule.
+
+## Phase 13-A #1: README command-surface text updated
+
+README.md:62 no longer calls nd data fetch/refresh/signals "stubs
+(Not available yet: no verified data source)" — it describes the real
+P12-A behavior (report-only fetch/refresh; signals via the live model
+bundle; the typed US_NYSE refusal). Edit only; no docs-consistency
+guard extension (the existing guard pattern covers PROGRESS/CLI claims,
+not README; adding one would exceed a 5-line extension).

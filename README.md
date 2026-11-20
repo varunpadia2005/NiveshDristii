@@ -59,8 +59,12 @@ docs/CI.md and docs/RESTORE.md.
 
 `nd --help` — validate, config, models, paper (create/tick/status/verify/
 replay/explain/...), backtest run (offline over stored snapshots).
-`nd data fetch`, `nd data refresh`, `nd signals generate` are stubs ("Not
-available yet: no verified data source").
+`nd data fetch TICKERS --start --end` and `nd data refresh --universe
+--start --end` fetch daily prices through the market's data provider and
+print a report-only JSON summary (nothing is stored; US_NYSE refuses
+with a typed error — no verified US source). `nd signals generate TICKER
+--as-of` runs the live model bundle over fetched prices and prints the
+per-model signals and blended convictions.
 
 ## Docs
 
