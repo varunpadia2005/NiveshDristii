@@ -232,12 +232,38 @@ def data_fetch(
 def data_refresh(
     ctx: typer.Context,
     universe: str = typer.Option("nifty50", "--universe", "-u", help="Universe name"),
+    start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
 ):
-    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
-    _diagnostic(f"Not implemented yet: refresh {universe} from {provider}", ctx.obj["json_output"])
-    _output({"status": "not_implemented"}, ctx.obj["json_output"])
+    """Re-fetch daily prices for every ticker in a universe YAML and
+    print a JSON report (report-only; nothing is stored)."""
+    from niveshdristi.core.errors import (
+        ConfigurationError,
+    )
+
+    if start is None or end is None:
+        _output(
+            {"status": "error",
+             "error": "--start and --end are required (YYYY-MM-DD)"},
+            ctx.obj["json_output"],
+        )
+        raise typer.Exit(code=2)
+    try:
+        uni = load_universe(universe, universes_dir=Path("universes"))
+        s, e = _parse_window(start, end)
+        _require_provider(provider)
+        client = _data_client_for(uni.market_id)
+        symbols = _fetch_report(client, list(uni.tickers), s, e)
+    except (DataError, ConfigurationError, ProviderError, ValueError) as exc:
+        _output({"status": "error", "error": str(exc)}, ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    _output(
+        {"status": "ok", "provider": provider, "universe": universe,
+         "market": uni.market_id, "force": force, "symbols": symbols},
+        ctx.obj["json_output"],
+    )
 
 
 # ============================================================

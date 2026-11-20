@@ -129,4 +129,39 @@ class TestDataFetch:
         assert data["status"] == "error"
 
 
+class TestDataRefresh:
+    def test_refresh_nifty50_reports_all_tickers(self, fake_in_nse, tmp_path):
+        r = runner.invoke(
+            app,
+            ["--json", "data", "refresh", "--universe", "nifty10",
+             "--start", START.isoformat(), "--end", END.isoformat()],
+        )
+        assert r.exit_code == 0, r.output
+        data = json.loads(r.output)
+        assert data["status"] == "ok"
+        assert data["universe"] == "nifty10"
+        assert len(data["symbols"]) == 10
+        assert all(s["rows"] > 0 for s in data["symbols"])
+
+    def test_refresh_unknown_universe_typed_error(self, tmp_path):
+        r = runner.invoke(
+            app,
+            ["--json", "data", "refresh", "--universe", "nope50",
+             "--start", START.isoformat(), "--end", END.isoformat()],
+        )
+        assert r.exit_code == 1
+        data = json.loads(r.output)
+        assert data["status"] == "error"
+
+    def test_refresh_reports_force_flag(self, fake_in_nse, tmp_path):
+        r = runner.invoke(
+            app,
+            ["--json", "data", "refresh", "--universe", "nifty10",
+             "--start", START.isoformat(), "--end", END.isoformat(),
+             "--force"],
+        )
+        assert r.exit_code == 0
+        data = json.loads(r.output)
+        assert data["force"] is True
+
 
