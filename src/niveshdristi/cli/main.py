@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.console import Console
@@ -20,6 +20,11 @@ from niveshdristi.config_loader import (
     load_mandate,
     load_strategy,
     load_universe,
+)
+from niveshdristi.core.errors import (
+    ConfigurationError,
+    DataError,
+    ProviderError,
 )
 
 app = typer.Typer(
@@ -111,6 +116,80 @@ data_app = typer.Typer(help="Data management commands")
 app.add_typer(data_app, name="data")
 
 
+def _data_client_for(market_id: str) -> Any:
+    """P12-A composition point: the market's DataClient.
+
+    IN_NSE -> the yfinance adapter; US_NYSE -> the typed shell (every
+    role raises DataError — a US fetch can never be a silent empty).
+    Unknown markets raise a typed ConfigurationError.
+    """
+    # Importing the profile modules REGISTERS the markets (side effect by
+    # design — same pattern as services/fund.py). Without the US import,
+    # get_registry().get("US_NYSE") raises KeyError.
+    import niveshdristi.markets.in_nse.profile  # noqa: F401
+    import niveshdristi.markets.in_us.profile  # noqa: F401
+    from niveshdristi.core.errors import ConfigurationError
+    from niveshdristi.markets import get_registry
+    from niveshdristi.markets.in_nse.providers.yfinance_adapter import YFinanceClient
+    from niveshdristi.markets.in_us.providers.us_adapter import UsProviderShell
+
+    try:
+        get_registry().get(market_id)
+    except KeyError as exc:
+        raise ConfigurationError(
+            f"unknown market: {market_id!r}"
+        ) from exc
+    factories: dict[str, Any] = {
+        "IN_NSE": YFinanceClient,
+        "US_NYSE": UsProviderShell,
+    }
+    if market_id not in factories:
+        raise ConfigurationError(
+            f"no data provider registered for market {market_id!r}"
+        )
+    return cast(str, factories[market_id]())
+
+
+def _parse_window(start: str, end: str) -> tuple[date, date]:
+    """Parse the --start/--end window (ISO dates; start <= end)."""
+    s = date.fromisoformat(start)
+    e = date.fromisoformat(end)
+    if s > e:
+        raise ValueError("--start must not be after --end")
+    return s, e
+
+
+def _require_provider(provider: str) -> None:
+    """Only the registered provider name is accepted."""
+    if provider != "yfinance":
+        raise ConfigurationError(
+            f"unknown provider: {provider!r} (registered: 'yfinance')"
+        )
+
+
+def _fetch_report(
+    client: Any, tickers: list[str], start: date, end: date
+) -> list[dict[str, Any]]:
+    """Fetch prices per ticker and build the report rows (report-only:
+    nothing is stored — the paper fund's snapshots remain the only
+    price store, so replay is untouched)."""
+    rows: list[dict[str, Any]] = []
+    for ticker in tickers:
+        series = client.prices(ticker, start, end)
+        adjusted = series.adjusted
+        n = adjusted.height
+        dates = adjusted["date"].to_list() if n else []
+        rows.append(
+            {
+                "symbol": series.symbol,
+                "rows": n,
+                "first": str(dates[0])[:10] if n else None,
+                "last": str(dates[-1])[:10] if n else None,
+            }
+        )
+    return rows
+
+
 @data_app.command("fetch")
 def data_fetch(
     ctx: typer.Context,
@@ -119,10 +198,34 @@ def data_fetch(
     end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
     force: bool = typer.Option(False, "--force", help="Force refresh"),
+    market: str = typer.Option("IN_NSE", "--market", help="Market id"),
 ):
-    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
-    _diagnostic(f"Not implemented yet: fetch {tickers} from {provider}", ctx.obj["json_output"])
-    _output({"status": "not_implemented"}, ctx.obj["json_output"])
+    """Fetch daily prices for TICKERS through the market's data provider
+    and print a JSON report (report-only; nothing is stored)."""
+    from niveshdristi.core.errors import (
+        ConfigurationError,
+    )
+
+    if start is None or end is None:
+        _output(
+            {"status": "error",
+             "error": "--start and --end are required (YYYY-MM-DD)"},
+            ctx.obj["json_output"],
+        )
+        raise typer.Exit(code=2)
+    try:
+        s, e = _parse_window(start, end)
+        _require_provider(provider)
+        client = _data_client_for(market)
+        symbols = _fetch_report(client, list(tickers), s, e)
+    except (DataError, ConfigurationError, ProviderError, ValueError) as exc:
+        _output({"status": "error", "error": str(exc)}, ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    _output(
+        {"status": "ok", "provider": provider, "market": market,
+         "force": force, "symbols": symbols},
+        ctx.obj["json_output"],
+    )
 
 
 @data_app.command("refresh")
