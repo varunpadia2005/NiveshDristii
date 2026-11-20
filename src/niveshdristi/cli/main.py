@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,6 +26,7 @@ from niveshdristi.core.errors import (
     DataError,
     ProviderError,
 )
+from niveshdristi.core.signal import Signal
 
 app = typer.Typer(
     name="nd",
@@ -190,6 +191,13 @@ def _fetch_report(
     return rows
 
 
+def _require_prices(series: Any, ticker: str, as_of_d: date) -> Any:
+    """Refuse empty price sets (typed, never a silent empty)."""
+    if series.adjusted.height == 0:
+        raise DataError(f"no prices for {ticker!r} as of {as_of_d.isoformat()}")
+    return series.adjusted
+
+
 @data_app.command("fetch")
 def data_fetch(
     ctx: typer.Context,
@@ -204,6 +212,7 @@ def data_fetch(
     and print a JSON report (report-only; nothing is stored)."""
     from niveshdristi.core.errors import (
         ConfigurationError,
+        DataError,
     )
 
     if start is None or end is None:
@@ -241,6 +250,7 @@ def data_refresh(
     print a JSON report (report-only; nothing is stored)."""
     from niveshdristi.core.errors import (
         ConfigurationError,
+        DataError,
     )
 
     if start is None or end is None:
@@ -279,10 +289,74 @@ def signals_generate(
     ctx: typer.Context,
     ticker: str = typer.Argument(..., help="Ticker symbol"),
     as_of: str | None = typer.Option(None, "--as-of", help="As-of date (YYYY-MM-DD)"),
+    market: str = typer.Option("IN_NSE", "--market", help="Market id"),
 ):
-    """Not available yet: no verified data source. (Stub kept for interface stability.)"""
-    _diagnostic(f"Not implemented yet: generate signal for {ticker}", ctx.obj["json_output"])
-    _output({"status": "not_implemented"}, ctx.obj["json_output"])
+    """Generate signals for TICKER as-of a date through the market's
+    data provider and the live model bundle (JSON, report-only)."""
+    import polars as pl
+
+    from niveshdristi.core.alpha import AsOfContext
+    from niveshdristi.core.errors import (
+        ConfigurationError,
+        DataError,
+    )
+    from niveshdristi.engine.advance import ModelBundle
+    from niveshdristi.marketdata.context import build_from_full_frames
+    from niveshdristi.portfolio.blending import blend_convictions
+
+    as_of_d = _today() if as_of is None else date.fromisoformat(as_of)
+    try:
+        client = _data_client_for(market)
+        bundle = ModelBundle(_live_models_bundle())
+        # Window derivation matches the paper composition's seam
+        # (sessions * _CALENDAR_DAYS_PER_SESSION, max live warmup 200).
+        max_hist = max(
+            (getattr(m, "min_history_sessions", 0) for m in bundle.models),
+            default=0,
+        )
+        start = as_of_d - timedelta(days=int(max_hist * 1.5))
+        series = client.prices(ticker, start, as_of_d, as_of=as_of_d)
+        adjusted = _require_prices(series, ticker, as_of_d)
+        # The ta_ensemble's legacy indicators consume adj_close/adj_high/
+        # adj_low (documented convention, test_paper_cli.py fake frames):
+        # auto_adjust=true semantics make the adjusted OHLC the aliases.
+        model_frame = adjusted.with_columns(
+            pl.col("close").alias("adj_close"),
+            pl.col("high").alias("adj_high"),
+            pl.col("low").alias("adj_low"),
+        )
+        inputs = build_from_full_frames(as_of=as_of_d, prices={ticker: model_frame})
+        signals: list[Signal] = []
+        for model in bundle.models:
+            signals.extend(
+                model.predict(
+                    AsOfContext(
+                        as_of=datetime.combine(as_of_d, time(15, 30), tzinfo=UTC),
+                        universe=(),
+                        market_id=market,
+                    ),
+                    inputs,
+                )
+            )
+        blended = blend_convictions(
+            bundle.as_strategy_models(),
+            signals,
+            known_model_ids=bundle.known_ids,
+        )
+    except (DataError, ConfigurationError, ProviderError, ValueError) as exc:
+        _output({"status": "error", "error": str(exc)}, ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    _output(
+        {"status": "ok", "ticker": ticker, "as_of": as_of_d.isoformat(),
+         "market": market,
+         "signals": [
+             {"model_id": sig.model_id, "symbol": sig.instrument.symbol,
+              "conviction": sig.conviction}
+             for sig in signals
+         ],
+         "blended": blended},
+        ctx.obj["json_output"],
+    )
 
 
 # ============================================================
