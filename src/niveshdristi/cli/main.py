@@ -507,6 +507,11 @@ def _paper_fetch_bars(universe: list[str], start: date, end: date) -> dict:
             f"{symbol}.NS", start, end, auto_adjust=True
         )
         pdf = hist.reset_index()
+        # P13-A #2: an UNNAMED DatetimeIndex resets to "index" — rename the
+        # first column to "date" (same convention as the marketdata
+        # adapter's _to_polars); named indexes keep their name.
+        if pdf.columns[0] != "date":
+            pdf = pdf.rename(columns={pdf.columns[0]: "date"})
         pdf.columns = [str(c).lower() for c in pdf.columns]
 
         out[symbol] = pl.from_pandas(pdf)

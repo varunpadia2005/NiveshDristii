@@ -14,7 +14,7 @@ No network: the fake client never imports yfinance.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
@@ -87,3 +87,41 @@ class TestFetchWindowP11:
                 f"fetch span {(end - start).days} days is too short for "
                 "the derived history window"
             )
+
+
+class TestPaperFetchBarsUnnamedIndex:
+    def test_unnamed_datetime_index_becomes_date_column(self, tmp_path):
+        """P13-A #2: _paper_fetch_bars lowercases reset_index() columns but
+        an UNNAMED DatetimeIndex becomes 'index', not 'date' — the fund
+        then halts with 'unable to find column date'. The first column
+        must be renamed to 'date' (same convention as the marketdata
+        adapter's _to_polars)."""
+        import pandas as pd
+
+        from niveshdristi.cli.main import _paper_fetch_bars
+
+        class _UnnamedIndexProvider:
+            def _fetch(self, provider_symbol, start, end, auto_adjust):
+                idx = pd.date_range(start, end - timedelta(days=1), freq="D")
+                return pd.DataFrame(
+                    {"Open": [100.0] * len(idx), "High": [101.0] * len(idx),
+                     "Low": [99.0] * len(idx), "Close": [100.5] * len(idx),
+                     "Volume": [1_000_000] * len(idx)},
+                    index=pd.DatetimeIndex(idx),  # UNNAMED index
+                )
+
+        import niveshdristi.markets.in_nse.providers.yfinance_adapter as yfa
+        original = yfa.YFinanceClient._fetch
+        yfa.YFinanceClient._fetch = _UnnamedIndexProvider._fetch
+        try:
+            start = date(2026, 9, 1)
+            end = date(2026, 9, 20)
+            frames = _paper_fetch_bars(["SYN090"], start, end)
+        finally:
+            yfa.YFinanceClient._fetch = original
+        frame = frames["SYN090"]
+        assert "date" in frame.columns, (
+            "the frame must carry a 'date' column — an unnamed "
+            "DatetimeIndex must be renamed, not lowercased to 'index'"
+        )
+        assert frame.height > 0
