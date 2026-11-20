@@ -1933,3 +1933,16 @@ Two consecutive fully green runs (44567084480 on the A12 tree, then
 accepted by pip in the CI-exact simulation. The claimed-but-untested
 risk from A7/A12 is CLOSED for the floor itself (the claim now matches
 what is tested).
+
+## Phase 12-A S5: PUSHED — **CI run 44777085656 FULLY GREEN with the three commands implemented**
+
+Per-job raw conclusions from the API (jobs total_count 3):
+- gate (ubuntu-latest, 3.13): success
+- gate (windows-latest, 3.13): success
+- coverage: success
+URL: https://github.com/varunpadia2005/NiveshDristii/actions/runs/44777085656
+Third consecutive fully green run (44567084480, 44576161117, then this
+one with 681 tests — the 12 new data/signals command tests included).
+The PROGRESS note at :953-965 (stubs kept for interface stability) is
+now superseded: all three non-backtest commands are implemented; the
+history entry is left as-is per the no-history-rewrite rule.

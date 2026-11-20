@@ -31,6 +31,16 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P12-A update (2026-11-20)
+
+`nd data fetch`, `nd data refresh` and `nd signals generate` are
+IMPLEMENTED (previously interface-stability stubs): fetch/refresh go
+through the market DataClient seams (IN_NSE yfinance adapter; US_NYSE
+typed shell refusal), signals through the same seam + the live model
+bundle + blend. Report-only JSON; nothing stored; replay untouched.
+CI run 44777085656: all three jobs success (third consecutive green
+run, now with 681 tests).
+
 ## P11-A13 update (2026-11-19)
 
 Item 7 stays ACHIEVED — the second consecutive fully green CI run

@@ -3,6 +3,25 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 12-A — the data/signals commands implemented] 2026-11-20
+
+- `nd data fetch TICKERS --start --end [--market]`: daily prices via
+  the market's DataClient; report-only JSON (per-symbol rows/first/
+  last); nothing stored. IN_NSE via the yfinance adapter; US_NYSE via
+  the typed shell refusal — never a silent empty result.
+- `nd data refresh --universe --start --end [--force] [--market]`:
+  resolves the universe via config_loader.load_universe (market from
+  the universe file) and re-fetches every ticker.
+- `nd signals generate TICKER [--as-of] [--market]`: prices through
+  the same seam, ModelInputs via build_from_full_frames on the
+  adjusted frame (adj_close/adj_high/adj_low aliases for the
+  ta_ensemble's legacy indicators), the live model bundle +
+  blend_convictions; JSON report.
+- Exit codes: 0 ok; 1 typed operational failure (DataError/
+  ConfigurationError/ProviderError); 2 usage (missing --start/--end).
+- 12 new tests (offline, adapter fakes, both markets); CI run
+  44777085656 all three jobs success.
+
 ## [Phase 11-A13 — support floor >=3.13] 2026-11-19
 
 - pyproject: requires-python ">=3.13" (was ">=3.11" — 3.11 was never
@@ -67,6 +86,25 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 12-A — the data/signals commands implemented] 2026-11-20
+
+- `nd data fetch TICKERS --start --end [--market]`: daily prices via
+  the market's DataClient; report-only JSON (per-symbol rows/first/
+  last); nothing stored. IN_NSE via the yfinance adapter; US_NYSE via
+  the typed shell refusal — never a silent empty result.
+- `nd data refresh --universe --start --end [--force] [--market]`:
+  resolves the universe via config_loader.load_universe (market from
+  the universe file) and re-fetches every ticker.
+- `nd signals generate TICKER [--as-of] [--market]`: prices through
+  the same seam, ModelInputs via build_from_full_frames on the
+  adjusted frame (adj_close/adj_high/adj_low aliases for the
+  ta_ensemble's legacy indicators), the live model bundle +
+  blend_convictions; JSON report.
+- Exit codes: 0 ok; 1 typed operational failure (DataError/
+  ConfigurationError/ProviderError); 2 usage (missing --start/--end).
+- 12 new tests (offline, adapter fakes, both markets); CI run
+  44777085656 all three jobs success.
 
 ## [Phase 11-A13 — support floor >=3.13] 2026-11-19
 
