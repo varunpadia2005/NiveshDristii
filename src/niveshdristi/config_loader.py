@@ -243,7 +243,13 @@ def load_universe(name: str, universes_dir: Path | None = None) -> Universe:
     base = universes_dir or Path("universes")
     path = base / f"{name}.yaml"
     if not path.exists():
-        raise ConfigurationError(f"Universe not found: {path}")
+        available = sorted(p.stem for p in base.glob("*.yaml")) if base.is_dir() else []
+        hint = ", ".join(available) if available else "no universe files exist yet"
+        raise ConfigurationError(
+            f"Universe not found: {name!r} (expected {path}). "
+            f"Available universes: {hint}. "
+            "Create a universe YAML there or pass an existing name."
+        )
     data = _load_yaml(path)
     _validate_no_unknown_keys(data, {
         "name", "market_id", "tickers", "description", "source", "last_updated",
