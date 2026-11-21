@@ -203,9 +203,15 @@ def data_fetch(
     ctx: typer.Context,
     tickers: list[str] = typer.Argument(..., help="Tickers to fetch"),
     start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(
+        None, "--end",
+        help="End date (YYYY-MM-DD), exclusive (last row is before it)",
+    ),
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
-    force: bool = typer.Option(False, "--force", help="Force refresh"),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Echoed in the report only: nothing is cached, so there is nothing to skip",
+    ),
     market: str = typer.Option("IN_NSE", "--market", help="Market id"),
 ):
     """Fetch daily prices for TICKERS through the market's data provider
@@ -242,9 +248,15 @@ def data_refresh(
     ctx: typer.Context,
     universe: str = typer.Option("nifty50", "--universe", "-u", help="Universe name"),
     start: str | None = typer.Option(None, "--start", help="Start date (YYYY-MM-DD)"),
-    end: str | None = typer.Option(None, "--end", help="End date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(
+        None, "--end",
+        help="End date (YYYY-MM-DD), exclusive (last row is before it)",
+    ),
     provider: str = typer.Option("yfinance", "--provider", "-p", help="Data provider"),
-    force: bool = typer.Option(False, "--force", help="Force refresh"),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Echoed in the report only: nothing is cached, so there is nothing to skip",
+    ),
 ):
     """Re-fetch daily prices for every ticker in a universe YAML and
     print a JSON report (report-only; nothing is stored)."""

@@ -199,3 +199,22 @@ class TestSignalsGenerate:
         assert r.exit_code == 0, r.output
         data = json.loads(r.output)
         assert data["as_of"] == date.today().isoformat()
+
+
+class TestHelpTextDogfood:
+    """P13-A #5/#6: the help text says what the flags actually do."""
+
+    def test_force_flag_documents_no_cache(self):
+        import re
+
+        from niveshdristi.cli.main import app as _app  # noqa: F811
+
+        from typer.testing import CliRunner
+
+        r = CliRunner().invoke(app, ["--json", "data", "fetch", "--help"])
+        assert r.exit_code == 0
+        assert "nothing is cached" in r.output, (
+            "--force help must state that nothing is cached (P13-A #5)"
+        )
+        m = re.search(r"--end[^⌐│]*?exclusive", r.output.replace("\n", " "))
+        assert m, "--end help must state exclusivity (P13-A #6)"
