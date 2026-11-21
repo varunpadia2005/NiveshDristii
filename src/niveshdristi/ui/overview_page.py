@@ -46,7 +46,9 @@ def render_fund_overview(payload: dict, labels: dict) -> None:
             signals = payload.get("signals", {}).get(symbol, {})
             lean = signals.get("lean", "No opinion")
             conv = signals.get("conviction")
-            line = (f"{symbol} — {lean} — "
+            from niveshdristi.ui.names import display_name
+
+            line = (f"{display_name(symbol)} ({symbol}) — {lean} — "
                     f"Conviction (uncalibrated, -1 to +1): "
                     f"{conv if conv is not None else 'n/a'}")
             with st.container(border=True):

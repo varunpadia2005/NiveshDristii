@@ -52,8 +52,11 @@ def render_paper_detail(payload: dict, labels: dict) -> None:
                                     state.get("fund_base"),
                                     row["session_date"])
             for f in detail.get("fills", []):
-                st.text(f"{f['side']} {f['quantity']} {f['symbol']} @ "
-                        f"{f['price']}")
+                from niveshdristi.ui.names import display_name
+
+                _nm = display_name(f['symbol'])
+                st.text(f"{f['side']} {f['quantity']} {_nm} "
+                        f"({f['symbol']}) @ {f['price']}")
             st.text(f"costs: fees {detail['costs']['fees']:.2f}, "
                     f"commission {detail['costs']['commission']:.2f}")
             if detail.get("gate_log"):

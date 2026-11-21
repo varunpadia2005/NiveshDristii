@@ -52,7 +52,9 @@ def render_signals_board(rows: list[dict], payload: dict, labels: dict) -> None:
         if row["conviction"] is not None and abs(row["conviction"]) < min_conv:
             continue
         with st.container(border=True):
-            st.text(f"{row['symbol']} — {row['lean']} — "
+            from niveshdristi.ui.names import display_name
+
+            st.text(f"{display_name(row['symbol'])} ({row['symbol']}) — {row['lean']} — "
                     f"{row['conviction_caption']}: "
                     f"{row['conviction'] if row['conviction'] is not None else 'n/a'}"
                     f" — horizon {row['horizon'] or 'n/a'}d — "

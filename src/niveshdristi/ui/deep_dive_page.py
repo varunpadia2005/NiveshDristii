@@ -41,7 +41,12 @@ def render_deep_dive(payload: dict, labels: dict) -> None:
     )
 
     banner_strip(payload)
-    st.subheader(f"Stock deep-dive: {payload.get('symbol', '')}")
+    from niveshdristi.ui.names import display_name, display_tag
+
+    _sym = payload.get('symbol', '')
+    st.subheader(f"Stock deep-dive: {display_name(_sym)} ({_sym})")
+    if display_tag(_sym):
+        st.caption(display_tag(_sym))
     if not payload.get("available"):
         empty_state(payload.get("reason", "unavailable"))
         footer_strip(payload, labels)
@@ -85,9 +90,11 @@ def render_compare(payload: dict, labels: dict) -> None:
         footer_strip(payload, labels)
         return
     col_a, col_b = st.columns(2)
+    from niveshdristi.ui.names import display_name
+
     for col, side in ((col_a, a), (col_b, b)):
         with col:
-            st.text(f"{side['symbol']}")
+            st.text(f"{display_name(side['symbol'])} ({side['symbol']})")
             _indicator_panes(side)
             for m in side["per_model"]:
                 st.text(f"{m['model_id']}: {m['label']}")
