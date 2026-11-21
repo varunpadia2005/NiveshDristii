@@ -9,6 +9,7 @@ raises a typed DataError by design).
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, timedelta
 
 import pandas as pd
@@ -250,14 +251,27 @@ class TestPythonMDunderMain:
         import sys
 
         base = [sys.executable, "-m", "niveshdristi"]
-        r1 = subprocess.run(base + ["--help"], capture_output=True, text=True,
-                            timeout=120)
+        # P16-C: force UTF-8 in the CHILD and decode as UTF-8 in the
+        # parent regardless of locale — windows CI pipes are cp1252, so
+        # rich falls back to an ASCII box style (|/+) that the
+        # normalization does not strip, and the em-dash mangles
+        # (authorized fix; comparison semantics unchanged — same
+        # marker, same tree comparison).
+        child_env = {
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        }
+        r1 = subprocess.run(base + ["--help"], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace",
+                            env=child_env, timeout=120)
         assert r1.returncode == 0, r1.stderr
         r2 = subprocess.run(
             [sys.executable, "-c",
              "from niveshdristi.cli.main import app; app()",
              "--help"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=child_env, timeout=120,
         )
         assert r2.returncode == 0, r2.stderr
         # P13-B: compare SEMANTIC content only. The usage line embeds the
