@@ -86,6 +86,22 @@ def main_callback(
     json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
 ):
     _common_options(ctx, config_file, json_output)
+    # P16-A-5 (15-V F2): a cwd without config.yaml must produce the
+    # project's typed JSON error and exit 1 — never a FileNotFoundError
+    # traceback. The remedy names both supported paths: run from the
+    # project root, or pass the config file explicitly via --config/-c.
+    cfg_path = config_file if config_file is not None else Path("config.yaml")
+    if not cfg_path.exists():
+        _output(
+            {"status": "error",
+             "error": (
+                 f"config file not found: {cfg_path.resolve()} — run from "
+                 "the project root (where config.yaml lives) or pass "
+                 "--config/-c <path>"
+             )},
+            json_output,
+        )
+        raise typer.Exit(code=1)
 
 
 # ============================================================

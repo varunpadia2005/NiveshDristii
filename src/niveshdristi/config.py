@@ -141,7 +141,18 @@ class Settings(BaseSettings):
 
 
 def load_config(path: str = "config.yaml") -> Settings:
-    with open(path, encoding="utf-8") as f:
+    # P16-A-5 (15-V F2): a missing config file must be a TYPED error, not a
+    # raw FileNotFoundError traceback. config.py is the config seam
+    # (not frozen/core — R6 authorized for F2).
+    from niveshdristi.core.errors import ConfigurationError
+
+    p = Path(path)
+    if not p.exists():
+        raise ConfigurationError(
+            f"config file not found: {p.resolve()} — run from the project "
+            "root (where config.yaml lives) or pass --config/-c <path>"
+        )
+    with open(p, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 
     # Merge with env overrides for specific keys
@@ -186,5 +197,15 @@ def reset_config() -> None:
 
 
 # Backward compatibility: old code uses `from niveshdristi.config import CFG`
-# CFG is the Settings instance directly (properly typed, like Phase 0)
-CFG = get_config()
+# CFG is the Settings instance directly (properly typed, like Phase 0).
+# P16-A-5: import-safety — from a cwd without config.yaml (15-V F2), a
+# module-level get_config() raised a raw FileNotFoundError traceback at
+# IMPORT time (before the CLI could render any typed error). Fall back to
+# defaults-only Settings here and record the error; the CLI's
+# main_callback renders the typed JSON error and exits 1 before any
+# command runs.
+try:
+    CFG = get_config()
+except Exception:  # noqa: BLE001 — import must never crash the CLI
+    CFG = Settings()
+    _CFG_ERROR = "config.yaml not found in the current working directory"
