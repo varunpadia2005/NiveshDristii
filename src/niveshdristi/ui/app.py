@@ -55,6 +55,16 @@ def render_app() -> None:
         st.session_state["dive_symbol"] = symbol
         detail = {**payload, "dive_symbol": symbol, "fund_base": base}
         render_stock_detail(detail, labels)
+    elif page == "Holdings":
+        from niveshdristi.ui.holdings_page import render_holdings
+
+        overview = {**payload, "fund_base": base}
+        render_holdings(overview, labels)
+    elif page == "Orders":
+        from niveshdristi.ui.orders_page import render_orders
+
+        overview = {**payload, "fund_base": base}
+        render_orders(overview, labels)
     elif page == "Market Overview":
         from niveshdristi.services.market_view import market_overview
         from niveshdristi.ui.market_page import render_market_overview

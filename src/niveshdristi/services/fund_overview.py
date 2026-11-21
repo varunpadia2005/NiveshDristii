@@ -130,3 +130,34 @@ def nav_series(fund_id: str, base: str | Path | None = None) -> list[dict]:
     records = PaperLedger(paths.ledger).records()
     return [{"session": r["session_date"], "equity": float(r["equity_after"])}
             for r in records]
+
+
+def holdings_view(fund_id: str, base: str | Path | None = None) -> dict:
+    """P18-UI-S3d read-only view-model: per-holding name-agnostic rows
+    (symbol, quantity, avg_cost, last_close, value, unrealised P&L amount
+    and percent when avg_cost > 0, weight as a fraction of total value) +
+    a totals row. Every number derives from the ledger + stored snapshots;
+    avg_cost == 0 (entry at creation) renders as None P&L, never 0%."""
+    overview = fund_overview(fund_id, base=base)
+    rows = []
+    total_value = 0.0
+    for p in overview.get("positions_view", []):
+        qty = p.get("quantity") or 0
+        last = p.get("last_close")
+        avg = p.get("avg_cost") or 0.0
+        value = qty * last if last is not None else None
+        if value is not None:
+            total_value += value
+        pnl_amount = (qty * (last - avg)
+                      if last is not None and avg > 0 else None)
+        pnl_pct = ((last - avg) / avg * 100.0
+                   if last is not None and avg > 0 else None)
+        rows.append({"symbol": p["symbol"], "quantity": qty,
+                     "avg_cost": avg if avg > 0 else None,
+                     "last_close": last, "value": value,
+                     "pnl_amount": pnl_amount, "pnl_pct": pnl_pct})
+    for r in rows:
+        r["weight_pct"] = (r["value"] / total_value * 100.0
+                           if total_value and r["value"] is not None else None)
+    return {"as_of": overview.get("as_of"), "rows": rows,
+            "total_value": total_value or None}

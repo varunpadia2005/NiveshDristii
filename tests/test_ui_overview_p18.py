@@ -191,3 +191,56 @@ class TestStockDetail:
         texts = _page_text(at)
         assert "COSTS NOT MODELED" in texts
         assert "Stock detail: Synthetic Co 090 (demo)" in texts
+
+
+class TestHoldingsOrders:
+    def test_in_demo_holdings(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Holdings")
+        texts = _page_text(at)
+        assert "Holdings" in texts
+        # the holdings table renders as a dataframe element; the resolved
+        # names inside it are verified at the resolver level (test_ui_names)
+        assert any(getattr(el, "type", "") == "dataframe"
+                   for el in at.main), "holdings table must render"
+        # the table columns themselves are verified at the service level
+        view_rows = at.dataframe[0].value
+        assert "Weight" in getattr(view_rows, "columns", []), (
+            "holdings table must carry a Weight column"
+        )
+        assert "* synthetic demo data" in texts
+        assert "Total value" in texts
+        # the honest n/a state lives in the P&L cells of the dataframe
+        df_val = at.dataframe[0].value
+        assert "n/a (no avg cost recorded)" in set(
+            df_val["Unrealised P&L"]), (
+            "avg_cost==0 rows must show the honest n/a state"
+        )
+
+    def test_us_demo_holdings_costs_banner(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Holdings")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts
+        assert "Total value" in texts
+
+    def test_orders_fills_and_filters(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Orders")
+        texts = _page_text(at)
+        assert "Orders / Activity" in texts
+        assert "7 of 7 fill(s)" in texts
+        assert any(getattr(el, "type", "") == "dataframe"
+                   for el in at.main), "fills table must render"
+        fill_rows = at.dataframe[0].value
+        assert "Costs" in getattr(fill_rows, "columns", []), (
+            "fills table must carry a Costs column"
+        )
+        assert "costs not modeled" in str(fill_rows) or             "fees" in str(fill_rows)
+        assert "Pending (gated) orders" in texts
+        assert "target weight" in texts
+        # side filter
+        at.selectbox[1].set_value("BUY").run(timeout=300)
+        assert not at.exception, at.exception
+
+    def test_us_orders_costs_not_modeled_state(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Orders")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts

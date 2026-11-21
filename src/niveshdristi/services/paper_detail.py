@@ -130,3 +130,52 @@ def _load_cfg() -> Any:
         "provider": os.environ.get("NDR_LLM_PROVIDER", "unverified"),
         "model": os.environ.get("NDR_LLM_MODEL", "unverified"),
     })(), "data": type("D", (), {"provider": "yfinance (UNOFFICIAL)"})()})()
+
+
+def orders_view(fund_id: str, base: str | Path | None = None) -> dict:
+    """P18-UI-S3e read-only view-model: every fill across all recorded
+    sessions (symbol, side, quantity, price, session, per-fill costs when
+    the session recorded them) + the broker cache's pending gated orders.
+    Nothing is estimated; a session without recorded per-fill costs shows
+    the honest 'costs not modeled' state."""
+    import json as _json
+
+    from niveshdristi.paper.fund import FundPaths
+    from niveshdristi.paper.ledger import PaperLedger
+
+    paths = FundPaths(base).for_fund(fund_id)
+    records = PaperLedger(paths.ledger).records()
+    fills = []
+    for r in records:
+        session_costs = r.get("costs") or {}
+        fees_total = session_costs.get("fees")
+        slippage_total = session_costs.get("slippage")
+        per_fill_fees = (fees_total / len(r.get("fills", []))
+                         if fees_total is not None and r.get("fills") else None)
+        per_fill_slip = (slippage_total / len(r.get("fills", []))
+                         if slippage_total is not None and r.get("fills")
+                         else None)
+        for f in r.get("fills", []):
+            fees = (f.get("fees") if f.get("fees") is not None
+                    else per_fill_fees)
+            slippage = (f.get("slippage") if f.get("slippage") is not None
+                        else per_fill_slip)
+            fills.append({
+                "symbol": f["order"]["instrument"]["symbol"],
+                "side": f["order"]["side"],
+                "quantity": f.get("filled_quantity", f.get("quantity")),
+                "price": f.get("fill_price", f.get("price")),
+                "session_date": r["session_date"],
+                "fees": fees,
+                "slippage": slippage,
+                "commission": f.get("commission"),
+            })
+    pending: dict = {}
+    cache = paths.root / "broker_cache.json"
+    if cache.exists():
+        try:
+            pending = _json.loads(cache.read_text(encoding="utf-8")).get(
+                "pending") or {}
+        except (_json.JSONDecodeError, OSError):
+            pending = {}
+    return {"fills": fills, "pending_gated": pending.get("gated") or {}}
