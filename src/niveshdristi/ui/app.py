@@ -7,7 +7,8 @@ import os
 
 import streamlit as st
 
-PAGES = ("Overview", "Market Overview", "Deep-Dive", "Signals",
+PAGES = ("Overview", "Watchlist", "Stock Detail", "Holdings", "Orders",
+         "Market Overview", "Deep-Dive", "Signals",
          "Backtest Lab", "Paper Fund", "Settings")
 
 
@@ -39,6 +40,25 @@ def render_app() -> None:
             overview = {**payload, "kpis": None}
         overview["fund_base"] = base
         render_fund_overview(overview, labels)
+    elif page == "Watchlist":
+        from niveshdristi.ui.watchlist_page import render_watchlist
+
+        overview = {**payload, "fund_base": base}
+        render_watchlist(overview, labels)
+    elif page == "Stock Detail":
+        from niveshdristi.services.deep_dive import deep_dive
+        from niveshdristi.ui.deep_dive_page import render_deep_dive
+
+        symbol = st.session_state.get("dive_symbol") or sorted(
+            payload["positions"] and
+            [p["instrument"]["symbol"] for p in payload["positions"]]
+            or ["SYN090"])[0]
+        st.session_state["dive_symbol"] = symbol
+        try:
+            dd = deep_dive(symbol, fund_id, base=base)
+            render_deep_dive(dd, labels)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"stock detail unavailable: {type(exc).__name__}: {exc}")
     elif page == "Market Overview":
         from niveshdristi.services.market_view import market_overview
         from niveshdristi.ui.market_page import render_market_overview

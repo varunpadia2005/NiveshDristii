@@ -139,3 +139,38 @@ class TestHomeOverview:
         assert formatted in _page_text(at), (
             f"ledger equity {formatted} must appear on the page"
         )
+
+
+class TestWatchlist:
+    def test_in_demo_watchlist(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Watchlist")
+        texts = _page_text(at)
+        assert "Watchlist" in texts
+        assert "Synthetic Co 090 (demo)" in texts
+        assert "SYN090" in texts
+        assert "synthetic demo data" in texts
+        assert "Last close" in texts
+        assert "vs previous close" in texts
+
+    def test_us_demo_watchlist(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Watchlist")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts
+        assert "Synthetic Co 090 (demo)" in texts
+
+    def test_watchlist_search_filter(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Watchlist")
+        search = at.text_input[0]
+        search.set_value("SYN091").run(timeout=300)
+        assert not at.exception, at.exception
+        texts = _page_text(at)
+        assert "Synthetic Co 091 (demo)" in texts
+        assert "Synthetic Co 090 (demo)" not in texts, (
+            "the search filter must hide non-matching cards"
+        )
+
+    def test_watchlist_search_no_match(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Watchlist")
+        at.text_input[0].set_value("ZZZZZ").run(timeout=300)
+        texts = _page_text(at)
+        assert "no symbol matches" in texts

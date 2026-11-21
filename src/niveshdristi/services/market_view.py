@@ -79,3 +79,53 @@ def signals_board(fund_id: str, base: str | Path | None = None,
             "last_volume": volumes[symbol],
         })
     return rows
+
+
+def watchlist(fund_id: str, base: str | Path | None = None) -> dict:
+    """P18-UI-S3b read-only view-model: the fund's declared universe plus
+    every symbol with stored snapshot data, each with last close /
+    previous close / change when snapshots exist — never invented.
+
+    Returns {market_labels-ish? no: as_of, currency_code, rows: [
+      {symbol, has_data, last_close, prev_close, change}]}
+    """
+    from niveshdristi.paper.fund import FundPaths
+    from niveshdristi.paper.ledger import PaperLedger
+
+    paths = FundPaths(base).for_fund(fund_id)
+    ledger = PaperLedger(paths.ledger)
+    header = ledger.header()
+    records = ledger.records()
+    as_of = records[-1]["session_date"] if records else None
+
+    symbols: list[str] = list(header.get("universe") or [])
+    manifest: dict = {}
+    if as_of:
+        manifest_path = paths.snapshots / as_of / "manifest.json"
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for s in manifest:
+                if s not in symbols:
+                    symbols.append(s)
+
+    rows = []
+    for s in sorted(symbols):
+        last_close = prev_close = None
+        if as_of and s in manifest:
+            import polars as pl
+
+            digest = manifest[s]
+            matches = sorted((paths.snapshots / as_of).glob(
+                f"{s}_{digest[:16]}.parquet"))
+            if matches:
+                frame = pl.read_parquet(matches[0])
+                last_close = float(frame["close"][-1])
+                prev_close = (float(frame["close"][-2])
+                              if len(frame) >= 2 else None)
+        change = (last_close - prev_close
+                  if last_close is not None and prev_close is not None
+                  else None)
+        rows.append({"symbol": s, "has_data": last_close is not None,
+                     "last_close": last_close, "prev_close": prev_close,
+                     "change": change})
+    return {"as_of": as_of, "rows": rows}
