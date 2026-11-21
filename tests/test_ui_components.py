@@ -37,7 +37,7 @@ components.fmt_pct  # attribute presence
 '''
 
 
-@pytest.fixture()
+@pytest.fixture
 def component_app(tmp_path):
     script = tmp_path / "component_app.py"
     script.write_text(
