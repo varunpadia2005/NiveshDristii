@@ -3,6 +3,27 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 16-A — hardening from 15-V findings] 2026-11-21
+
+- Blend substance (F-g): an empty `blended` dict no longer passes the
+  signals tests vacuously — non-empty, symbol keys, finite values in
+  [-1,1], and equality with a recomputation through the same pipeline
+  (tests/test_blend_substance.py; 8e4d1a1).
+- Registry status pins (F-j): all 16 models' data_status pinned as-found
+  (8 stubs); predict()-side evidence literals must equal the registry
+  attribute (tests/test_registry_status_pins.py; f92aa7f).
+- Help-tree comparison robust at any width (F1): COLUMNS=40 no longer
+  breaks test_module_help_matches_cli_help (0cfa853).
+- Fixture-fallback guard (F-m2): ci.yml's bootstrap fallback line and
+  step order are pinned by tests (236ddbb).
+- Typed config error (F2): a cwd without config.yaml now yields the
+  project's typed JSON error + exit 1, never a FileNotFoundError
+  traceback (config.py seam + cli main_callback; 167ac5b).
+- Job-level env guard (S0d escape): no jobs.<id>.env may reference
+  runner.* contexts (the P11-A11 startup-failure incident) (78f9aae).
+Suite: 694 passed, 1 strict xfail (baseline 686). All 16 S0d/15-V
+mutations now caught.
+
 ## [Phase 13-A — dogfood fixes] 2026-11-21
 
 - _paper_fetch_bars renames an unnamed DatetimeIndex to "date" — an

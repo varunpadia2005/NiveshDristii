@@ -1,3 +1,29 @@
+# Phase 16-A — hardening from the 15-V findings (2026-11-21)
+
+S0 (read-only): reverse file order 686/1xf green; every test file alone
+green (no file fails alone); G14 type:ignore cap reconciled (cap is
+<=10, counting only core/markets/cli/engine/config_loader — advance.py:
+425 counts, llm/factory.py:35 sits outside the counted set). Four S0d
+mutations: recorder wiring caught (3 tests), 39-char pin caught, costs
+propagation caught (2), job-level runner.temp env ESCAPED -> P16-A-6.
+
+Items (RED->GREEN->MUTATION, one commit each, mutations only in the
+<TEMP> sim clone restored by file copies):
+1. P16-A-1 8e4d1a1 blend substance (F-g; blend keys are symbols, not
+   model ids — deviation from the brief recorded).
+2. P16-A-2 f92aa7f registry data_status pins (F-j; 8 stubs as-found,
+   not the 4 named in the brief — deviation recorded).
+3. P16-A-3 0cfa853 COLUMNS=40 help-tree robustness (F1).
+4. P16-A-4 236ddbb ci.yml fixture-fallback guard (F-m2).
+5. P16-A-5 167ac5b typed config error from a config-less cwd (F2;
+   config.py seam authorized by R6).
+6. P16-A-6 78f9aae job-level env runner.* guard (S0d escape).
+
+After each item: full gate in the sim clone (G01 requires a clean
+tree, so gates run pre-commit in the throwaway clone; real repo gated
+post-commit), core diff intact, replay/costs matrices green. Suite
+694 passed, 1 strict xfail.
+
 # Phase 1 Progress Report
 
 ## Phase numbering (CHANGELOG vs this file, derived P11-S3)
