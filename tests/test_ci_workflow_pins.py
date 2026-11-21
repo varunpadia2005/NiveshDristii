@@ -62,3 +62,37 @@ class TestCiWorkflowPins:
         assert not failures, "unpinned or unversioned actions:\n" + "\n".join(
             failures
         )
+
+
+class TestCiJobLevelEnvNoRunnerContext:
+    """P16-A-6 (15-V S0d escape): `runner` is NOT available in
+    `jobs.<job_id>.env` — GitHub Actions only exposes it inside steps.
+    P11-A11 shipped exactly this (job-level PYTHONPYCACHEPREFIX with
+    ${{ runner.temp }}) and CI failed with a workflow STARTUP failure
+    (all jobs lost, no logs). No guard test existed; the 15-V mutation
+    re-adding job-level ${{ runner.temp }} escaped the suite. Pin:
+    no job-level env value may reference runner.* contexts."""
+
+    def test_no_job_level_env_uses_runner_context(self):
+        import yaml
+
+        failures: list[str] = []
+        jobs_seen = 0
+        for wf in _workflow_files():
+            data = yaml.safe_load(wf.read_text(encoding="utf-8"))
+            rel = wf.relative_to(REPO).as_posix()
+            for job_id, job in (data or {}).get("jobs", {}).items():
+                jobs_seen += 1
+                env = (job or {}).get("env")
+                if not env:
+                    continue
+                rendered = str(env)
+                if "${{ runner." in rendered:
+                    failures.append(
+                        f"{rel}: job '{job_id}' env references runner.* "
+                        f"(values: {env!r}) — the runner context is not "
+                        "available at job level and the workflow fails to "
+                        "start (P11-A11 incident)"
+                    )
+        assert jobs_seen > 0, "non-vacuity: no jobs found in any workflow"
+        assert not failures, "\n".join(failures)
