@@ -6,6 +6,7 @@ unknown symbols. Mutation: a resolver that returns blank must FAIL.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -33,21 +34,28 @@ class TestDisplayName:
         assert display_name("  SYN090  ") == "Synthetic Co 090 (demo)"
         assert display_name("weird-1") == "weird-1"
 
-    def test_non_vacuity_across_demo_funds(self):
-        """At least 5 distinct symbols resolve through the real demo funds
-        (IN + US) and the tracked universes."""
+    def test_non_vacuity_across_demo_funds(self, tmp_path):
+        """At least 5 distinct symbols resolve across freshly generated IN
+        + US demo funds (the repo's own generator) and the tracked
+        universes. No dependence on any local demo folder."""
         import glob
         import json
+        import subprocess
 
         from niveshdristi.ui.names import display_name
 
         symbols: set[str] = set()
-        for fund in ("demo_synthetic", "us_demo_synthetic"):
-            ledger = (Path("D:/Nivesh Dristi/demo_session") / fund
-                      / "ledger.jsonl")
-            if not ledger.exists():  # pragma: no cover - demo data present
-                continue
-            for line in ledger.read_text(encoding="utf-8").splitlines():
+        for market, fund in (("IN_NSE", "p18_in_names"),
+                             ("US_NYSE", "p18_us_names")):
+            r = subprocess.run(
+                [sys.executable, "tools/make_demo_fund.py", "--base",
+                 str(tmp_path), "--market", market, "--fund-id", fund],
+                capture_output=True, text=True, cwd=str(REPO), timeout=600,
+            )
+            assert r.returncode == 0, r.stderr[-300:]
+            ledger = (tmp_path / fund / "ledger.jsonl").read_text(
+                encoding="utf-8")
+            for line in ledger.splitlines():
                 if not line.strip():
                     continue
                 rec = json.loads(line)
