@@ -37,6 +37,7 @@ def render_app() -> None:
             overview = _fo(fund_id, base=base)
         except Exception:  # noqa: BLE001 - fall back to the base payload
             overview = {**payload, "kpis": None}
+        overview["fund_base"] = base
         render_fund_overview(overview, labels)
     elif page == "Market Overview":
         from niveshdristi.services.market_view import market_overview

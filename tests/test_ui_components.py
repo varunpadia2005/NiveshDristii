@@ -49,7 +49,10 @@ class TestFmtHelpers:
     def test_fmt_money_separators_and_code(self):
         from niveshdristi.ui.components import fmt_money
 
-        assert fmt_money(1010615.34, "INR") == "1,010,615.34 INR"
+        # INR uses the market's 3-2-2 indian grouping (services.format);
+        # USD uses western grouping.
+        assert fmt_money(1010615.34, "INR") == "10,10,615.34 INR"
+        assert fmt_money(1010615.34, "USD") == "1,010,615.34 USD"
         assert fmt_money(99.52, "USD") == "99.52 USD"
         assert fmt_money(None) == "—"
         assert fmt_money(5.0) == "5.00"

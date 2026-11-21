@@ -1,0 +1,141 @@
+"""P18-UI-S3a: Home / Fund overview redesign.
+
+AppTest on freshly generated demo funds (the repo's own generator, no
+network) for BOTH markets. Zero exceptions, mandatory banners, the new
+NAV/total-return block, halt state, and the S4 consistency pin: the
+fund value shown equals the ledger's last equity_after.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parent.parent
+APP = REPO / "src" / "niveshdristi" / "ui" / "app.py"
+
+
+def _make_fund(base: Path, market: str, fund_id: str) -> None:
+    """Run the repo's own demo-fund generator (offline, synthetic)."""
+    import subprocess
+
+    r = subprocess.run(
+        [sys.executable, "tools/make_demo_fund.py", "--base", str(base),
+         "--market", market, "--fund-id", fund_id],
+        capture_output=True, text=True, cwd=str(REPO), timeout=600,
+    )
+    assert r.returncode == 0, r.stderr[-400:]
+
+
+@pytest.fixture(scope="module")
+def demo_base(tmp_path_factory):
+    base = tmp_path_factory.mktemp("demo18")
+    _make_fund(base, "IN_NSE", "p18_in_demo")
+    _make_fund(base, "US_NYSE", "p18_us_demo")
+    return base
+
+
+def _run_app(base: Path, fund_id: str, page: str | None = None):
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(APP))
+    at.session_state["fund_id"] = fund_id
+    at.session_state["fund_base"] = str(base)
+    at.run(timeout=300)
+    assert not at.exception, at.exception
+    if page:
+        at.sidebar.radio[0].set_value(page).run(timeout=300)
+        assert not at.exception, at.exception
+    return at
+
+
+def _texts(block):
+    """Typed-accessor text collection (same approach as test_ui.py; the
+    columns walk is two-level like the original to avoid recursion)."""
+    out = []
+    for attr in ("caption", "markdown", "metric", "error", "warning", "info",
+                 "title", "subheader", "header", "json", "text", "table"):
+        try:
+            elements = getattr(block, attr)
+        except (AttributeError, KeyError):
+            continue
+        for e in elements:
+            label = getattr(e, "label", None)
+            if label:
+                out.append(str(label))
+            out.append(str(getattr(e, "value", "")))
+    try:
+        cols = block.columns
+    except (AttributeError, KeyError):
+        cols = []
+    for col_group in cols:
+        for col in col_group:
+            if col is not block:
+                out.extend(_texts(col))
+    return out
+
+
+def _page_text(at) -> str:
+    """Main-block texts PLUS the top-level banner accessors (warning/
+    error/info live outside at.main)."""
+    parts = [" ".join(_texts(at.main))]
+    for accessor in ("warning", "error", "info", "success"):
+        for el in getattr(at, accessor):
+            parts.append(str(el.value))
+    return " ".join(parts)
+
+
+class TestHomeOverview:
+    def test_in_demo_overview(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Overview")
+        texts = _page_text(at)
+        assert "DATA LIMITATIONS:" in texts
+        assert "RATES UNVERIFIED" in texts
+        assert "NOT investment advice" in texts
+        assert "Fund overview" in texts
+        assert "fund: p18_in_demo" in texts
+        assert "IN_NSE" in texts or "India" in texts
+        assert "Total return since start" in texts
+        assert "pipeline demonstration only" in texts
+        assert "kill-switch: not halted" in texts
+        # st.line_chart records as a vega-lite chart element in AppTest
+        assert any(getattr(el, "type", "") == "vega_lite_chart"
+                   for el in at.main), "NAV line chart must render"
+        # positions show the resolved synthetic name
+        assert "Synthetic Co 090 (demo)" in texts or "SYN090" in texts
+
+    def test_us_demo_overview_costs_banner(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Overview")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts, (
+            "the US fund must carry the COSTS NOT MODELED banner"
+        )
+        assert "DATA LIMITATIONS:" in texts
+        assert "Total return since start" in texts
+
+    def test_numbers_equal_ledger(self, demo_base):
+        """S4: the fund value on the page equals the ledger's last
+        equity_after (raw float formatted)."""
+        at = _run_app(demo_base, "p18_in_demo", "Overview")
+        ledger = (demo_base / "p18_in_demo" / "ledger.jsonl").read_text(
+            encoding="utf-8").strip().splitlines()
+        last = json.loads(ledger[-1])
+        equity = float(last["equity_after"])
+        # the page formats INR money with the market's 3-2-2 grouping
+        # (services.format.format_money_code)
+        q = f"{equity:.2f}"
+        whole, frac = q.split(".")
+        head, tail = whole[:-3], whole[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            groups.insert(0, head)
+        formatted = ",".join(groups + [tail]) + "." + frac
+        assert formatted in _page_text(at), (
+            f"ledger equity {formatted} must appear on the page"
+        )

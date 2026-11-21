@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -38,10 +36,10 @@ class TestDisplayName:
     def test_non_vacuity_across_demo_funds(self):
         """At least 5 distinct symbols resolve through the real demo funds
         (IN + US) and the tracked universes."""
-        from niveshdristi.ui.names import display_name
-
-        import json
         import glob
+        import json
+
+        from niveshdristi.ui.names import display_name
 
         symbols: set[str] = set()
         for fund in ("demo_synthetic", "us_demo_synthetic"):

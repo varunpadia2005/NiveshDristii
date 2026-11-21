@@ -118,3 +118,15 @@ def lean_for_position(symbol: str, signals: dict[str, dict]) -> str:
     """Icon+word lean for a position row (from the snapshot signals view)."""
     entry = signals.get(symbol)
     return lean_label(entry["conviction"]) if entry else "No opinion"
+
+
+def nav_series(fund_id: str, base: str | Path | None = None) -> list[dict]:
+    """Read-only view-model: one {session, equity} point per ledger record
+    (P18-UI-S3a). Pure read of the ledger — no computation, no clock."""
+    from niveshdristi.paper.fund import FundPaths
+    from niveshdristi.paper.ledger import PaperLedger
+
+    paths = FundPaths(base).for_fund(fund_id)
+    records = PaperLedger(paths.ledger).records()
+    return [{"session": r["session_date"], "equity": float(r["equity_after"])}
+            for r in records]

@@ -78,7 +78,10 @@ def fmt_money(value: float | None, currency_code: str = "") -> str:
     number (no symbol literal — the guard test bans them). None -> em dash."""
     if value is None:
         return "—"
-    return f"{value:,.2f}" + (f" {currency_code}" if currency_code else "")
+    from niveshdristi.services.format import format_money_code
+
+    return (format_money_code(value, currency_code)
+            + (f" {currency_code}" if currency_code else ""))
 
 
 def fmt_pct(value: float | None) -> str:

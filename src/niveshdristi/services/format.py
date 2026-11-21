@@ -70,3 +70,19 @@ def format_date(d: date | str) -> str:
     if isinstance(d, str):
         return d[:10]
     return d.isoformat()
+
+
+class _Grouping:
+    """Minimal profile shim: only digit_grouping is needed."""
+
+    def __init__(self, grouping: str) -> None:
+        self.digit_grouping = grouping
+
+
+def format_money_code(amount: float, currency_code: str = "") -> str:
+    """P18-UI-S3a: grouped money string selected by CURRENCY CODE (no
+    profile object needed): INR uses the market's 3-2-2 indian grouping,
+    every other code uses western grouping. Codes come from MarketRules
+    labels; never a symbol literal."""
+    grouping = "indian" if currency_code.upper() == "INR" else "western"
+    return format_money(amount, _Grouping(grouping))
