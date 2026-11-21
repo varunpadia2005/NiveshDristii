@@ -773,7 +773,11 @@ def paper_tick(
             "tick-failure-halted", fund_id=fund_id, reason=str(exc)
         )
         _output(
-            {"status": "failure", "halted": True, "reason": str(exc)},
+            {"status": "failure", "halted": True, "reason": str(exc),
+             "next_step": (
+                 "resume with: nd paper resume --note '<reason>' "
+                 "--as-of <next session>"
+             )},
             ctx.obj["json_output"],
         )
         raise typer.Exit(code=1) from exc

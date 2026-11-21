@@ -243,3 +243,41 @@ class TestPythonMDunderMain:
         # line 1 carries the prog name (python -m niveshdristi vs -c) — skip it
         assert norm(r1.stdout)[1:5] == norm(r2.stdout)[1:5]
         assert "NiveshDristi" in r1.stdout
+
+
+class TestTickHaltHint:
+    """P13-A #8: the tick failure JSON carries the resume hint."""
+
+    def test_halt_payload_includes_resume_hint(self, tmp_path):
+        import sys
+
+        from typer.testing import CliRunner
+
+        from niveshdristi.cli.main import app
+        import niveshdristi.markets.in_nse.providers.yfinance_adapter as yfa
+
+        def bad_fetch(provider_symbol, start, end, auto_adjust):
+            # Frame FETCHES fine but is malformed for advance() (no
+            # "close" column) -> the tick loop raises -> amendment F halt.
+            import pandas as pd
+
+            idx = pd.date_range(start, end, freq="D")
+            return pd.DataFrame(
+                {"Open": [100.0] * len(idx), "High": [101.0] * len(idx),
+                 "Low": [99.0] * len(idx), "Volume": [1_000_000] * len(idx)},
+                index=pd.DatetimeIndex(idx, name="Date"),
+            )
+
+        yfa.YFinanceClient._fetch = staticmethod(bad_fetch)
+        runner = CliRunner()
+        T = str(tmp_path)
+        runner.invoke(app, ["--json", "paper", "create", "hint_fund",
+                            "--created", "2026-09-24",
+                            "--universe", "SYN090,SYN091", "--base", T])
+        r = runner.invoke(app, ["--json", "paper", "tick", "hint_fund",
+                                "--as-of", "2026-10-02", "--base", T])
+        assert r.exit_code == 1
+        import json as _j
+        d = _j.loads(r.output)
+        assert d["halted"] is True
+        assert "nd paper resume --note" in d["next_step"]
