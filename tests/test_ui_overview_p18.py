@@ -244,3 +244,35 @@ class TestHoldingsOrders:
         at = _run_app(demo_base, "p18_us_demo", "Orders")
         texts = _page_text(at)
         assert "COSTS NOT MODELED" in texts
+
+
+class TestBacktestAndSettings:
+    def test_backtest_lab_in(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Backtest Lab")
+        texts = _page_text(at)
+        assert "Backtest lab" in texts
+        assert "pipeline demonstration" in texts
+        assert "Run backtest" in [b.label for b in at.button]
+        # run it and check the verdict + metrics render
+        at.button[0].click().run(timeout=300)
+        assert not at.exception, at.exception
+        texts = _page_text(at)
+        assert "not evidence of performance" in texts
+        assert "drag (NAV bps)" in texts
+
+    def test_backtest_lab_us(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Backtest Lab")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts
+        at.button[0].click().run(timeout=300)
+        assert not at.exception, at.exception
+
+    def test_settings_about_and_guide(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Settings")
+        texts = _page_text(at)
+        assert "Settings (read-only)" in texts
+        assert "About this data" in texts
+        assert "How to read each page" in texts
+        assert "synthetic demo data" in texts
+        assert any(getattr(el, "type", "") == "dataframe"
+                   for el in at.main), "page guide table must render"

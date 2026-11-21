@@ -12,15 +12,17 @@ def render_backtest_lab(payload: dict, labels: dict) -> None:
     from niveshdristi.ui.components import (
         banner_strip,
         empty_state,
+        fmt_money,
         footer_strip,
+        section_header,
         unavailable_panel,
     )
 
     banner_strip(payload)
-    st.subheader("Backtest lab")
-    st.caption("Runs the engine over the fund's STORED snapshots — no "
-               "network, no refetch. Results are a pipeline demonstration "
-               "only; not evidence of performance.")
+    section_header("Backtest lab",
+                   "runs the engine over the fund's STORED snapshots — no "
+                   "network, no refetch. Results are a pipeline "
+                   "demonstration only; not evidence of performance.")
     if not payload.get("records"):
         empty_state("no stored sessions — nothing to run")
         footer_strip(payload, labels)
@@ -37,6 +39,9 @@ def render_backtest_lab(payload: dict, labels: dict) -> None:
             st.metric("Verdict", result["verdict"])
             st.caption(f"promotable flag on this data: "
                        f"{result['promotable']} (always False on this data)")
+            st.caption("drag = slippage + fees measured in NAV basis points; "
+                       "the green/red arrow convention is ▲ favourable, "
+                       "▼ unfavourable")
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=[d for d, _ in result["net_curve"]],
@@ -49,12 +54,14 @@ def render_backtest_lab(payload: dict, labels: dict) -> None:
             fig.update_layout(template="plotly_white", height=380,
                               margin={"l": 10, "r": 10, "t": 10, "b": 10})
             st.plotly_chart(fig, use_container_width=True)
-            c1, c2, c3 = st.columns(3)
+            currency = labels.get("currency_code", "")
+            c1, c2, c3, c4 = st.columns(4)
             c1.metric("drag (NAV bps)", result["drag_bps"])
-            c2.metric("fees", result["fees_total"])
-            c3.metric("slippage", result["slippage_total"])
-            st.text(f"trades: {result['trade_count']} · calendar: "
-                    f"{result['calendar_source']}")
+            c2.metric("fees", fmt_money(result["fees_total"], currency))
+            c3.metric("slippage", fmt_money(result["slippage_total"],
+                                            currency))
+            c4.metric("trades", result["trade_count"])
+            st.caption(f"calendar source: {result['calendar_source']}")
             st.text("DataLimitations: " + ", ".join(result["limitations"]))
     unavailable_panel("TrialRecorder summary across many parameter trials")
     footer_strip(payload, labels)

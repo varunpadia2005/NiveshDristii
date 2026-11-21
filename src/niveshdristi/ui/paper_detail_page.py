@@ -124,4 +124,35 @@ def render_settings(payload: dict, labels: dict) -> None:
     for name, present in s["keys"].items():
         st.text(f"{name}: {'●●● set' if present else 'not set'}")
     st.table(s["data_sources"])
+
+    # P18-UI-S3g: About / Help — data provenance and how to read the pages.
+    st.subheader("About this data")
+    st.caption("Every number in this app comes from the fund's own ledger, "
+               "decision sidecars and stored snapshot frames. Nothing is "
+               "fetched live; nothing is estimated.")
+    st.caption("Synthetic demo funds label their tickers 'Synthetic Co NNN "
+               "(demo)' with a visible 'synthetic demo data' tag — they are "
+               "not real companies.")
+    st.subheader("How to read each page")
+    guide_rows = [
+        {"Page": "Overview",
+         "What it shows": "fund value, P&L, NAV line, kill-switch state, "
+                          "data-limitation banners"},
+        {"Page": "Watchlist",
+         "What it shows": "every symbol the fund tracks; last close and "
+                          "change where stored data exists"},
+        {"Page": "Stock Detail",
+         "What it shows": "price chart, per-model signals with their "
+                          "data_status, position and fills for one symbol"},
+        {"Page": "Holdings",
+         "What it shows": "quantities, avg cost, value, unrealised P&L, "
+                          "weights — ledger-derived"},
+        {"Page": "Orders",
+         "What it shows": "fills with costs and pending gated orders; US "
+                          "funds show COSTS NOT MODELED"},
+        {"Page": "Backtest Lab",
+         "What it shows": "engine run over stored snapshots; pipeline "
+                          "demonstration only, never performance"},
+    ]
+    st.dataframe(guide_rows, hide_index=True, width="stretch")
     footer_strip(payload, labels)
