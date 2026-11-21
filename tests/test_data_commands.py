@@ -218,3 +218,28 @@ class TestHelpTextDogfood:
         )
         m = re.search(r"--end[^⌐│]*?exclusive", r.output.replace("\n", " "))
         assert m, "--end help must state exclusivity (P13-A #6)"
+
+
+class TestPythonMDunderMain:
+    """P13-A #7: `python -m niveshdristi` must run the same CLI."""
+
+    def test_module_help_matches_cli_help(self, tmp_path):
+        import subprocess
+        import sys
+
+        base = [sys.executable, "-m", "niveshdristi"]
+        r1 = subprocess.run(base + ["--help"], capture_output=True, text=True,
+                            timeout=120)
+        assert r1.returncode == 0, r1.stderr
+        r2 = subprocess.run(
+            [sys.executable, "-c",
+             "from niveshdristi.cli.main import app; app()",
+             "--help"],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert r2.returncode == 0, r2.stderr
+        # same usage header: both print the identical command tree
+        norm = lambda s: [l.strip() for l in s.splitlines() if l.strip()]
+        # line 1 carries the prog name (python -m niveshdristi vs -c) — skip it
+        assert norm(r1.stdout)[1:5] == norm(r2.stdout)[1:5]
+        assert "NiveshDristi" in r1.stdout
