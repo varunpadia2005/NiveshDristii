@@ -46,19 +46,15 @@ def render_app() -> None:
         overview = {**payload, "fund_base": base}
         render_watchlist(overview, labels)
     elif page == "Stock Detail":
-        from niveshdristi.services.deep_dive import deep_dive
-        from niveshdristi.ui.deep_dive_page import render_deep_dive
+        from niveshdristi.ui.stock_detail_page import render_stock_detail
 
         symbol = st.session_state.get("dive_symbol") or sorted(
             payload["positions"] and
             [p["instrument"]["symbol"] for p in payload["positions"]]
             or ["SYN090"])[0]
         st.session_state["dive_symbol"] = symbol
-        try:
-            dd = deep_dive(symbol, fund_id, base=base)
-            render_deep_dive(dd, labels)
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"stock detail unavailable: {type(exc).__name__}: {exc}")
+        detail = {**payload, "dive_symbol": symbol, "fund_base": base}
+        render_stock_detail(detail, labels)
     elif page == "Market Overview":
         from niveshdristi.services.market_view import market_overview
         from niveshdristi.ui.market_page import render_market_overview

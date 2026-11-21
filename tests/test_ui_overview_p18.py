@@ -174,3 +174,20 @@ class TestWatchlist:
         at.text_input[0].set_value("ZZZZZ").run(timeout=300)
         texts = _page_text(at)
         assert "no symbol matches" in texts
+
+
+class TestStockDetail:
+    def test_in_demo_stock_detail(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Stock Detail")
+        texts = _page_text(at)
+        assert "Stock detail: Synthetic Co 090 (demo)" in texts
+        assert "ticker: SYN090" in texts
+        assert "synthetic demo data" in texts
+        assert "Per-model signals" in texts
+        assert "Recent orders for this symbol" in texts
+
+    def test_us_demo_stock_detail(self, demo_base):
+        at = _run_app(demo_base, "p18_us_demo", "Stock Detail")
+        texts = _page_text(at)
+        assert "COSTS NOT MODELED" in texts
+        assert "Stock detail: Synthetic Co 090 (demo)" in texts
