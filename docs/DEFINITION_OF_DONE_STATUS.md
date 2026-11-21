@@ -31,6 +31,14 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P14-B update (2026-11-21)
+
+docs/US_DATA_CHECKLIST.md added: every external US-market input (12
+cost fields, 6 tax fields, holidays, benchmark, FX, provider, 4 stub
+models) with destination file, field names, the validation it must
+pass, before/after behavior, "SOURCE REQUIRED" slots and the ordered
+"US usable" milestone sequence. No data — slots only.
+
 ## P13-B update (2026-11-22)
 
 The 2 ubuntu-only CI test failures (run 44864471561) were FIXED and

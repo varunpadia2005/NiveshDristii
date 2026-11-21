@@ -18,6 +18,13 @@ follows Keep a Changelog; dates are the commit dates from git log.
 - nd models data_status finding DISPROVED (it was already present);
   fetch-composition options note recorded (no code change).
 
+## [Phase 14-B — US data checklist] 2026-11-21
+
+- docs/US_DATA_CHECKLIST.md: every external US-market input with its
+  destination, schema, validation citation, before/after behavior and
+  SOURCE REQUIRED slots — no invented data; stub-model traceability
+  table and the ordered "US usable" milestone sequence.
+
 ## [Phase 13-B — ubuntu CI failures fixed] 2026-11-22
 
 - The 2 ubuntu-only test failures (run 44864471561) were both Phase
@@ -125,6 +132,13 @@ follows Keep a Changelog; dates are the commit dates from git log.
   leak fixed in a941fad).
 - nd models data_status finding DISPROVED (it was already present);
   fetch-composition options note recorded (no code change).
+
+## [Phase 14-B — US data checklist] 2026-11-21
+
+- docs/US_DATA_CHECKLIST.md: every external US-market input with its
+  destination, schema, validation citation, before/after behavior and
+  SOURCE REQUIRED slots — no invented data; stub-model traceability
+  table and the ordered "US usable" milestone sequence.
 
 ## [Phase 13-B — ubuntu CI failures fixed] 2026-11-22
 

@@ -2038,3 +2038,14 @@ FAIL. Verified green under the full env matrix (FORCE_COLOR, COLUMNS
 
 CI run 44870432495 (head d7edbe2): **all three jobs success** —
 ubuntu gate green on the same tree that was red in 44864471561.
+
+## Phase 14-B: US-market data checklist (docs only)
+
+docs/US_DATA_CHECKLIST.md: every external US input derived from the
+code (file:line cited — costs.yaml 12 null fields, tax.yaml 6,
+holidays_us.yaml empty, benchmark_symbol="", fx.py FxRate contract,
+us_adapter.py shell roles, the 4 stub-model markers), each with its
+destination, validation citation, before/after behavior, a
+"SOURCE REQUIRED" slot (no data of any kind), owner, effort and the
+"US usable" dependency order. Stub-model traceability table included.
+Links: DoD register P14-B update.
