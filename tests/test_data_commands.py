@@ -181,6 +181,25 @@ class TestSignalsGenerate:
         assert isinstance(data["blended"], dict)
         assert all(-1.0 <= v <= 1.0 for v in data["blended"].values())
 
+    def test_generate_us_market_typed_refusal(self, tmp_path):
+        r = runner.invoke(
+            app,
+            ["--json", "signals", "generate", "AAPL",
+             "--as-of", END.isoformat(), "--market", "US_NYSE"],
+        )
+        assert r.exit_code == 1
+        data = json.loads(r.output)
+        assert data["status"] == "error"
+        assert "US_NYSE" in data["error"]
+
+    def test_generate_missing_as_of_defaults_to_today(
+        self, fake_in_nse, tmp_path
+    ):
+        r = runner.invoke(app, ["--json", "signals", "generate", "RELIANCE"])
+        assert r.exit_code == 0, r.output
+        data = json.loads(r.output)
+        assert data["as_of"] == date.today().isoformat()
+
 def _command_tree(plain: str) -> str:
     """P16-A-3: the semantic command tree = everything from the first
     "Commands config" occurrence (the tree start) onward."""
