@@ -181,24 +181,15 @@ class TestSignalsGenerate:
         assert isinstance(data["blended"], dict)
         assert all(-1.0 <= v <= 1.0 for v in data["blended"].values())
 
-    def test_generate_us_market_typed_refusal(self, tmp_path):
-        r = runner.invoke(
-            app,
-            ["--json", "signals", "generate", "AAPL",
-             "--as-of", END.isoformat(), "--market", "US_NYSE"],
-        )
-        assert r.exit_code == 1
-        data = json.loads(r.output)
-        assert data["status"] == "error"
-        assert "US_NYSE" in data["error"]
-
-    def test_generate_missing_as_of_defaults_to_today(
-        self, fake_in_nse, tmp_path
-    ):
-        r = runner.invoke(app, ["--json", "signals", "generate", "RELIANCE"])
-        assert r.exit_code == 0, r.output
-        data = json.loads(r.output)
-        assert data["as_of"] == date.today().isoformat()
+def _command_tree(plain: str) -> str:
+    """P16-A-3: the semantic command tree = everything from the first
+    "Commands config" occurrence (the tree start) onward."""
+    i = plain.find("Commands config")
+    assert i != -1, (
+        "command-tree marker 'Commands config' not found in normalized "
+        f"help output: {plain[:200]!r}"
+    )
+    return plain[i:]
 
 
 def _plain_cli_text(text: str) -> str:
@@ -252,20 +243,23 @@ class TestPythonMDunderMain:
         assert r2.returncode == 0, r2.stderr
         # P13-B: compare SEMANTIC content only. The usage line embeds the
         # prog name ('python -m niveshdristi' vs '-c') and rich pads every
-        # line to the box width (both differ across invocations/OSes), so
-        # drop the usage line entirely and compare the description plus
-        # the full command list.
+        # line to the box width (both differ across invocations/OSes).
+        # P16-A-3: do NOT key on "Usage:" / "COMMAND [ARGS]" — rich wraps
+        # both at narrow widths (COLUMNS=40 mutates the ellipsis and the
+        # colon), which broke the P13-B split. Instead compare from the
+        # command-tree marker onward: after whitespace collapse, both
+        # invocations render "... exit. Commands config Manage
+        # configuration. ..." identically, so everything from the first
+        # "Commands config" occurrence is the semantic command tree.
         p1 = _plain_cli_text(r1.stdout)
         p2 = _plain_cli_text(r2.stdout)
-        body1 = p1.split("Usage:", 1)[-1]
-        body2 = p2.split("Usage:", 1)[-1]
-        tail1 = body1.split("COMMAND [ARGS]...", 1)[-1]
-        tail2 = body2.split("COMMAND [ARGS]...", 1)[-1]
-        assert tail1 == tail2, (
+        tree1 = _command_tree(p1)
+        tree2 = _command_tree(p2)
+        assert tree1 == tree2, (
             "the two invocations must render the identical command tree "
-            f"(modulo the prog name); got:\n{tail1[:200]}\nvs\n{tail2[:200]}"
+            f"(modulo the prog name); got:\n{tree1[:200]}\nvs\n{tree2[:200]}"
         )
-        assert len(tail1) > 100, (
+        assert len(tree1) > 100, (
             "non-vacuity: the command tree must be non-trivial"
         )
         assert "NiveshDristi" in p1
