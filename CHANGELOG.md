@@ -3,6 +3,24 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 16-B/16-C — CI diagnosis + encoding fix] 2026-11-21
+
+- 16-B: the authorized diagnostic step (`Diagnose gate failure`) named
+  the windows-only failure:
+  TestPythonMDunderMain::test_module_help_matches_cli_help — windows CI
+  pipes are cp1252, so the child mangled the em-dash and rich fell
+  back to an ASCII box style the normalization does not strip.
+  Also restored two TestSignalsGenerate tests the P16-A file surgery
+  had dropped (233bfb9; AST deletion audit now clean at 1b63ff2 and
+  baacac1: no drops, no missing test IDs).
+- 16-C: the module-help test now builds the child env with
+  PYTHONIOENCODING=utf-8 + PYTHONUTF8=1 and decodes with
+  encoding="utf-8", errors="replace" (comparison semantics unchanged;
+  c0a9ac7). RED reproduced locally under PYTHONIOENCODING=cp1252;
+  GREEN across cp1252/utf-8 x COLUMNS 40/80/250, FORCE_COLOR,
+  NO_COLOR. CI run 44928932419: gate ubuntu, gate windows, coverage
+  ALL success.
+
 ## [Phase 16-A — hardening from 15-V findings] 2026-11-21
 
 - Blend substance (F-g): an empty `blended` dict no longer passes the

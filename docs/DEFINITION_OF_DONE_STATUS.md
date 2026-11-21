@@ -88,6 +88,13 @@ proposed (needs approval): move the worktree outside the tree
 ($RUNNER_TEMP) in ci.yml. CI run status: NOT VERIFIED (push deferred
 pending that approval).
 
+## Phase 16-C update (2026-11-21)
+
+CI fully green again: run 44928932419 (head c0a9ac7) — gate ubuntu,
+gate windows, coverage ALL success, 696 passed + 1 strict xfail. The
+windows-only gate failure was the module-help test's subprocess
+decoding (cp1252 pipe); fixed test-side under explicit authorization.
+
 ## P11-A7 update (2026-11-14)
 
 CI run 43620550944 (head bc34ab3): coverage job **SUCCESS** (first

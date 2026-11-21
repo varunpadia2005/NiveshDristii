@@ -1,3 +1,26 @@
+# Phase 16-C — test-side encoding fix + deletion audit (2026-11-21)
+
+S1 AST audit (1b63ff2 vs HEAD, baacac1 vs HEAD): no dropped tests,
+asserts or raises in any file; no test IDs present at 1b63ff2 missing
+at HEAD; 697 collected = 696 passed + 1 xfailed. The two TestSignals-
+Generate tests lost in P16-A's split were restored in P16-B (233bfb9).
+
+Cause of the windows-only gate failure (named by the 16-B diagnostic
+step): windows CI pipes are cp1252 — the child CLI mangles the em-dash
+and rich renders ASCII box furniture (|/+) that _plain_cli_text does
+not strip, so the 'Commands config' marker lookup failed. RED
+reproduced locally with PYTHONIOENCODING=cp1252.
+
+Fix (authorized scope only, c0a9ac7): TestPythonMDunderMain builds the
+child env with PYTHONIOENCODING=utf-8 + PYTHONUTF8=1 and decodes both
+subprocess outputs with encoding="utf-8", errors="replace". Comparison
+semantics unchanged. GREEN under cp1252/utf-8 x COLUMNS 40/80/250,
+FORCE_COLOR=1, NO_COLOR=1; mutations (different __main__ tree, changed
+marker) both FAIL; restores proven by diff. Fresh-clone CI-exact sim:
+GATE PASS 41/41, 696 passed, 1 xfailed. CI run 44928932419: gate
+ubuntu / gate windows / coverage ALL success — first fully green run
+since the P16-A suite growth.
+
 # Phase 16-A — hardening from the 15-V findings (2026-11-21)
 
 S0 (read-only): reverse file order 686/1xf green; every test file alone
