@@ -18,6 +18,15 @@ follows Keep a Changelog; dates are the commit dates from git log.
 - nd models data_status finding DISPROVED (it was already present);
   fetch-composition options note recorded (no code change).
 
+## [Phase 13-B — ubuntu CI failures fixed] 2026-11-22
+
+- The 2 ubuntu-only test failures (run 44864471561) were both Phase
+  13-A guard tests, broken by ANSI-colored/box-wrapped help on the
+  runners and prog-name-dependent comparisons. The guards now
+  normalize ANSI/furniture/wrapping and compare the command tree
+  modulo the prog name (what they prove is unchanged). CI run
+  44870432495: all three jobs success.
+
 ## [Phase 12-A — the data/signals commands implemented] 2026-11-20
 
 - `nd data fetch TICKERS --start --end [--market]`: daily prices via
@@ -116,6 +125,15 @@ follows Keep a Changelog; dates are the commit dates from git log.
   leak fixed in a941fad).
 - nd models data_status finding DISPROVED (it was already present);
   fetch-composition options note recorded (no code change).
+
+## [Phase 13-B — ubuntu CI failures fixed] 2026-11-22
+
+- The 2 ubuntu-only test failures (run 44864471561) were both Phase
+  13-A guard tests, broken by ANSI-colored/box-wrapped help on the
+  runners and prog-name-dependent comparisons. The guards now
+  normalize ANSI/furniture/wrapping and compare the command tree
+  modulo the prog name (what they prove is unchanged). CI run
+  44870432495: all three jobs success.
 
 ## [Phase 12-A — the data/signals commands implemented] 2026-11-20
 

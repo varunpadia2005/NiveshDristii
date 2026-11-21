@@ -31,6 +31,14 @@ Everything else is done and tested.
   (accepted out of scope), the type: ignore at engine/advance.py:425,
   Python 3.11 never run locally.
 
+## P13-B update (2026-11-22)
+
+The 2 ubuntu-only CI test failures (run 44864471561) were FIXED and
+CI run 44870432495 is FULLY GREEN again — all three jobs success
+(gate ubuntu, gate windows, coverage), now on the d7edbe2 tree with
+the robust ANSI/wrap/prog-name guards. CI status: green, verified
+from the API.
+
 ## P12-A update (2026-11-20)
 
 `nd data fetch`, `nd data refresh` and `nd signals generate` are

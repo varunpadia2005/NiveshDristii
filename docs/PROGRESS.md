@@ -2008,3 +2008,33 @@ user's stash@{0} untouched — verified identical before/after).
   tested and pinned by guards; consolidating before the NSE-2026
   calendar lands would churn the paper path for no behavioral gain.
   None of the options needs an engine/core edit.
+
+## Phase 13-B: the 2 ubuntu-only CI failures fixed (triage 44864471561)
+
+Triage: the coverage job log of the red run named the 2 failures —
+BOTH Phase 13-A tests, no older test affected:
+1. TestHelpTextDogfood::test_force_flag_documents_no_cache — the
+   regex `--end[^⌐│]*?exclusive` over raw r.output failed because
+   typer/rich emitted ANSI-colored, box-furniture-wrapped help on the
+   runner (FORCE_COLOR-class behavior; the CI traceback shows
+   \x1b[1m sequences) and rich wrapped the --end help across cells.
+2. TestPythonMDunderMain::test_module_help_matches_cli_help — the two
+   help outputs embed DIFFERENT prog names ('python -m niveshdristi'
+   vs '-c') and rich pads every line to different box widths; the
+   index-based comparison could never pass across invocations.
+Env matrix reproduction: FORCE_COLOR=1 reproduced failure 1 locally
+(raw output above); COLUMNS 80/200, NO_COLOR, TERM=dumb and a PATH
+without the nd script all passed (the failures are ANSI/wrap-specific).
+
+Fix (tests/test_data_commands.py, P13-A tests only): a shared
+_plain_cli_text() normalizer (strip ANSI escapes + rich table
+furniture + collapse whitespace); the help test asserts the semantics
+in normalized text; the module test drops the usage line (prog-name
+dependent) and compares the full command tree remainder. What the
+tests prove is UNCHANGED. Mutations (both detected): --end help loses
+'exclusive' -> FAIL; __main__ renders a different command tree ->
+FAIL. Verified green under the full env matrix (FORCE_COLOR, COLUMNS
+80/200, NO_COLOR, TERM=dumb) and offline simulation GATE: PASS 41/41.
+
+CI run 44870432495 (head d7edbe2): **all three jobs success** —
+ubuntu gate green on the same tree that was red in 44864471561.
