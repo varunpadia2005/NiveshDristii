@@ -3,6 +3,21 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 13-A — dogfood fixes] 2026-11-21
+
+- _paper_fetch_bars renames an unnamed DatetimeIndex to "date" — an
+  in-tree worktree no longer halts the fund on such providers (c384f5d).
+- load_universe's not-found error names the universes directory
+  contents and the expected file (aece258).
+- data fetch/refresh help states --force (echo only) and --end
+  (exclusive) semantics (720e9e4).
+- src/niveshdristi/__main__.py: python -m niveshdristi runs the nd CLI
+  (a6a2293).
+- The tick failure JSON carries the resume hint (7609b8b; guard state
+  leak fixed in a941fad).
+- nd models data_status finding DISPROVED (it was already present);
+  fetch-composition options note recorded (no code change).
+
 ## [Phase 12-A — the data/signals commands implemented] 2026-11-20
 
 - `nd data fetch TICKERS --start --end [--market]`: daily prices via
@@ -86,6 +101,21 @@ follows Keep a Changelog; dates are the commit dates from git log.
   on-branch P10-S2 commit; tree-identical). A reachability guard
   (tests/test_git_baselines_reachable.py) now asserts every hard-coded
   git base is an ancestor of HEAD.
+
+## [Phase 13-A — dogfood fixes] 2026-11-21
+
+- _paper_fetch_bars renames an unnamed DatetimeIndex to "date" — an
+  in-tree worktree no longer halts the fund on such providers (c384f5d).
+- load_universe's not-found error names the universes directory
+  contents and the expected file (aece258).
+- data fetch/refresh help states --force (echo only) and --end
+  (exclusive) semantics (720e9e4).
+- src/niveshdristi/__main__.py: python -m niveshdristi runs the nd CLI
+  (a6a2293).
+- The tick failure JSON carries the resume hint (7609b8b; guard state
+  leak fixed in a941fad).
+- nd models data_status finding DISPROVED (it was already present);
+  fetch-composition options note recorded (no code change).
 
 ## [Phase 12-A — the data/signals commands implemented] 2026-11-20
 

@@ -1955,3 +1955,56 @@ P12-A behavior (report-only fetch/refresh; signals via the live model
 bundle; the typed US_NYSE refusal). Edit only; no docs-consistency
 guard extension (the existing guard pattern covers PROGRESS/CLI claims,
 not README; adding one would exceed a 5-line extension).
+
+## Phase 13-A: dogfood findings #2/#4/#5/#6/#7/#8 fixed; #9 disproved; #3 note
+
+Dogfood audit (P12-B) follow-up. Each fix: RED → GREEN → mutation via
+FILE COPIES in a temp dir (no git checkout/stash/reset used; the
+user's stash@{0} untouched — verified identical before/after).
+
+- **#2 (c384f5d)**: _paper_fetch_bars renamed an unnamed DatetimeIndex
+  to "index" instead of "date" — any provider with an unnamed index
+  halted the fund. Fix: rename the first reset_index() column to
+  "date" (marketdata adapter's _to_polars convention). Guard:
+  tests/test_fetch_window.py::TestPaperFetchBarsUnnamedIndex.
+- **#1 (88c8ca3)**: README command-surface text updated (the three
+  commands were no longer stubs).
+- **#4 (aece258)**: load_universe not-found error now names the
+  universe directory contents and the expected file ("Universe not
+  found: 'nope50' (expected …). Available universes: …") — the
+  pre-existing match="Universe not found" assertion preserved. Guard:
+  tests/test_universe_msg_guard.py.
+- **#5/#6 (720e9e4)**: data fetch/refresh help text states the real
+  semantics (--force echoes, nothing cached; --end exclusive). Guard:
+  tests/test_data_commands.py::TestHelpTextDogfood.
+- **#7 (a6a2293)**: src/niveshdristi/__main__.py — `python -m
+  niveshdristi` runs the same CLI. Guard: TestPythonMDunderMain
+  (module --help matches the cli.main invocation; prog-name line
+  skipped). G02/G08/G10 verified by the gate.
+- **#8 (7609b8b + a941fad)**: the tick failure JSON carries
+  next_step: "resume with: nd paper resume --note …" (amendment F
+  halt path). Guard: TestTickHaltHint (a frame that fetches fine but
+  lacks "close" → halt). Follow-up a941fad: the guard originally set
+  the adapter fetch on the CLASS without restoring — 4 test_marketdata
+  tests failed in the gate; switched to monkeypatch (auto-restore).
+  Ledger/snapshot bytes untouched.
+- **#9 DISPROVED**: nd models already prints data_status for all 16
+  models (all four named stubs marked "stub"); the audit finding was
+  an artifact of reading truncated output. No change.
+
+- **#3 — Fetch composition options (DO NOT IMPLEMENT, needs decision)**:
+  three divergent fetch shapes exist: (1) YFinanceClient.prices()
+  (adapter; returns PriceSeries with raw+adjusted, OHLCV-only columns,
+  PIT as_of filter); (2) _paper_fetch_bars (cli; resets the yfinance
+  frame, keeps ALL columns incl. dividends/splits; auto_adjust=True);
+  (3) signals generate's adjusted frame + adj_* aliases for the
+  ta_ensemble legacy indicators. Options: (i) extend YFinanceClient
+  prices() with an optional include_adj_aliases flag and have
+  signals/_paper_fetch_bars consume it — touches markets/ + cli only,
+  no engine/core edit; (ii) introduce a services-layer fetch service
+  wrapping the adapter and migrate both cli call sites — services/cli
+  edit, no engine/core; (iii) leave as-is and document the divergence —
+  zero code. RECOMMENDATION: (iii) for now — all three shapes are
+  tested and pinned by guards; consolidating before the NSE-2026
+  calendar lands would churn the paper path for no behavioral gain.
+  None of the options needs an engine/core edit.
