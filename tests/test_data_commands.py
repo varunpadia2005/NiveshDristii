@@ -207,9 +207,8 @@ class TestHelpTextDogfood:
     def test_force_flag_documents_no_cache(self):
         import re
 
-        from niveshdristi.cli.main import app as _app  # noqa: F811
-
         from typer.testing import CliRunner
+
 
         r = CliRunner().invoke(app, ["--json", "data", "fetch", "--help"])
         assert r.exit_code == 0
@@ -239,7 +238,8 @@ class TestPythonMDunderMain:
         )
         assert r2.returncode == 0, r2.stderr
         # same usage header: both print the identical command tree
-        norm = lambda s: [l.strip() for l in s.splitlines() if l.strip()]
+        def norm(s):
+            return [line.strip() for line in s.splitlines() if line.strip()]
         # line 1 carries the prog name (python -m niveshdristi vs -c) — skip it
         assert norm(r1.stdout)[1:5] == norm(r2.stdout)[1:5]
         assert "NiveshDristi" in r1.stdout
@@ -248,13 +248,11 @@ class TestPythonMDunderMain:
 class TestTickHaltHint:
     """P13-A #8: the tick failure JSON carries the resume hint."""
 
-    def test_halt_payload_includes_resume_hint(self, tmp_path):
-        import sys
-
+    def test_halt_payload_includes_resume_hint(self, tmp_path, monkeypatch):
         from typer.testing import CliRunner
 
-        from niveshdristi.cli.main import app
         import niveshdristi.markets.in_nse.providers.yfinance_adapter as yfa
+        from niveshdristi.cli.main import app
 
         def bad_fetch(provider_symbol, start, end, auto_adjust):
             # Frame FETCHES fine but is malformed for advance() (no
@@ -268,7 +266,9 @@ class TestTickHaltHint:
                 index=pd.DatetimeIndex(idx, name="Date"),
             )
 
-        yfa.YFinanceClient._fetch = staticmethod(bad_fetch)
+        monkeypatch.setattr(
+            yfa.YFinanceClient, "_fetch", staticmethod(bad_fetch)
+        )
         runner = CliRunner()
         T = str(tmp_path)
         runner.invoke(app, ["--json", "paper", "create", "hint_fund",
