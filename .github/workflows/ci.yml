@@ -118,6 +118,12 @@ jobs:
             exit 1
           fi
           grep -q "GATE: PASS" gate.log || { echo "GATE did not PASS"; exit 1; }
+      - name: Diagnose gate failure (names failing tests)
+        if: failure()
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest tests -q -rf --tb=short -p no:cacheprovider -x --maxfail=5
 
   coverage:
     runs-on: ubuntu-latest
