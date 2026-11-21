@@ -233,7 +233,9 @@ class TestHoldingsOrders:
         assert "Costs" in getattr(fill_rows, "columns", []), (
             "fills table must carry a Costs column"
         )
-        assert "costs not modeled" in str(fill_rows) or             "fees" in str(fill_rows)
+        costs_values = " | ".join(str(v) for v in fill_rows["Costs"])
+        assert ("costs not modeled" in costs_values
+                or "fees" in costs_values), costs_values
         assert "Pending (gated) orders" in texts
         assert "target weight" in texts
         # side filter
@@ -276,3 +278,27 @@ class TestBacktestAndSettings:
         assert "synthetic demo data" in texts
         assert any(getattr(el, "type", "") == "dataframe"
                    for el in at.main), "page guide table must render"
+
+
+class TestAllPagesSelfReview:
+    """S5: every page, both funds — zero exceptions, and the ONLY st.warning
+    is the intentional data-limitation banner."""
+
+    @pytest.mark.parametrize(("fund_id", "expect_banner"), [
+        ("p18_in_demo", False),
+        ("p18_us_demo", True),
+    ])
+    def test_every_page_zero_exceptions(self, demo_base, fund_id,
+                                        expect_banner):
+        for page in ("Overview", "Watchlist", "Stock Detail", "Holdings",
+                     "Orders", "Market Overview", "Deep-Dive",
+                     "Backtest Lab", "Paper Fund", "Settings"):
+            at = _run_app(demo_base, fund_id, page)
+            assert not at.exception, f"{page}: {at.exception}"
+            warnings = [w.value for w in at.warning]
+            assert len(warnings) == 1, (
+                f"{page}: unexpected warnings {warnings}"
+            )
+            assert "DATA LIMITATIONS:" in warnings[0]
+            if expect_banner:
+                assert "COSTS NOT MODELED" in warnings[0]
