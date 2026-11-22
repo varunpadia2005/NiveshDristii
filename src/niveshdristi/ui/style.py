@@ -46,7 +46,7 @@ STYLE_CSS = """
 }
 
 /* Cards: every keyed container gets the card treatment */
-.st-key-hero, .st-key-tile, .st-key-stockcard, .st-key-signalcard,
+.st-key-hero, .st-key-tile, [class*="st-key-stockcard"], .st-key-signalcard,
 .st-key-panel, .st-key-haltpill {
   background: var(--nd-card);
   border: 1px solid var(--nd-border);
@@ -55,7 +55,7 @@ STYLE_CSS = """
   padding: 18px 20px;
   transition: border-color 120ms ease, transform 120ms ease;
 }
-.st-key-stockcard:hover, .st-key-tile:hover {
+[class*="st-key-stockcard"]:hover, .st-key-tile:hover {
   border-color: var(--nd-accent);
   transform: translateY(-2px);
 }

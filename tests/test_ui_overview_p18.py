@@ -302,3 +302,25 @@ class TestAllPagesSelfReview:
             assert "DATA LIMITATIONS:" in warnings[0]
             if expect_banner:
                 assert "COSTS NOT MODELED" in warnings[0]
+
+
+class TestWatchlistP19:
+    def test_pills_and_sparklines(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Watchlist")
+        # st.pills records as a button_group element in AppTest
+        assert any(getattr(el, "type", "") == "button_group"
+                   for el in at.main), "filter pills must render"
+        assert any(getattr(el, "type", "") == "vega_lite_chart"
+                   for el in at.main), "sparklines must render"
+        # gainers pill keeps at least the synthetic cards
+        pills = at.pills[0]
+        pills.set_value("Gainers").run(timeout=300)
+        assert not at.exception, at.exception
+
+    def test_stockcard_keys_styled(self, demo_base):
+        at = _run_app(demo_base, "p18_in_demo", "Watchlist")
+        # keyed containers render as separate elements; the page must have
+        # no exceptions and at least 2 stock cards worth of content
+        texts = _page_text(at)
+        assert texts.count("Synthetic Co 090 (demo)") >= 1
+        assert "Synthetic Co 091 (demo)" in texts

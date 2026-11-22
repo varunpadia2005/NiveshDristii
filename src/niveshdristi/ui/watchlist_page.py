@@ -32,10 +32,26 @@ def render_watchlist(payload: dict, labels: dict) -> None:
 
     query = st.text_input("Search", placeholder="name or ticker",
                           help="filters by display name or ticker")
+    held_symbols = {p["instrument"]["symbol"]
+                    for p in payload.get("positions", [])}
+
+    def _direction(r: dict) -> str:
+        if r["change"] is None:
+            return "flat"
+        return "gainers" if r["change"] > 0 else "losers"
+
+    pill = st.pills("Filter", ["All", "Held", "Gainers", "Losers"],
+                    selection_mode="single", default="All")
     q = (query or "").strip().upper()
     matched = [r for r in rows
                if not q or q in r["symbol"].upper()
                or q in display_name(r["symbol"]).upper()]
+    if pill == "Held":
+        matched = [r for r in matched if r["symbol"] in held_symbols]
+    elif pill == "Gainers":
+        matched = [r for r in matched if _direction(r) == "gainers"]
+    elif pill == "Losers":
+        matched = [r for r in matched if _direction(r) == "losers"]
 
     if not rows:
         empty_state("this fund tracks no symbols",
@@ -55,17 +71,26 @@ def render_watchlist(payload: dict, labels: dict) -> None:
             if tag:
                 tags.append(tag)
             if row["has_data"]:
-                stock_card(
-                    name=display_name(row["symbol"]),
-                    ticker=row["symbol"],
-                    tags=tags,
-                    metric_label="Last close",
-                    metric_value=fmt_money(row["last_close"], currency),
-                    caption=(
-                        f"{row['change']:+.2f} vs previous close"
-                        if row["change"] is not None
-                        else "no previous close"),
-                )
+                with st.container(key=f"stockcard_{row['symbol']}"):
+                    st.write(f"{display_name(row['symbol'])}")
+                    st.caption(f"{row['symbol']} · " + " · ".join(tags))
+                    st.metric("Last close",
+                              fmt_money(row["last_close"], currency),
+                              delta=row["change"],
+                              delta_color="normal" if row["change"] else "off")
+                    direction = _direction(row)
+                    st.caption(f"{direction} vs previous close")
+                    closes = row.get("closes") or []
+                    if len(closes) >= 2:
+                        import pandas as pd
+
+                        spark = pd.DataFrame(
+                            {"close": closes},
+                            index=list(range(len(closes))),
+                        )
+                        st.line_chart(spark, height=60)
+                    if st.button("Open", key=f"open_{row['symbol']}"):
+                        st.session_state["dive_symbol"] = row["symbol"]
             else:
                 stock_card(
                     name=display_name(row["symbol"]),
@@ -73,6 +98,4 @@ def render_watchlist(payload: dict, labels: dict) -> None:
                     tags=tags,
                     caption="no stored data for this fund yet",
                 )
-            if st.button("Open", key=f"open_{row['symbol']}"):
-                st.session_state["dive_symbol"] = row["symbol"]
     footer_strip(payload, labels)

@@ -117,8 +117,10 @@ def watchlist(fund_id: str, base: str | Path | None = None) -> dict:
             digest = manifest[s]
             matches = sorted((paths.snapshots / as_of).glob(
                 f"{s}_{digest[:16]}.parquet"))
+            closes: list[float] = []
             if matches:
                 frame = pl.read_parquet(matches[0])
+                closes = [float(v) for v in frame["close"][-20:]]
                 last_close = float(frame["close"][-1])
                 prev_close = (float(frame["close"][-2])
                               if len(frame) >= 2 else None)
@@ -127,5 +129,5 @@ def watchlist(fund_id: str, base: str | Path | None = None) -> dict:
                   else None)
         rows.append({"symbol": s, "has_data": last_close is not None,
                      "last_close": last_close, "prev_close": prev_close,
-                     "change": change})
+                     "change": change, "closes": closes})
     return {"as_of": as_of, "rows": rows}
