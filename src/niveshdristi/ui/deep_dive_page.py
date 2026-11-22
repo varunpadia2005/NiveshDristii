@@ -76,13 +76,11 @@ def render_deep_dive(payload: dict, labels: dict) -> None:
 
 
 def render_compare(payload: dict, labels: dict) -> None:
-    from niveshdristi.ui.components import (
-        banner_strip,
-        footer_strip,
-        unavailable_panel,
-    )
+    from niveshdristi.ui.components import footer_strip, unavailable_panel
 
-    banner_strip(payload)
+    # P19-LOOK: the page-level banner strip already rendered the mandatory
+    # banners; repeating them here made a second warning element. The
+    # disclaimer/footer still renders at the bottom of the page.
     st.subheader("Compare (side by side, no actions)")
     a, b = payload["a"], payload["b"]
     if not (a.get("available") and b.get("available")):
