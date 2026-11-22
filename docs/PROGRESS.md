@@ -1,3 +1,23 @@
+# Phase 20-WEB — Next.js frontend (2026-11-22)
+
+S0 gate-compatibility: no gate check objects to web/ or webapi (G02
+patterns are .py-only; G08/G10/G13/G14 scan explicit src dirs that do
+not include webapi; G19 key patterns absent). .gitignore gained
+web/node_modules/.next entries — and had to be RESTORED after the
+first append clobbered it (P20-WEB-5).
+
+S1: webapi stdlib server + 15 tests; mutation (validation removed) ->
+3 security tests FAIL. S2/S3: web/ shell + 10 pages. S4: tsc/build
+clean, npm audit 0 vulns. S5: Playwright wording + network audit on
+IN and US funds (all requests loopback; wording present on data
+pages; Settings banners added; provider fetch retry added after an
+intermittent empty selector). S6: fresh-clone sim GATE PASS 41/41
+(745 passed, 1 xfail) + replay green + COLUMNS=40/FORCE_COLOR/TZ=UTC
+green. CI run 45013798888 on b4046c8: all three jobs success.
+
+Streamlit UI untouched (fallback). Screenshots: demo_session/
+web_screenshots (36 PNGs).
+
 # Phase 19-LOOK — the visual layer (2026-11-22)
 
 A1/A2: ui/style.py is the single authorized CSS injector (st.html of a

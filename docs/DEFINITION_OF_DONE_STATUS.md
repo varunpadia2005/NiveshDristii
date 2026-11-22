@@ -88,6 +88,11 @@ proposed (needs approval): move the worktree outside the tree
 ($RUNNER_TEMP) in ci.yml. CI run status: NOT VERIFIED (push deferred
 pending that approval).
 
+## Phase 20-WEB update (2026-11-22)
+
+Next.js frontend added (web/, loopback API in src/niveshdristi/webapi);
+CI green on b4046c8 (745 passed + 1 xfail; web/ not built in CI).
+
 ## Phase 19-LOOK update (2026-11-22)
 
 Visual layer landed under a single authorized CSS module (guarded);

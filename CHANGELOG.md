@@ -3,6 +3,28 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 20-WEB — Next.js frontend] 2026-11-22
+
+- src/niveshdristi/webapi: stdlib http.server JSON API — GET only,
+  loopback-only bind, CORS restricted to the localhost:3000 origins,
+  fund-id validation (regex + base-dir containment), typed {error,
+  hint} errors, endpoints over the existing read-only services.
+  Tests (15) incl. ledger-equality, traversal (planted sibling fund),
+  405s, CORS rules. Mutation: dropping the validation -> 3 tests FAIL.
+- web/: Next.js (App Router) + TS + Tailwind 4 + Chart.js +
+  lucide-react, system-ui font only, old-project look (original
+  palette, dark via html.dark, radial gradients, card hover, badges),
+  sticky navbar with global search + fund selector + theme toggle +
+  status pills + DATA LIMITATIONS details. Pages: Dashboard, Explore,
+  Stock Detail, Holdings, Orders, Market, Signals, Backtest, Paper
+  Fund, Settings. /api/* proxied to the loopback API only.
+- tsc --noEmit clean; next build exit 0 (10 routes); npm audit: 0
+  vulnerabilities; pinned exact versions, lockfile committed;
+  node_modules/.next gitignored (.gitignore restored after an append
+  had clobbered it — P20-WEB-5).
+- CI run 45013798888 on b4046c8: gate ubuntu, gate windows, coverage
+  ALL success (web/ is not built in CI).
+
 ## [Phase 19-LOOK — visual layer] 2026-11-22
 
 - ONE authorized CSS module (ui/style.py): static stylesheet via st.html
