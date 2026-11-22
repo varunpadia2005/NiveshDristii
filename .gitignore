@@ -1,58 +1,8 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Environment files
-.env
-.env.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Cache & Data
-cache/
-*.parquet
-*.duckdb
-
-# Logs
-*.log
-logs/
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# Build
-dist/
-build/
-*.egg-info/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Type checking
-.mypy_cache/
-
-# Ruff
-.ruff_cache/
-
-# Streamlit
-.streamlit/secrets.toml
-
-# Quarantine (cleanup)
-_quarantine/
+# P20-WEB: node tooling lives only in web/ (R4)
+web/node_modules/
+web/.next/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+web/.eslint/
+web/*.tsbuildinfo
