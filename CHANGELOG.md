@@ -3,6 +3,31 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 18-UI — retail-style UI redesign] 2026-11-22
+
+- Design system (ui/components.py): fmt_money/fmt_pct (market grouping
+  via a new services.format.format_money_code — currency CODE, never a
+  symbol), change_chip (arrow + word, never colour alone), stock_card,
+  metric_tile, section_header, empty_state with next action.
+- Display-name resolver (ui/names.py): SYNxxx -> "Synthetic Co NNN
+  (demo)" + 'synthetic demo data' tag; real tickers display as
+  themselves (universes carry bare tickers; a per-ticker name field
+  would need schema/gate changes — real names need a user source file).
+- New pages: Watchlist (search + cards from
+  services.market_view.watchlist), Stock Detail (chart + per-model
+  signals + position + fills), Holdings (holdings_view table with
+  P&L and weights), Orders (orders_view across sessions with costs
+  and pending gated orders). Overview/Backtest/Settings restyled;
+  all mandatory banners and verdict wording unchanged (existing UI
+  guard tests untouched and green).
+- Tests: AppTest on freshly generated IN + US demo funds for every
+  page (18 new tests incl. S5 all-pages self-review: zero exceptions,
+  single intentional banner); mutations for the banner component and
+  the resolver.
+- CI: run 44951103100 (head e3a5b3e) — gate ubuntu, gate windows,
+  coverage ALL success (723 passed + 1 strict xfail). One earlier red
+  (44949027464) was a CI-path-dependent test, fixed in e3a5b3e.
+
 ## [Phase 16-B/16-C — CI diagnosis + encoding fix] 2026-11-21
 
 - 16-B: the authorized diagnostic step (`Diagnose gate failure`) named

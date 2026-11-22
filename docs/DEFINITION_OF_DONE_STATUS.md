@@ -88,6 +88,13 @@ proposed (needs approval): move the worktree outside the tree
 ($RUNNER_TEMP) in ci.yml. CI run status: NOT VERIFIED (push deferred
 pending that approval).
 
+## Phase 18-UI update (2026-11-22)
+
+CI green: run 44951103100 (head e3a5b3e) — gate ubuntu, gate windows,
+coverage ALL success; 723 passed + 1 strict xfail. UI redesigned into
+retail-style pages (Overview/Watchlist/Stock Detail/Holdings/Orders)
+with honest synthetic labels and unchanged mandatory banners.
+
 ## Phase 16-C update (2026-11-21)
 
 CI fully green again: run 44928932419 (head c0a9ac7) — gate ubuntu,

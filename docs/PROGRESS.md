@@ -1,3 +1,26 @@
+# Phase 18-UI — retail-style UI redesign (2026-11-22)
+
+S0 audit: no stock names existed because universes carry bare ticker
+strings (schema cannot take a name field without config/gate changes)
+and ledger instruments have no name; demo funds use SYNxxx. Resolver:
+synthetic -> "Synthetic Co NNN (demo)"; else the ticker itself.
+
+Commits: 7b5834d design system; 2482195+3cb3565 resolver (wired into
+every symbol site); 56c926f Overview; ee6fc33 Watchlist; 248d605
+Stock Detail; 0e65265 Holdings+Orders; 387efb2 Backtest/Settings;
+9d96e78 S5 self-review; e3a5b3e CI-proof non-vacuity test (CI red
+44949027464 named by the diagnostic step; fixed).
+
+Gates: fresh-clone CI-exact sim GATE PASS 41/41 (723 passed, 1
+xfail) + replay/costs matrix green after page commits; env matrix
+COLUMNS=40 / FORCE_COLOR=1 / TZ=UTC green; PYTHONIOENCODING=cp1252
+shows ONE pre-existing unrelated failure (test_llm_runtime
+live-flag test, untouched by this phase — recorded finding). CI run
+44951103100: all three jobs success.
+
+Known issue recorded, not fixed: Deep-Dive compare panel crashes
+(KeyError: 'disclaimer', deep_dive_page.py:80 -> banners.py:15).
+
 # Phase 16-C — test-side encoding fix + deletion audit (2026-11-21)
 
 S1 AST audit (1b63ff2 vs HEAD, baacac1 vs HEAD): no dropped tests,
