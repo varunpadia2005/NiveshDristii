@@ -144,7 +144,7 @@ def _render_header(payload: dict, labels: dict) -> None:
     pills + a DATA LIMITATIONS popover with the full list. Native
     widgets only; the mandatory banner strip still renders per page."""
     head = st.columns([2, 1, 1])
-    with head[0].container(key="hero"):
+    with head[0].container(key="headerhero"):
         st.caption(f"Fund: {payload.get('fund_id', '')}")
         st.metric(
             "Fund value (last close)",

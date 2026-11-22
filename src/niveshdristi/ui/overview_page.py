@@ -10,6 +10,7 @@ def render_fund_overview(payload: dict, labels: dict) -> None:
     from niveshdristi.services.fund_overview import nav_series
     from niveshdristi.ui.components import (
         banner_strip,
+        change_chip,
         empty_state,
         fmt_money,
         footer_strip,
@@ -40,47 +41,66 @@ def render_fund_overview(payload: dict, labels: dict) -> None:
                     "generate a demo fund with tools/make_demo_fund.py")
         footer_strip(payload, labels)
         return
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        kpi_card("Fund value (last close)", kpis["fund_value"])
-    with c2:
-        kpi_card("Last-session net P&L", kpis["net_pnl_session"],
-                 "gross shown separately")
-    with c3:
-        kpi_card("Last-session gross P&L", kpis["gross_pnl_session"],
-                 "before fees and slippage")
-    with c4:
-        kpi_card("Cash", fmt_money(payload.get("cash"), ""),
-                 f"ledger verify: {payload.get('verify', 'n/a')} · "
-                 f"{payload.get('records', 0)} sessions")
-
-    # Halt / kill-switch state (mandatory, prominent)
-    if payload.get("halted"):
-        st.error(f"TRADING HALTED: {payload.get('halt_reason') or ''}")
-    else:
-        st.caption("kill-switch: not halted")
-
-    # Total return since start + NAV line (ledger equity per session)
     nav = nav_series(payload.get("fund_id", ""),
                      base=payload.get("fund_base"))
-    if len(nav) >= 2:
-        start_equity, last_equity = nav[0]["equity"], nav[-1]["equity"]
-        if start_equity:
-            total_ret = (last_equity - start_equity) / start_equity * 100.0
-            word = "up" if total_ret > 0 else "down" if total_ret < 0 else "flat"
-            arrow = "▲" if total_ret > 0 else "▼" if total_ret < 0 else "—"
-            st.caption(
-                f"Total return since start: {arrow} {word} "
-                f"{total_ret:+.2f}% ({fmt_money(last_equity - start_equity)}) "
-                "— pipeline demonstration only; not evidence of performance"
-            )
-        import pandas as pd
 
-        chart = pd.DataFrame(
-            {"equity": [p["equity"] for p in nav]},
-            index=[str(p["session"]) for p in nav],
-        )
-        st.line_chart(chart, height=220)
+    # Hero NAV card (P19-LOOK S3a): big number + change chip + mini NAV
+    hero_l, hero_r = st.columns([2, 3])
+    with hero_l.container(key="hero"):
+        st.metric("Fund value (last close)", kpis["fund_value"])
+        st.caption(f"{payload.get('records', 0)} sessions · ledger verify: "
+                   f"{payload.get('verify', 'n/a')}")
+        if payload.get("halted"):
+            with st.container(key="haltpill"):
+                st.caption(f"TRADING HALTED: "
+                           f"{payload.get('halt_reason') or ''}")
+        else:
+            with st.container(key="statuspill"):
+                st.caption("kill-switch: not halted")
+    with hero_r.container(key="panel"):
+        if len(nav) >= 2:
+            start_equity, last_equity = (nav[0]["equity"],
+                                         nav[-1]["equity"])
+            prev_equity = nav[-2]["equity"]
+            day_change = last_equity - prev_equity
+            change_chip(day_change)
+            if start_equity:
+                total_ret = ((last_equity - start_equity)
+                             / start_equity * 100.0)
+                word = ("up" if total_ret > 0
+                        else "down" if total_ret < 0 else "flat")
+                arrow = ("▲" if total_ret > 0
+                         else "▼" if total_ret < 0 else "—")
+                st.caption(
+                    f"Total return since start: {arrow} {word} "
+                    f"{total_ret:+.2f}% "
+                    f"({fmt_money(last_equity - start_equity)}) "
+                    "— pipeline demonstration only; not evidence of "
+                    "performance"
+                )
+            import pandas as pd
+
+            chart = pd.DataFrame(
+                {"equity": [p["equity"] for p in nav]},
+                index=[str(p["session"]) for p in nav],
+            )
+            st.line_chart(chart, height=200)
+        else:
+            empty_state("no NAV series yet — run `nd paper tick`")
+
+    # KPI tiles row
+    t1, t2, t3 = st.columns(3)
+    with t1.container(key="tile_net"):
+        kpi_card("Last-session net P&L", kpis["net_pnl_session"],
+                 "gross shown separately")
+    with t2.container(key="tile_gross"):
+        kpi_card("Last-session gross P&L", kpis["gross_pnl_session"],
+                 "before fees and slippage")
+    with t3.container(key="tile_cash"):
+        kpi_card("Cash", fmt_money(payload.get("cash"), ""),
+                 f"ledger verify: {payload.get('verify', 'n/a')}")
+
+    legend()
 
     legend()
 
