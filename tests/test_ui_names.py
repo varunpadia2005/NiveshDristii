@@ -74,13 +74,21 @@ class TestDisplayName:
 
 
 class TestComparePayloadA3:
-    def test_compare_payload_carries_banners(self):
+    def test_compare_payload_carries_banners(self, tmp_path):
         """A3 RED: render_compare called banner_strip(payload) on the
         compare result, which lacked 'disclaimer' -> KeyError. The service
-        must provide the banner fields itself."""
+        must provide the banner fields itself. Uses a freshly generated
+        demo fund (no local-folder dependence)."""
+        import subprocess
+
         from niveshdristi.services.deep_dive import compare
 
-        result = compare("SYN090", "SYN091", "demo_synthetic",
-                         base="D:/Nivesh Dristi/demo_session")
+        r = subprocess.run(
+            [sys.executable, "tools/make_demo_fund.py", "--base",
+             str(tmp_path), "--market", "IN_NSE", "--fund-id", "a3cmp"],
+            capture_output=True, text=True, cwd=str(REPO), timeout=600,
+        )
+        assert r.returncode == 0, r.stderr[-300:]
+        result = compare("SYN090", "SYN091", "a3cmp", base=str(tmp_path))
         for key in ("banner", "rates_banner", "disclaimer"):
             assert key in result, f"compare payload lacks {key!r}"
