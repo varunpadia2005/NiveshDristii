@@ -11,11 +11,26 @@ PAGES = ("Overview", "Watchlist", "Stock Detail", "Holdings", "Orders",
          "Market Overview", "Deep-Dive", "Signals",
          "Backtest Lab", "Paper Fund", "Settings")
 
+# P19-LOOK S2: icons in the sidebar via format_func (values stay the bare
+# page names, so existing widget interactions and tests keep working).
+_PAGE_ICONS = {"Overview": "📈", "Watchlist": "🔎", "Stock Detail": "📊",
+               "Holdings": "💼", "Orders": "🧾", "Market Overview": "🌐",
+               "Deep-Dive": "🔬", "Signals": "✨", "Backtest Lab": "🧪",
+               "Paper Fund": "📁", "Settings": "⚙️"}
+
+
+def _page_icon(label: str) -> str:
+    return f"{_PAGE_ICONS.get(label, '')} {label}".strip()
+
 
 def render_app() -> None:
     st.set_page_config(page_title="NiveshDristi", layout="wide")
+    from niveshdristi.ui.style import inject_style
+
+    inject_style()
     st.title("NiveshDristi — educational research tool")
     page = st.sidebar.radio("Navigation", PAGES,
+                            format_func=_page_icon,
                             index=PAGES.index("Paper Fund"))
     from niveshdristi.services import market_labels, read_fund
 
@@ -28,6 +43,7 @@ def render_app() -> None:
         st.error(f"fund unreadable: {exc}")
         return
     labels = payload.get("market_labels") or market_labels()
+    _render_header(payload, labels)
     if page == "Overview":
         from niveshdristi.ui.overview_page import render_fund_overview
 
@@ -121,6 +137,46 @@ def render_app() -> None:
         render_banners(payload)
         unavailable_panel(page)
         render_footer(payload, labels)
+
+
+def _render_header(payload: dict, labels: dict) -> None:
+    """P19-LOOK S2: top header bar — fund name + market chip + status
+    pills + a DATA LIMITATIONS popover with the full list. Native
+    widgets only; the mandatory banner strip still renders per page."""
+    head = st.columns([2, 1, 1])
+    with head[0].container(key="hero"):
+        st.caption(f"Fund: {payload.get('fund_id', '')}")
+        st.metric(
+            "Fund value (last close)",
+            _fund_value(payload),
+        )
+    with head[1].container(key="statuspill_market"):
+        st.caption("market")
+        st.write(f"{labels.get('market_name', '')} "
+                 f"({labels.get('currency_code', '')})")
+        verify = payload.get("verify", "n/a")
+        halted = payload.get("halted")
+        st.caption(f"ledger verify: {verify}")
+        st.caption("kill-switch: HALTED" if halted
+                   else "kill-switch: not halted")
+    with head[2].container(key="statuspill_status"):
+        limitations = payload.get("limitation_codes") or []
+        rates = bool(payload.get("rates_banner"))
+        st.caption("status")
+        st.write("COSTS NOT MODELED"
+                 if "costs_not_modeled" in limitations
+                 else ("RATES UNVERIFIED" if rates else "rates ok"))
+        if limitations:
+            with st.popover("DATA LIMITATIONS"):
+                st.caption("codes carried by this fund's header:")
+                st.text(", ".join(sorted(limitations)))
+
+
+def _fund_value(payload: dict) -> str:
+    kpis = payload.get("kpis") or {}
+    return str(kpis.get("fund_value") or
+               (payload.get("cash") if payload.get("cash") is not None
+                else "—"))
 
 
 # AppTest executes this FILE as a script; the Streamlit server does too.
