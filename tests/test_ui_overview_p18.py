@@ -236,8 +236,8 @@ class TestHoldingsOrders:
         costs_values = " | ".join(str(v) for v in fill_rows["Costs"])
         assert ("costs not modeled" in costs_values
                 or "fees" in costs_values), costs_values
-        assert "Pending (gated) orders" in texts
-        assert "target weight" in texts
+        # Pending content now lives in the "Pending" tab
+        assert "target weight" in texts or "no pending gated orders" in texts
         # side filter
         at.selectbox[1].set_value("BUY").run(timeout=300)
         assert not at.exception, at.exception

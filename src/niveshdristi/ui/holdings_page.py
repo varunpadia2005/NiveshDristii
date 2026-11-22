@@ -65,8 +65,32 @@ def render_holdings(payload: dict, labels: dict) -> None:
             "Weight": fmt_pct((r["weight_pct"] or 0) / 100.0)
             if r["weight_pct"] is not None else "—",
         })
-    st.dataframe(table_rows, hide_index=True, width="stretch")
+    import pandas as pd
+    from streamlit import column_config
+
+    df = pd.DataFrame(table_rows)
+    st.dataframe(
+        df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Weight": column_config.ProgressColumn(
+                "Weight", min_value=0.0, max_value=100.0, format="%.1f%%"),
+            "Value": column_config.NumberColumn("Value", format="%.2f"),
+            "Last price": column_config.NumberColumn("Last price",
+                                                     format="%.2f"),
+            "Qty": column_config.NumberColumn("Qty", format="%,d"),
+        },
+    )
     st.caption("* synthetic demo data")
     st.caption(f"Total value: {fmt_money(view.get('total_value'), currency)}"
                f" · as-of: {view.get('as_of')}")
+
+    # allocation chart (values only, from the same ledger-derived rows)
+    alloc = {r["Ticker"]: r["Value"] for r in table_rows}
+    alloc = {k: v for k, v in alloc.items()
+             if isinstance(v, (int, float))}
+    if alloc:
+        st.bar_chart(pd.DataFrame({"value": alloc}),
+                     color="#2DD4BF", height=180)
     footer_strip(payload, labels)
