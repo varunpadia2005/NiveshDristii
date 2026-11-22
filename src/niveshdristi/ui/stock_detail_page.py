@@ -76,9 +76,13 @@ def render_stock_detail(payload: dict, labels: dict) -> None:
     section_header("Per-model signals",
                    "lean + conviction (uncalibrated, -1 to +1) per model")
     for m in dd.get("per_model", []):
-        with st.container(border=True):
+        with st.container(key=f"signalcard_{m.get('model_id', 'model')}"):
             st.write(m.get("model_id", "?"))
             st.caption(m.get("label", ""))
+            conv = m.get("conviction")
+            if conv is not None:
+                st.progress(min(1.0, abs(float(conv))),
+                            text=f"conviction (uncalibrated): {conv:+.2f}")
             why_expander(thesis=m.get("thesis", ""))
     if not dd.get("per_model"):
         empty_state("no model signals recorded for this symbol")
