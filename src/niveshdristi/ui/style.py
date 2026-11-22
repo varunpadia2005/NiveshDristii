@@ -20,19 +20,7 @@ STYLE_CSS = """
 /* NiveshDristi original palette — deep space blue + teal accent.
    Dark-first: Streamlit exposes [data-theme="dark"] on the root. */
 :root {
-  --nd-bg: #0B1220;
-  --nd-card: #111A2E;
-  --nd-border: #1E2A44;
-  --nd-text: #E6EDF7;
-  --nd-muted: #93A1B8;
-  --nd-accent: #2DD4BF;
-  --nd-accent-soft: rgba(45, 212, 191, 0.12);
-  --nd-pos: #34D399;
-  --nd-neg: #FB7185;
-  --nd-radius: 14px;
-  --nd-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-}
-[data-theme="light"] {
+  /* LIGHT is the default (Streamlit config base=light). */
   --nd-bg: #F6F8FB;
   --nd-card: #FFFFFF;
   --nd-border: #E3E9F2;
@@ -43,6 +31,21 @@ STYLE_CSS = """
   --nd-pos: #047857;
   --nd-neg: #BE123C;
   --nd-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
+  --nd-radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nd-bg: #0B1220;
+    --nd-card: #111A2E;
+    --nd-border: #1E2A44;
+    --nd-text: #E6EDF7;
+    --nd-muted: #93A1B8;
+    --nd-accent: #2DD4BF;
+    --nd-accent-soft: rgba(45, 212, 191, 0.12);
+    --nd-pos: #34D399;
+    --nd-neg: #FB7185;
+    --nd-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
 }
 
 /* Cards: every keyed container gets the card treatment */
@@ -103,7 +106,7 @@ h3.nd-section {
 }
 
 /* Main column breathing room */
-[data-testid="stMainBlockContainer"] { padding-top: 1.2rem; }
+[data-testid="stMainBlockContainer"] { padding-top: 1.6rem; }
 
 /* Sidebar nav: calmer, accent on the selected item */
 [data-testid="stSidebar"] .st-radio p { color: var(--nd-muted); }

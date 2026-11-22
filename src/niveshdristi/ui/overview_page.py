@@ -63,7 +63,7 @@ def render_fund_overview(payload: dict, labels: dict) -> None:
                                          nav[-1]["equity"])
             prev_equity = nav[-2]["equity"]
             day_change = last_equity - prev_equity
-            change_chip(day_change)
+            change_chip(round(day_change, 2))
             if start_equity:
                 total_ret = ((last_equity - start_equity)
                              / start_equity * 100.0)

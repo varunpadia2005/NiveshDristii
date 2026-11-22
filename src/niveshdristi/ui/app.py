@@ -146,10 +146,11 @@ def _render_header(payload: dict, labels: dict) -> None:
     head = st.columns([2, 1, 1])
     with head[0].container(key="headerhero"):
         st.caption(f"Fund: {payload.get('fund_id', '')}")
-        st.metric(
-            "Fund value (last close)",
-            _fund_value(payload),
-        )
+        if payload.get("kpis"):
+            st.metric("Fund value (last close)",
+                      str(payload["kpis"].get("fund_value")))
+        else:
+            st.metric("Cash", _fund_value(payload))
     with head[1].container(key="statuspill_market"):
         st.caption("market")
         st.write(f"{labels.get('market_name', '')} "
