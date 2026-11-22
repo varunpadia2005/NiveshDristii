@@ -123,5 +123,9 @@ def compare(symbol_a: str, symbol_b: str, fund_id: str,
             base: str | Path | None = None) -> dict:
     """Two stored instruments side by side — indicators, per-model leans,
     recorded gate verdicts. NO action buttons anywhere."""
-    return {"a": deep_dive(symbol_a, fund_id, base),
-            "b": deep_dive(symbol_b, fund_id, base)}
+    a = deep_dive(symbol_a, fund_id, base)
+    # P19-LOOK A3: carry the banner fields so render_compare's
+    # banner_strip works (was: KeyError 'disclaimer').
+    return {"a": a, "b": deep_dive(symbol_b, fund_id, base),
+            "banner": a.get("banner"), "rates_banner": a.get("rates_banner"),
+            "disclaimer": a.get("disclaimer")}

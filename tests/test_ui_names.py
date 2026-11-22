@@ -71,3 +71,16 @@ class TestDisplayName:
             f"non-vacuity: only {len(resolved)} symbols resolved"
         )
         assert "Synthetic Co 090 (demo)" in resolved
+
+
+class TestComparePayloadA3:
+    def test_compare_payload_carries_banners(self):
+        """A3 RED: render_compare called banner_strip(payload) on the
+        compare result, which lacked 'disclaimer' -> KeyError. The service
+        must provide the banner fields itself."""
+        from niveshdristi.services.deep_dive import compare
+
+        result = compare("SYN090", "SYN091", "demo_synthetic",
+                         base="D:/Nivesh Dristi/demo_session")
+        for key in ("banner", "rates_banner", "disclaimer"):
+            assert key in result, f"compare payload lacks {key!r}"
