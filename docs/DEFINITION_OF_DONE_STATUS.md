@@ -88,6 +88,12 @@ proposed (needs approval): move the worktree outside the tree
 ($RUNNER_TEMP) in ci.yml. CI run status: NOT VERIFIED (push deferred
 pending that approval).
 
+## Phase 19-LOOK update (2026-11-22)
+
+Visual layer landed under a single authorized CSS module (guarded);
+CI green on 71d8e76 (730 passed + 1 xfail). Screenshots in
+demo_session/screenshots.
+
 ## Phase 18-UI update (2026-11-22)
 
 CI green: run 44951103100 (head e3a5b3e) — gate ubuntu, gate windows,

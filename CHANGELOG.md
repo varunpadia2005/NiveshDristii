@@ -3,6 +3,26 @@
 All notable changes to the rebuild branch `rebuild/v2`. Format loosely
 follows Keep a Changelog; dates are the commit dates from git log.
 
+## [Phase 19-LOOK — visual layer] 2026-11-22
+
+- ONE authorized CSS module (ui/style.py): static stylesheet via st.html
+  — deep-space dark + light palette (original, no branding), card
+  radius/border/shadow/hover, keyed-container selectors, compact
+  dataframes. Guard amended per A2 (test_ui.py allowlists only
+  style.py; new test_ui_style_guard.py enforces static-constant/
+  no-interpolation/no-script/no-external-URL rules). Mutations:
+  f-string, script tag, unsafe_allow_html elsewhere -> all FAIL.
+- App shell: header bar (fund value/cash, market chip, verify +
+  kill-switch pills, DATA LIMITATIONS popover), sidebar icons via
+  format_func.
+- Pages: Overview hero + tiles + change chip; Watchlist filter pills +
+  sparklines; Stock Detail range selector + conviction bars; Holdings
+  ProgressColumn weights + allocation chart; Orders Fills/Pending
+  tabs; Deep-Dive compare KeyError fix (A3) + banner de-dup.
+- Screenshots (45) reviewed; fixes: light-palette default, header cash
+  label, delta rounding, padding.
+- CI: run on head 71d8e76 — see PROGRESS. 730 passed + 1 strict xfail.
+
 ## [Phase 18-UI — retail-style UI redesign] 2026-11-22
 
 - Design system (ui/components.py): fmt_money/fmt_pct (market grouping

@@ -1,3 +1,21 @@
+# Phase 19-LOOK — the visual layer (2026-11-22)
+
+A1/A2: ui/style.py is the single authorized CSS injector (st.html of a
+static literal); test_ui.py's dangerous-surface guard amended to
+allowlist ONLY that file, and tests/test_ui_style_guard.py enforces its
+rules (AST: no f-strings/%/.format, no script tags, no external
+URLs/@import, st.html receives the constant Name). Mutations all FAIL.
+
+Commits: 293d8f4 S1; 4c092d3 shell; S3a hero; 86c77e4 Watchlist;
+248d605 Stock Detail; e61b75e A3 compare fix; 4f43f75 banner de-dup;
+1958278 Holdings/Orders; 71d8e76 screenshot-driven fixes.
+
+S5: 45 screenshots (both funds, 1280x800, Overview also 390x844)
+reviewed; visible problems fixed (light default, header label, delta
+rounding, padding). Fresh-clone sim: GATE PASS 41/41 (730 passed, 1
+xfail) + replay/costs green + COLUMNS=40/FORCE_COLOR/TZ=UTC green.
+CI on 71d8e76: gate ubuntu, gate windows, coverage ALL success.
+
 # Phase 18-UI — retail-style UI redesign (2026-11-22)
 
 S0 audit: no stock names existed because universes carry bare ticker
