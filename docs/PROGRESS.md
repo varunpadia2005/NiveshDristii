@@ -36,6 +36,14 @@ shows ONE pre-existing unrelated failure (test_llm_runtime
 live-flag test, untouched by this phase — recorded finding). CI run
 44951103100: all three jobs success.
 
+CI round 2: run 45002083555 on 71d8e76 failed — the diagnostic named
+TestComparePayloadA3 (it read the local demo folder; same class as the
+P18-UI-9 mistake). Fixed in a70ecfe (P19-LOOK-10, generated demo fund
+in tmp_path); run 45002831755 on a70ecfe: gate ubuntu, gate windows,
+coverage ALL success. Note: tag p19look-complete points at 71d8e76
+(the pre-fix commit) — R5 forbids force-moving tags; left as-is with
+this disclosure (the fixed green HEAD is a70ecfe).
+
 Known issue recorded, not fixed: Deep-Dive compare panel crashes
 (KeyError: 'disclaimer', deep_dive_page.py:80 -> banners.py:15).
 
