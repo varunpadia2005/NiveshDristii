@@ -1,6 +1,9 @@
 "use client";
 
 // P20-WEB S3g: Settings / About — provenance and page guide.
+import { useEffect, useState } from "react";
+import { getOverview } from "@/lib/api";
+import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
 
 const GUIDE = [
@@ -15,10 +18,27 @@ const GUIDE = [
   ["Backtest", "recorded engine runs; pipeline demonstration only"],
 ];
 
-export default function SettingsPage() {
+function SettingsInner() {
+  const { fund } = useFundCtx();
+  const [ov, setOv] = useState<Awaited<ReturnType<typeof getOverview>> | null>(
+    null);
+  useEffect(() => {
+    if (!fund) return;
+    getOverview(fund).then(setOv).catch(() => setOv(null));
+  }, [fund]);
   return (
     <Shell>
       <h1 className="text-xl font-semibold mb-1">Settings / About</h1>
+      {ov?.banner && (
+        <div className="nd-badge-caution !block rounded-xl p-3 mb-3 text-sm">
+          {ov.banner}
+        </div>
+      )}
+      {ov?.rates_banner && (
+        <div className="nd-badge-neg !block rounded-xl p-3 mb-3 text-sm">
+          {ov.rates_banner}
+        </div>
+      )}
       <div className="nd-card p-4 text-sm mt-3">
         <h2 className="font-semibold mb-2">About this data</h2>
         Every number comes from the fund&apos;s own ledger, decision
@@ -41,4 +61,8 @@ export default function SettingsPage() {
       </div>
     </Shell>
   );
+}
+
+export default function SettingsPage() {
+  return <SettingsInner />;
 }
