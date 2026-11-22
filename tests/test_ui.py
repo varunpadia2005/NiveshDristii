@@ -208,6 +208,11 @@ class TestInertTextD1a:
                   "requests", "urllib", "httpx", "st.secrets")
         offenders = []
         for f in list(ui.rglob("*.py")) + list(svc.rglob("*.py")):
+            if f.name == "style.py" and f.parent == ui:
+                # P19-LOOK A2 allowlist: ui/style.py is the ONLY file allowed
+                # to inject static CSS (via st.html of a static constant);
+                # its own rules are asserted in tests/test_ui_style_guard.py.
+                continue
             for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
                 for b in banned:
                     if b in line and not line.strip().startswith("#"):
