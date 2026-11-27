@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getOverview } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 const PANELS = ["benchmark index", "bank index", "volatility index",
                 "sector heatmap", "institutional flows",
@@ -22,6 +23,7 @@ function MarketInner() {
   }, [fund]);
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Market Overview</h1>
       {err && <div className="nd-badge-neg">{err}</div>}
       {!ov ? (

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getHoldings, fmtMoney, HoldingsView } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 function displayName(symbol: string) {
   const m = symbol.match(/^SYN0*(\d+)$/);
@@ -23,6 +24,7 @@ function HoldingsInner() {
   }, [fund]);
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Holdings</h1>
       <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
         every number from the ledger and stored snapshots — no estimates

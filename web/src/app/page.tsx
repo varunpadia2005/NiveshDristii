@@ -13,6 +13,7 @@ import {
 import { getNav, getOverview, fmtMoney, NavSeries } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement,
                  Filler, Tooltip);
@@ -207,6 +208,7 @@ function DashboardInner() {
 export default function DashboardPage() {
   return (
     <Shell>
+      <ApiErrorBanner />
       <DashboardInner />
     </Shell>
   );

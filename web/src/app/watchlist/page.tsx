@@ -7,6 +7,7 @@ import Link from "next/link";
 import { getOverview, getWatchlist, fmtMoney, Watchlist } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 function displayName(symbol: string) {
   const m = symbol.match(/^SYN0*(\d+)$/);
@@ -43,6 +44,7 @@ function WatchlistInner() {
 
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Explore / Watchlist</h1>
       <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
         every symbol the fund tracks — last close and change only where the

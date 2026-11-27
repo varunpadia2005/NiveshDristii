@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getOverview } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 function BacktestInner() {
   const { fund } = useFundCtx();
@@ -19,6 +20,7 @@ function BacktestInner() {
   }, [fund]);
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Backtest Lab</h1>
       <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
         runs the engine over the fund&apos;s STORED snapshots — no network,
@@ -39,7 +41,7 @@ function BacktestInner() {
       </div>
       {ov && (
         <div className="nd-card p-4 text-sm mt-3">
-          DataLimitations: {ov.limitation_codes.join(", ")}
+          DataLimitations: {(ov.limitation_codes ?? []).join(", ")}
         </div>
       )}
     </Shell>

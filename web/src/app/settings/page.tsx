@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getOverview } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 const GUIDE = [
   ["Overview", "fund value, P&L, NAV line, kill-switch state, banners"],
@@ -28,6 +29,7 @@ function SettingsInner() {
   }, [fund]);
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Settings / About</h1>
       {ov?.banner && (
         <div className="nd-badge-caution !block rounded-xl p-3 mb-3 text-sm">

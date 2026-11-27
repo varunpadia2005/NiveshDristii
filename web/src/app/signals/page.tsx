@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getOverview } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 function SignalsInner() {
   const { fund } = useFundCtx();
@@ -18,6 +19,7 @@ function SignalsInner() {
   }, [fund]);
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Signals</h1>
       <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
         leans and uncalibrated convictions over stored instruments; stub

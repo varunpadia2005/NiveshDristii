@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getOrders, fmtMoney, OrdersView } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 function displayName(symbol: string) {
   const m = symbol.match(/^SYN0*(\d+)$/);
@@ -28,6 +29,7 @@ function OrdersInner() {
   const weights = o?.pending_gated?.weights ?? {};
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">Orders / Activity</h1>
       <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
         fills and pending gated orders from the ledger and broker cache —
