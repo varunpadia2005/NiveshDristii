@@ -66,10 +66,21 @@ def resolve_fund(base: str | Path, fund: str | None) -> Path:
     return path
 
 
+_KNOWN_ENDPOINTS = frozenset({
+    "funds", "overview", "nav", "watchlist", "signals", "market",
+    "holdings", "orders", "paper", "deepdive", "backtest", "settings",
+})
+
+
 def call_service(name: str, base: str, fund: str | None,
                  symbol: str | None) -> dict:
     """Dispatch to the read-only services view-models. Import inside so
-    the module import stays cheap and testable."""
+    the module import stays cheap and testable. Unknown endpoints
+    (favicon.ico etc.) 404 here BEFORE fund validation, so non-API
+    paths never produce a misleading 400."""
+    if name not in _KNOWN_ENDPOINTS:
+        raise ApiError(404, f"unknown endpoint: {name!r}",
+                       "see the endpoint list in web/README.md")
     if name == "funds":
         return {"funds": list_funds(base)}
     if name == "settings":

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { FundProvider } from "./providers";
 
 export const metadata: Metadata = {
   title: "NiveshDristi — educational research tool",
@@ -11,7 +12,7 @@ export default function RootLayout(
   return (
     <html lang="en">
       <body>
-        {children}
+        <FundProvider>{children}</FundProvider>
       </body>
     </html>
   );

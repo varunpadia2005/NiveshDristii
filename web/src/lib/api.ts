@@ -39,7 +39,7 @@ export interface FundOverview {
   verify: string;
   halted: boolean;
   halt_reason: string | null;
-  limitation_codes: string[];
+  limitation_codes?: string[];
   kpis: { fund_value: string; net_pnl_session: string;
           gross_pnl_session: string; net_pnl_value: number } | null;
   positions_view: Array<{ symbol: string; quantity: number;

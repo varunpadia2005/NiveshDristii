@@ -172,3 +172,25 @@ class TestApiSecurity:
         status, body, _ = _get(
             f"{base_url}/api/deepdive?fund=p20_in&symbol=../x")
         assert status == 400
+
+
+class TestFaviconAndHostBehavior:
+    """WEB-FIX-1: the owner's API log showed /favicon.ico answered 400.
+    Pin the honest behavior: unknown non-API paths (favicon.ico) return
+    404 with {error, hint} — never a raw 400/500 — and GETs carrying a
+    proxied Host header are served normally."""
+
+    def test_favicon_is_404_not_400(self, api):
+        base_url, _ = api
+        status, body, _ = _get(f"{base_url}/favicon.ico")
+        assert status == 404, (status, body)
+        assert "error" in body
+        assert "hint" in body
+
+    def test_proxied_host_header_served(self, api):
+        base_url, _ = api
+        req = urllib.request.Request(f"{base_url}/api/funds")
+        req.add_header("Host", "127.0.0.1:3000")  # as Next's proxy sends
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            assert resp.status == 200
+            assert "funds" in json.loads(resp.read().decode("utf-8"))

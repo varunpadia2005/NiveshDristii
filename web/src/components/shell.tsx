@@ -153,10 +153,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {ov.halted ? "HALTED" : "kill-switch: not halted"}
             </span>
             <span className="nd-badge-pos">ledger verify: {ov.verify}</span>
-            {ov.limitation_codes.length > 0 && (
+            {(ov.limitation_codes ?? []).length > 0 && (
               <details className="nd-badge-caution">
                 <summary className="cursor-pointer">DATA LIMITATIONS</summary>
-                <span>{ov.limitation_codes.join(", ")}</span>
+                <span>{(ov.limitation_codes ?? []).join(", ")}</span>
               </details>
             )}
           </div>

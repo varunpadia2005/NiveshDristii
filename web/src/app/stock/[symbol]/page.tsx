@@ -14,6 +14,7 @@ import {
 import { getDeepDive, getOverview, DeepDive, FundOverview } from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 import { Shell } from "@/components/shell";
+import { ApiErrorBanner } from "@/app/providers";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement,
                  Tooltip);
@@ -52,6 +53,7 @@ export default function StockPage() {
 
   return (
     <Shell>
+      <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">
         Stock detail: {displayName(symbol)}
       </h1>
