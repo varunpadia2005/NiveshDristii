@@ -1,3 +1,26 @@
+# WEB-FIX-1 — web UI stuck on Loading (2026-11-28)
+
+Reproduction (fresh clone, npm run dev): dropdown empty + Loading
+forever on 127.0.0.1:3000; curl through the dev proxy worked on both
+hosts; Playwright saw zero /api requests from the page and an HMR
+WebSocket ERR_INVALID_HTTP_RESPONSE storm; the dev log showed
+"Blocked cross-origin request ... from 127.0.0.1" and an uncaught
+Shell TypeError (ov.limitation_codes undefined).
+
+Root causes fixed (a18a36c, 6429d45): FundProvider was never mounted
+(layout.tsx); Shell crashed on the missing field (fund_overview
+payload has no limitation_codes); Next 16 dev blocked cross-origin
+dev resources for 127.0.0.1 (allowedDevOrigins added); /favicon.ico
+returned a misleading 400 (owner's log) — unknown endpoints now 404
+with {error, hint} BEFORE fund validation. Required error state:
+API-not-reachable banner with a Retry button on every page; three
+states proven with Playwright (data loaded both hosts / API-down
+banner / recovery after Retry). Mutation: reverting the provider
+mount reproduces the bug (options empty, Loading forever).
+
+Gate: fresh-clone sim GATE PASS 41/41 (747 passed, 1 xfail) + replay
+green. Web checks: tsc 0, next build 0, npm audit 0 vulnerabilities.
+
 # Phase 20-WEB — Next.js frontend (2026-11-22)
 
 S0 gate-compatibility: no gate check objects to web/ or webapi (G02
