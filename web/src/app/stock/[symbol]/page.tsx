@@ -105,7 +105,7 @@ export default function StockPage() {
               Per-model signals
             </h2>
             <div className="grid gap-3 md:grid-cols-2">
-              {dd.per_model.map((m) => (
+              {(dd.per_model ?? []).map((m) => (
                 <div key={m.model_id} className="nd-card p-4">
                   <div className="font-medium">{m.model_id}</div>
                   <div className="text-xs" style={{
