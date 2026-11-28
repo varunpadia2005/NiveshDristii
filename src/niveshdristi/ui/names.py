@@ -20,15 +20,18 @@ _SYN = re.compile(r"^SYN(\d+)$")
 def display_name(symbol: str, *, market_tag: str = "") -> str:
     """Honest display name for a symbol.
 
-    SYN090 -> "Synthetic Co 090 (demo)"; anything else -> the symbol
-    itself (never an invented name). market_tag is ignored for real
-    tickers and kept for symmetry with future user-supplied sources.
+    SYN090 -> "Synthetic Co 090 (demo)"; a real ticker with a stored
+    exchange name (NAMES-API-1) -> that name; anything else -> the
+    symbol itself (never an invented name).
     """
     s = (symbol or "").strip()
     m = _SYN.match(s)
     if m:
         return f"Synthetic Co {int(m.group(1)):03d} (demo)"
-    return s
+    from niveshdristi.services.names_view import resolve
+
+    info = resolve(s)
+    return info["name"] if info else s
 
 
 def display_tag(symbol: str) -> str:

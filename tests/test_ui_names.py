@@ -21,11 +21,16 @@ class TestDisplayName:
         assert display_tag("SYN090") == "synthetic demo data"
         assert display_tag("RELIANCE") == ""
 
-    def test_real_ticker_falls_back_to_itself(self):
+    def test_real_ticker_uses_stored_name_or_ticker(self):
+        """NAMES-API-1: a stored exchange name wins; a ticker absent from
+        the stored/fallback files still shows the ticker itself."""
         from niveshdristi.ui.names import display_name
 
-        assert display_name("RELIANCE") == "RELIANCE"
-        assert display_name("AAPL") == "AAPL"
+        name = display_name("RELIANCE")
+        # either the stored exchange name (names refresh ran) or the bare
+        # ticker (no names file) — never an invented name
+        assert name in ("Reliance Industries Limited", "RELIANCE")
+        assert display_name("AAPL") in ("Apple Inc.", "AAPL")
 
     def test_unknown_and_empty_symbols(self):
         from niveshdristi.ui.names import display_name
