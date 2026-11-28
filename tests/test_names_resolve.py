@@ -24,13 +24,16 @@ def _write_store(tmp_path: Path) -> None:
 
 def _with_env(monkeypatch, tmp_path: Path, store: Path | None,
               fallback: Path | None) -> None:
+    from niveshdristi.services import names_view
+
     monkeypatch.setenv("NDR_NAMES_DIR", str(store or tmp_path / "none"))
     if fallback:
         monkeypatch.setenv("NDR_NAMES_FALLBACK", str(fallback))
     else:
         monkeypatch.setenv("NDR_NAMES_FALLBACK",
                            str(tmp_path / "missing.csv"))
-    resolve_mod._cache.clear()
+
+    names_view._cache.clear()
 
 
 def test_search_ranking(monkeypatch, tmp_path):
