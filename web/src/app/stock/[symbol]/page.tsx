@@ -56,7 +56,7 @@ export default function StockPage() {
     <Shell>
       <ApiErrorBanner />
       <h1 className="text-xl font-semibold mb-1">
-        Stock detail: {displayName(symbol)}
+        Stock detail: {displayName(symbol, dd?.resolved_name)}
       </h1>
       <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
         ticker: {symbol}

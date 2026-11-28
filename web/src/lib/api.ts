@@ -81,6 +81,7 @@ export interface OrdersView {
 
 export interface DeepDive {
   symbol: string;
+  resolved_name?: string | null;
   banner: string | null; rates_banner: string | null; disclaimer: string;
   candles?: unknown;
   per_model: Array<{ model_id: string; label: string; thesis: string;
