@@ -214,6 +214,88 @@ def _require_prices(series: Any, ticker: str, as_of_d: date) -> Any:
     return series.adjusted
 
 
+names_app = typer.Typer(help="Listed-company names (NSE/BSE) — the "
+                             "only commands that contact the exchanges, "
+                             "and only when you run refresh")
+data_app.add_typer(names_app, name="names")
+
+
+@names_app.command("refresh")
+def names_refresh(
+    ctx: typer.Context,
+    source: str = typer.Option("all", "--source",
+                               help="nse | bse | all"),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="fetch and report, write nothing"),
+    store: str | None = typer.Option(
+        None, "--store", help="Override the names directory "
+        "(default: NDR_NAMES_DIR or the platform data dir)"),
+) -> None:
+    """Download the official exchange name lists (NSE equity master,
+    BSE scrip list), merge them, and store them OUTSIDE the repo.
+
+    This is the ONLY command that contacts the exchanges for names;
+    the app and web UI read only the stored file (offline). If an
+    exchange refuses, the previous good file is kept and the failure
+    is reported with {error, hint}.
+    """
+    from niveshdristi.names.refresh import (
+        NamesRefreshError,
+        names_dir,
+    )
+    from niveshdristi.names.refresh import (
+        refresh as names_refresh_run,
+    )
+
+    if source not in ("nse", "bse", "all"):
+        _output({"status": "error",
+                 "error": f"unknown source: {source!r}",
+                 "hint": "use --source nse, bse or all"},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=2)
+    target = Path(store) if store else names_dir()
+    try:
+        report = names_refresh_run(target, source=source, dry_run=dry_run)
+    except NamesRefreshError as exc:
+        _output({"status": "error", "error": str(exc),
+                 "hint": "the previous stored file was kept; try again "
+                         "later or download the exchange file by hand"},
+                ctx.obj["json_output"])
+        raise typer.Exit(code=1) from exc
+    payload = {"status": "ok", "dry_run": dry_run, "path": str(target),
+               "sources": report["sources"],
+               "merged_total": report["merged_total"],
+               "merged_by_isin": report["merged_by_isin"],
+               "conflicts": report["conflicts"],
+               "duplicates": report["duplicates"],
+               "retrieved_at": report["retrieved_at"]}
+    _output(payload, ctx.obj["json_output"])
+
+
+@names_app.command("status")
+def names_status(
+    ctx: typer.Context,
+    store: str | None = typer.Option(
+        None, "--store", help="Override the names directory "
+        "(default: NDR_NAMES_DIR or the platform data dir)"),
+) -> None:
+    """Show the stored names table: counts, sources, retrieval time."""
+    from niveshdristi.names.refresh import names_dir
+    from niveshdristi.names.refresh import status as names_status_run
+
+    target = Path(store) if store else names_dir()
+    st = names_status_run(target)
+    if not st.get("stored"):
+        _output({"status": "empty", "path": st["path"], "hint": st["hint"]},
+                ctx.obj["json_output"])
+        return
+    _output({"status": "ok", "path": st["path"],
+             "merged_total": st["meta"].get("merged_total"),
+             "retrieved_at": st["meta"].get("retrieved_at"),
+             "sources": st["meta"].get("sources"),
+             "csv_rows": st.get("csv_rows")}, ctx.obj["json_output"])
+
+
 @data_app.command("fetch")
 def data_fetch(
     ctx: typer.Context,
