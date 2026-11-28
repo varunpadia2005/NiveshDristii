@@ -69,11 +69,12 @@ def resolve_fund(base: str | Path, fund: str | None) -> Path:
 _KNOWN_ENDPOINTS = frozenset({
     "funds", "overview", "nav", "watchlist", "signals", "market",
     "holdings", "orders", "paper", "deepdive", "backtest", "settings",
+    "names", "names-status",
 })
 
 
 def call_service(name: str, base: str, fund: str | None,
-                 symbol: str | None) -> dict:
+                 symbol: str | None, query: str = "") -> dict:
     """Dispatch to the read-only services view-models. Import inside so
     the module import stays cheap and testable. Unknown endpoints
     (favicon.ico etc.) 404 here BEFORE fund validation, so non-API
@@ -83,6 +84,29 @@ def call_service(name: str, base: str, fund: str | None,
                        "see the endpoint list in web/README.md")
     if name == "funds":
         return {"funds": list_funds(base)}
+    if name == "names":
+        from niveshdristi.names.resolve import search as names_search
+
+        query_all = parse_qs(urlparse(query).query)
+        q = (query_all.get("q") or [""])[0]
+        if len(q) > 80:
+            raise ApiError(400, "search query too long (max 80 chars)",
+                           "search by ticker or company name")
+        limit_raw = (query_all.get("limit") or ["20"])[0]
+        try:
+            limit = int(limit_raw)
+        except ValueError as exc:
+            raise ApiError(400, f"invalid limit: {limit_raw!r}",
+                           "limit must be an integer") from exc
+        return {"results": names_search(q, limit=limit)}
+    if name == "names-status":
+        from niveshdristi.names.refresh import names_dir, status
+
+        st = status(names_dir())
+        return {"stored": st.get("stored", False),
+                "meta": st.get("meta"),
+                "path": st.get("path"),
+                "hint": st.get("hint")}
     if name == "settings":
         from niveshdristi.services.paper_detail import settings_view
 
@@ -99,9 +123,15 @@ def call_service(name: str, base: str, fund: str | None,
 
         return {"series": nav_series(fund, base=base)}
     if name == "watchlist":
+        from niveshdristi.names.resolve import resolve
         from niveshdristi.services.market_view import watchlist
 
-        return watchlist(fund, base=base)
+        payload = watchlist(fund, base=base)
+        for row in payload.get("rows", []):
+            info = resolve(row["symbol"])
+            row["name"] = info["name"] if info else None
+            row["exchange"] = info["exchange"] if info else ""
+        return payload
     if name == "signals":
         from niveshdristi.services.market_view import signals_board
 
@@ -111,9 +141,14 @@ def call_service(name: str, base: str, fund: str | None,
 
         return market_overview(fund, base=base)
     if name == "holdings":
+        from niveshdristi.names.resolve import resolve
         from niveshdristi.services.fund_overview import holdings_view
 
-        return holdings_view(fund, base=base)
+        payload = holdings_view(fund, base=base)
+        for row in payload.get("rows", []):
+            info = resolve(row["symbol"])
+            row["name"] = info["name"] if info else None
+        return payload
     if name == "orders":
         from niveshdristi.services.paper_detail import orders_view
 
@@ -126,9 +161,13 @@ def call_service(name: str, base: str, fund: str | None,
         if not symbol or not _SAFE_ID.match(symbol):
             raise ApiError(400, f"invalid symbol: {symbol!r}",
                            "symbols are plain tickers")
+        from niveshdristi.names.resolve import resolve
         from niveshdristi.services.deep_dive import deep_dive
 
-        return deep_dive(symbol, fund, base=base)
+        payload = deep_dive(symbol, fund, base=base)
+        info = resolve(symbol)
+        payload["resolved_name"] = info["name"] if info else None
+        return payload
     if name == "backtest":
         from niveshdristi.services.backtest_lab import (
             content_key,
@@ -152,7 +191,8 @@ class Handler(BaseHTTPRequestHandler):
         symbol = qs.get("symbol", [None])[0]
         name = parsed.path.removeprefix("/api/").strip("/") or "funds"
         try:
-            payload = call_service(name, self.fund_base, fund, symbol)
+            payload = call_service(name, self.fund_base, fund, symbol,
+                                   query=self.path)
             body = json.dumps(payload, default=str).encode("utf-8")
             self._respond(200, body, origin)
         except ApiError as exc:

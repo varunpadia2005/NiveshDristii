@@ -12,7 +12,10 @@ import {
   Activity, ArrowLeftRight, BarChart3, Globe2, LayoutDashboard,
   ListChecks, Moon, Search, Settings, Sparkles, Sun, Wallet,
 } from "lucide-react";
-import { ApiError, getOverview, type FundOverview } from "@/lib/api";
+import {
+  ApiError, getOverview, searchNames, type FundOverview,
+  type NameHit,
+} from "@/lib/api";
 import { useFundCtx } from "@/app/providers";
 
 const TABS = [
@@ -93,9 +96,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (!fund && funds.length) setFund(funds[0]);
   }, [funds, fund, setFund]);
   const [query, setQuery] = useState("");
-  const symbols = (ov?.positions ?? []).map((p) => p.instrument.symbol);
-  const matches = symbols.filter(
-    (s) => s.toLowerCase().includes(query.toLowerCase()));
+  const [hits, setHits] = useState<NameHit[] | null>(null);
+  useEffect(() => {
+    if (!query.trim()) { setHits(null); return; }
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      searchNames(query.trim(), 20).then((d) => {
+        if (!controller.signal.aborted) setHits(d.results);
+      }).catch(() => setHits(null));
+    }, 200);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [query]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -114,14 +125,26 @@ export function Shell({ children }: { children: React.ReactNode }) {
               style={{ background: "var(--bg-primary)",
                        color: "var(--text-primary)",
                        border: "1px solid var(--border-card)" }} />
-            {query && matches.length > 0 && (
-              <div className="absolute mt-1 w-56 rounded-xl border p-2 z-30"
+            {query && hits && hits.length > 0 && (
+              <div className="absolute mt-1 w-72 rounded-xl border p-2 z-30"
                 style={{ background: "var(--bg-card)",
                          borderColor: "var(--border-card)" }}>
-                {matches.map((s) => (
-                  <Link key={s} href={`/watchlist?symbol=${s}`}
-                    className="block px-2 py-1 text-sm hover:opacity-70">
-                    {s}
+                {hits.map((h) => (
+                  <Link key={h.ticker}
+                    href={`/stock/${encodeURIComponent(h.ticker)}`}
+                    className="flex items-center justify-between gap-2 px-2 py-1 text-sm hover:opacity-70">
+                    <span>{h.name}</span>
+                    <span className="rounded px-1 text-xs font-mono"
+                      style={{ background: "var(--bg-primary)",
+                               color: "var(--text-secondary)" }}>
+                      {h.ticker}
+                    </span>
+                    {h.exchange && (
+                      <span className="text-xs"
+                        style={{ color: "var(--text-muted)" }}>
+                        {h.exchange}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </div>

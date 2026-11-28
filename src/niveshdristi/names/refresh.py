@@ -70,7 +70,11 @@ def names_dir() -> Path:
 def fetch_url(url: str, fetcher=None) -> str:
     """GET with the honest UA, 30 s timeout, max 2 retries + backoff."""
     if fetcher is not None:
-        return fetcher(url)
+        result = fetcher(url)
+        if not isinstance(result, str):
+            raise NamesRefreshError(
+                "fake fetcher returned a non-string response")
+        return result
     last: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         req = urllib.request.Request(url, headers={
@@ -79,7 +83,8 @@ def fetch_url(url: str, fetcher=None) -> str:
         })
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-                return resp.read().decode("utf-8", errors="replace")
+                data: bytes = resp.read()
+                return data.decode("utf-8", errors="replace")
         except (urllib.error.HTTPError, urllib.error.URLError,
                 TimeoutError, OSError) as exc:
             last = exc

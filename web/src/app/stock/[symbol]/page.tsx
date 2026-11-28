@@ -19,9 +19,10 @@ import { ApiErrorBanner } from "@/app/providers";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement,
                  Tooltip);
 
-function displayName(symbol: string) {
+function displayName(symbol: string, realName?: string | null) {
   const m = symbol.match(/^SYN0*(\d+)$/);
-  return m ? `Synthetic Co ${m[1]} (demo)` : symbol;
+  if (m) return `Synthetic Co ${m[1]} (demo)`;
+  return realName || symbol;
 }
 
 export default function StockPage() {

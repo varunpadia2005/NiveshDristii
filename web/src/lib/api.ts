@@ -89,6 +89,18 @@ export interface DeepDive {
   gate_log?: Array<Record<string, unknown>>;
 }
 
+export interface NameHit { ticker: string; name: string;
+                           exchange: string; source: string }
+export function searchNames(q: string, limit = 20):
+    Promise<{ results: NameHit[] }> {
+  return getJson(`names?q=${encodeURIComponent(q)}&limit=${limit}`);
+}
+export function getNamesStatus():
+    Promise<{ stored: boolean; meta?: { merged_total: number;
+      retrieved_at: string; sources: Record<string, { rows: number }> };
+      path?: string; hint?: string }> {
+  return getJson("names-status");
+}
 export function listFunds(): Promise<{ funds: string[] }> {
   return getJson("funds");
 }
